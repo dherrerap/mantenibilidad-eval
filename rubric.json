@@ -1,0 +1,66 @@
+{
+  "_comentario": "Parametrización del marco (Tablas 24-27 de PIA02). Todo umbral o peso editable vive aquí, no en el código.",
+  "pesos_subcaracteristicas": {
+    "Testabilidad": 0.30,
+    "Analizabilidad": 0.24,
+    "Modularidad": 0.24,
+    "Modificabilidad": 0.22
+  },
+  "parcial_min_fraccion": 0.5,
+  "puntaje_nivel": { "Cumple": 1.0, "Parcial": 0.5, "No cumple": 0.0 },
+  "severidad_nivel": { "Cumple": "Ninguna", "Parcial": "Media", "No cumple": "Alta" },
+  "puntos": {
+    "capas":        { "nombre": "Separación de responsabilidades entre capas", "categoria": "Estructura y modularidad", "subcaracteristicas": ["Modularidad"], "tipo": "Automatizable" },
+    "ciclomatica":  { "nombre": "Complejidad ciclomática", "categoria": "Estructura y modularidad", "subcaracteristicas": ["Modularidad", "Modificabilidad"], "tipo": "Automatizable" },
+    "cohesion":     { "nombre": "Cohesión de los módulos de responsabilidad compartida", "categoria": "Estructura y modularidad", "subcaracteristicas": ["Modularidad", "Modificabilidad"], "tipo": "Mixto" },
+    "jerarquias":   { "nombre": "Profundidad y amplitud de las jerarquías de herencia o composición", "categoria": "Estructura y modularidad", "subcaracteristicas": ["Modularidad"], "tipo": "Automatizable" },
+    "tecnologias":  { "nombre": "Selección de tecnologías/frameworks y riesgo de obsolescencia", "categoria": "Dependencias e integración", "subcaracteristicas": ["Analizabilidad", "Modificabilidad"], "tipo": "Manual" },
+    "acoplamiento": { "nombre": "Acoplamiento externo y volumen de dependencias declaradas", "categoria": "Dependencias e integración", "subcaracteristicas": ["Modularidad"], "tipo": "Automatizable" },
+    "modelo_datos": { "nombre": "Diseño del modelo de datos", "categoria": "Dependencias e integración", "subcaracteristicas": ["Modularidad", "Analizabilidad"], "tipo": "Manual" },
+    "contratos":    { "nombre": "Definición de contratos de comunicación entre componentes", "categoria": "Dependencias e integración", "subcaracteristicas": ["Modularidad", "Testabilidad"], "tipo": "Mixto" },
+    "observabilidad": { "nombre": "Presencia y consistencia de mecanismos de observabilidad", "categoria": "Transversal de calidad", "subcaracteristicas": ["Analizabilidad"], "tipo": "Mixto" },
+    "pruebas":      { "nombre": "Coberturas y diseño de pruebas", "categoria": "Transversal de calidad", "subcaracteristicas": ["Testabilidad"], "tipo": "Automatizable" },
+    "configuracion": { "nombre": "Separación de configuración y código", "categoria": "Transversal de calidad", "subcaracteristicas": ["Modificabilidad"], "tipo": "Automatizable" }
+  },
+  "umbrales": {
+    "capas": { "cumple_max_violaciones_pct": 0.0, "parcial_max_violaciones_pct": 5.0, "min_capas_identificables": 2 },
+    "ciclomatica": { "umbral_funcion": 20, "cumple_X_min": 0.98, "parcial_X_min": 0.95 },
+    "cohesion": { "fanout_max": 5, "pct_fanout_max": 5.0, "DL_min": 0.60, "dios_loc_min": 300, "dios_fanin_min": 8 },
+    "jerarquias": { "profundidad_max": 7, "hijos_max": 10 },
+    "tecnologias": { "pct_mayor_atrasada_max": 20.0, "vuln_altas_criticas_max": 0 },
+    "acoplamiento": { "deps_salientes_max": 10, "X_min": 0.90, "PC_max": 0.20, "pct_sin_uso_max": 10.0, "incluir_devdependencies": false },
+    "contratos": { "cobertura_min": 90.0 },
+    "observabilidad": { "X_min": 0.80 },
+    "pruebas": { "lineas_min": 70.0, "ramas_min": 50.0 },
+    "configuracion": {
+      "cwe1051_ignorar_fallback_env": false,
+      "_dup_literal": "CWE-1052 por regla S1192 de SonarQube (eslint-plugin-sonarjs no-duplicate-string): umbral 3, longitud mínima 10, sin literales ^\\w*$, ignora 'application/json'. Verificado contra el código fuente del plugin el 2026-10-13; la página rules.sonarsource.com no se pudo consultar.",
+      "dup_literal_umbral": 3,
+      "dup_literal_min_len": 10,
+      "dup_literal_ignorar_solo_palabra": true,
+      "dup_literal_ignorar": ["application/json"]
+    }
+  },
+  "capas_por_defecto": {
+    "_comentario": "Heurística de directorios. Se puede sobreescribir por aplicación con <app>/.layers.json o --layers. Orden = prioridad de coincidencia.",
+    "presentacion": ["routes", "route", "controllers", "controller", "handlers", "api", "middlewares", "middleware", "views"],
+    "negocio": ["services", "service", "usecases", "use-cases", "domain", "core", "business", "logic"],
+    "datos": ["repositories", "repository", "repos", "dao", "models", "model", "schemas", "db", "database", "persistence", "entities"],
+    "compartida": ["utils", "util", "helpers", "lib", "shared", "common", "config", "constants", "types", "errors", "validators"],
+    "ambiguas": ["domain", "core", "entities"],
+    "_ambiguas": "Directorios cuya capa depende de la arquitectura (p. ej. 'domain' en DDD es el núcleo, no 'negocio' en N capas). Una violación que dependa de ellos queda pendiente de revisión manual (capas.C2) o de un .layers.json.",
+    "permitidas": [["presentacion", "negocio"], ["negocio", "datos"]]
+  },
+  "runtimes_con_soporte": {
+    "_comentario": "VERIFICAR contra las páginas oficiales de cada proyecto antes de congelar el experimento: estos mayores son un supuesto de trabajo, no un dato comprobado.",
+    "fecha": "2026-10-14",
+    "node": [22, 24],
+    "react": [18, 19],
+    "express": [4, 5],
+    "mongoose": [8, 9],
+    "mongodb": [6, 7]
+  },
+  "libs_logger": ["winston", "pino", "bunyan", "log4js", "loglevel", "roarr"],
+  "libs_metricas": ["prom-client", "express-prom-bundle", "@opentelemetry/api", "@opentelemetry/sdk-node", "dd-trace", "newrelic"],
+  "libs_validacion": ["joi", "zod", "express-validator", "celebrate", "yup", "ajv", "class-validator", "express-openapi-validator"]
+}

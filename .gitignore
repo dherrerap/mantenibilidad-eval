@@ -1,0 +1,17 @@
+# Dependencias y cachés
+node_modules/
+__pycache__/
+*.pyc
+
+# Aplicaciones evaluadas y resultados de cada ejecución (se regeneran; el informe de ejemplo está en ejemplo/)
+apps/
+resultados/
+experimentos/
+
+# Configuración local
+experimento.json
+
+# Archivos temporales de DV8 y de las pruebas
+*.dv8-dsm
+coverage/
+lcov.info

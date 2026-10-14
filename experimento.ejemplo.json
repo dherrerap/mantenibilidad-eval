@@ -1,0 +1,12 @@
+{
+  "_comentario": "Copie a experimento.json. Todas las claves son opcionales; la línea de comandos tiene prioridad.",
+  "apps_dir": "apps",
+  "res": "resultados",
+  "dominio": "ecommerce",
+  "modelo": "claude-sonnet-5-5",
+  "rep": 1,
+  "sin_pruebas": false,
+  "sin_dv8": false,
+  "offline": false,
+  "aceptar_heuristicas": false
+}
