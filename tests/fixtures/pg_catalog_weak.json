@@ -1,0 +1,121 @@
+{
+ "database": "postgres",
+ "server_version": "18.6",
+ "schema": "public",
+ "tables": {
+  "audit_log": {
+   "columns": {
+    "message": {
+     "name": "message",
+     "type": "text",
+     "nullable": true,
+     "default": null
+    },
+    "user_id": {
+     "name": "user_id",
+     "type": "integer",
+     "nullable": true,
+     "default": null
+    }
+   },
+   "primary_key": [],
+   "foreign_keys": [],
+   "unique": [],
+   "checks": [],
+   "indexes": [],
+   "rows": 0
+  },
+  "orders": {
+   "columns": {
+    "id": {
+     "name": "id",
+     "type": "integer",
+     "nullable": false,
+     "default": "nextval('orders_id_seq'::regclass)"
+    },
+    "user_id": {
+     "name": "user_id",
+     "type": "integer",
+     "nullable": true,
+     "default": null
+    },
+    "total": {
+     "name": "total",
+     "type": "double precision",
+     "nullable": true,
+     "default": null
+    },
+    "status": {
+     "name": "status",
+     "type": "text",
+     "nullable": true,
+     "default": null
+    }
+   },
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "unique": [],
+   "checks": [],
+   "indexes": [
+    {
+     "name": "orders_pkey",
+     "columns": [
+      "id"
+     ],
+     "unique": true,
+     "primary": true,
+     "method": "btree",
+     "predicate": null,
+     "valid": true,
+     "scans": 0
+    }
+   ],
+   "rows": 0
+  },
+  "users": {
+   "columns": {
+    "id": {
+     "name": "id",
+     "type": "integer",
+     "nullable": false,
+     "default": "nextval('users_id_seq'::regclass)"
+    },
+    "email": {
+     "name": "email",
+     "type": "character varying(255)",
+     "nullable": true,
+     "default": null
+    },
+    "name": {
+     "name": "name",
+     "type": "character varying(100)",
+     "nullable": true,
+     "default": null
+    }
+   },
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "unique": [],
+   "checks": [],
+   "indexes": [
+    {
+     "name": "users_pkey",
+     "columns": [
+      "id"
+     ],
+     "unique": true,
+     "primary": true,
+     "method": "btree",
+     "predicate": null,
+     "valid": true,
+     "scans": 0
+    }
+   ],
+   "rows": 0
+  }
+ }
+}

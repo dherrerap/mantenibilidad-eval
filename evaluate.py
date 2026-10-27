@@ -1128,13 +1128,14 @@ def evaluate_points(m, manual, opts):
     return pts
 
 
-def load_mongo(out, m):
-    """Adds to `m` what mongo_analysis.py dumped (<out>/mongo_schema.json): observed schema, real indexes and validators."""
-    f = Path(out) / "mongo_schema.json"
+def load_pg(out, m):
+    """Adds to `m` what pg_analysis.py dumped (<out>/pg_schema.json): the catalog of the real database. Without the file the static
+    schema is used."""
+    f = Path(out) / "pg_schema.json"
     if f.exists():
-        m["mongo"] = json.loads(f.read_text(encoding="utf-8"))
+        m["pg"] = json.loads(f.read_text(encoding="utf-8"))
     else:
-        m.pop("mongo", None)
+        m.pop("pg", None)
     return m
 
 
@@ -1434,7 +1435,7 @@ def cmd_run(a):
                     dv8[k] = v
     print(f"[1/4] Collecting evidence from {app} …")
     m = collect(app, out, a)
-    load_mongo(out, m)
+    load_pg(out, m)
     meta = {"run_id": a.run_id or out.name, "agent": a.agent, "model": a.model, "level": a.level, "domain": a.domain,
             "accept_heuristics": a.accept_heuristics, "run_tests": a.run_tests, "offline": a.offline, "date": m["date"]}
     (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
@@ -1463,7 +1464,7 @@ def cmd_aggregate(a):
     for d in runs:
         meta = json.loads((d / "meta.json").read_text()); manual = json.loads((d / "manual.json").read_text())
         class O: accept_heuristics = meta.get("accept_heuristics", False)
-        load_judge(d, manual); load_mongo(d, ms[d.name])
+        load_judge(d, manual); load_pg(d, ms[d.name])
         pts, prof = evaluate_profile(ms[d.name], manual, O)
         write_outputs(d, meta, pts, prof, ms[d.name])
         acc = None

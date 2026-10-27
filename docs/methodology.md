@@ -169,23 +169,22 @@ or completes) or **manual**.
 
 ## Data model on a real database
 
-With `--mongo` (environment variable `MONGO_URI`, without a database name) `mongo_analysis.py` starts the backend against a database
-`eval_<run>`, exercises it with the acceptance gate and with `seed_api.py` (the same 25 users and their orders in all
-apps), and dumps with `mongo_schema.js` what MongoDB Compass shows: observed schema, indexes, index usage, validators, document
-size, array length and relations. Then it drops the database. The criteria that use that data:
+With `--postgres` (environment variable `PG_ADMIN_URL`, the connection string of a role that can create databases) `pg_analysis.py` creates a
+database `eval_<run>`, starts the backend against it (`DATABASE_URL`, `PORT`), exercises it with the acceptance gate and with `pg_seed.py` (the same 25
+users and their orders in all apps), reads its catalog with `pg_schema.js` through the `pg` package (`information_schema` for tables and columns;
+`pg_catalog` for constraints, foreign keys, indexes and `pg_stat_user_indexes` for index usage) and drops the database. `pg_schema.js` refuses to
+create, read or drop any database whose name does not match `eval_[a-z0-9_]+`, and `PG_ADMIN_URL` itself is not passed to the evaluated backend. The
+catalog is saved in `results/<run>/pg_schema.json` and replaces the static schema for these criteria:
 
-- **C1** requires relations to be declared in the model (`ref` or subdocument). If in the data a String field contains the
-  `_id`s of another collection, the relation is implicit and C1 is not met. Orphans (values without a target) are reported.
-- **C3** requires `required` in all schemas and at least 50% of fields to have some constraint (`required`, `enum`,
-  `min`, `max`, `match`…).
-- **C4** requires an index on the relation fields of each collection and on the fields the code uses as filters in its
-  queries (extracted from the AST). Redundant indexes (prefix of another) and unused ones are reported.
-- **C2** (suggestion): references that resolve with `populate`, no reads inside loops (N+1), bounded arrays
-  (≤ 1000 elements) and documents ≤ 16 KB.
-- **C5** (suggestion): conflicting types between schemas or mixed in the database, identical schemas and mixed naming convention
-  (snake_case and camelCase).
+- **C1** counts tables without primary key and `*_id` columns without a foreign key in the real database.
+- **C3** counts the constraints that PostgreSQL actually has (`NOT NULL`, `UNIQUE`, `CHECK`, foreign keys) and the column types.
+- **C4** looks for FK columns and query filters in the real indexes. Redundant indexes (prefix of another) and unused ones (`idx_scan = 0`) are
+  reported but do not change the level: with 25 users the planner and the statistics are not representative.
+- **C6** compares the ER diagram against the real schema.
+- **C2** and **C5** (suggestions) read the real schema too; the queries still come from the code.
 
-Without a real database (without `--mongo`) the static analysis of the code is used. The thresholds are in `thresholds.data_model` of `rubric.json`.
+Without a real database (without `--postgres`, if the backend does not start, or if the database ends up with no tables) the static schema of the code is
+used, as described above. The thresholds are in `thresholds.data_model` of `rubric.json`.
 
 ## Ranked risk list
 

@@ -67,6 +67,10 @@ def cmd_doctor(a):
     missing = [d for d in ("ts-morph", "dependency-cruiser", "depcheck") if not (HERE / "node_modules" / d / "package.json").exists()]
     add(not missing, "Evaluator dependencies", "installed" if not missing else "missing: " + ", ".join(missing),
         f"Run 'npm install' in {HERE}.")
+    pg = (HERE / "node_modules" / "pg" / "package.json").exists()
+    add(pg and bool(os.environ.get("PG_ADMIN_URL")), "PostgreSQL analysis (optional: --postgres)",
+        ("pg installed" if pg else "pg missing") + ("; PG_ADMIN_URL set" if os.environ.get("PG_ADMIN_URL") else "; PG_ADMIN_URL not set"),
+        "Without it the data model is evaluated from the code only. Run 'npm install' and set PG_ADMIN_URL (a role with CREATEDB).", required=False)
     try:
         json.loads((HERE / "rubric.json").read_text(encoding="utf-8")); rub = True
     except (OSError, ValueError):
@@ -117,7 +121,7 @@ def options(a):
             "skip_tests": pick("skip_tests", False), "skip_dv8": pick("skip_dv8", False), "offline": pick("offline", False),
             "accept_heuristics": pick("accept_heuristics", False),
             "judge": pick("judge", None), "judge_votes": pick("judge_votes", 3), "judge_cmd": pick("judge_cmd", None),
-            "allow_same_model": pick("allow_same_model", False), "mongo": pick("mongo", False)}
+            "allow_same_model": pick("allow_same_model", False), "postgres": pick("postgres", False)}
 
 
 def identity(name):
@@ -149,12 +153,12 @@ def evaluate_app(app, o, dv8):
         else:
             warnings.append("DV8 failed: " + (last_line(s2, r"\S") or ""))
     execute([PY, str(HERE / "manual_template.py"), str(out)])
-    if o["mongo"]:  # real database: observed schema, indexes and relations (MONGO_URI without database name; see mongo_analysis.py)
-        if not os.environ.get("MONGO_URI"):
-            warnings.append("--mongo requested but the MONGO_URI environment variable is missing: database analysis skipped")
+    if o["postgres"]:  # real database: catalog of a disposable eval_<run> database (PG_ADMIN_URL; see pg_analysis.py)
+        if not os.environ.get("PG_ADMIN_URL"):
+            warnings.append("--postgres requested but the PG_ADMIN_URL environment variable is missing: database analysis skipped")
         else:
-            rcm, sm = execute([PY, str(HERE / "mongo_analysis.py"), str(out)])
-            warnings.append("mongo: " + (last_line(sm, r"Acceptance|ERROR") or "no output") if rcm == 0 else "mongo failed: " + (last_line(sm, r"\S") or ""))
+            rcp, sp = execute([PY, str(HERE / "pg_analysis.py"), str(out)])
+            warnings.append("postgres: " + (last_line(sp, r"Acceptance|ERROR") or "no output") if rcp == 0 else "postgres failed: " + (last_line(sp, r"\S") or ""))
             execute(cmd)  # brings the real database into the profile and the judge's evidence
     if o["judge"]:  # the judge decides what is still pending on design judgment and the run is re-evaluated with its decisions
         jcmd = [PY, str(HERE / "judge.py"), str(out), "--model", o["judge"], "--votes", str(o["judge_votes"])]
@@ -310,7 +314,7 @@ def write_report(res):
             L.append(f"### {pf['meta']['run_id']} — findings from missing artifacts")
             L += [f"- **{f['severity']}** — {f['name']}: {f['note']}" for f in fs] + [""]
     warn = ["Each level has a single run: differences between levels are not statistically conclusive.",
-            "The applications are not run against MongoDB (no acceptance gate): it is not known whether they work.",
+            "Unless acceptance.json is present, the applications were not run against PostgreSQL (no acceptance gate): it is not known whether they work.",
             "Layer classification is a directory-name heuristic; review `detected_layers.json`.",
             "Test coverage: with `node --test`, files that no test loads count as 0%, but their branches do not enter the denominator (branches overestimated)."]
     if any((d / "dv8" / "dv8_metrics.json").exists() for d, _, _ in runs):
@@ -347,7 +351,7 @@ def main():
     e.add_argument("--judge", help="judge model that decides the design-judgment criteria (must differ from the generator)")
     e.add_argument("--judge-votes", type=int, dest="judge_votes"); e.add_argument("--judge-cmd", dest="judge_cmd")
     e.add_argument("--allow-same-model", action="store_true", default=None)
-    e.add_argument("--mongo", action="store_true", default=None, help="analyze the real database with mongo_analysis.py (requires MONGO_URI)")
+    e.add_argument("--postgres", action="store_true", default=None, help="analyze the real database with pg_analysis.py (requires PG_ADMIN_URL)")
     for f in ("skip-tests", "skip-dv8", "offline", "accept-heuristics"):
         e.add_argument("--" + f, action="store_true", default=None)
     i = sp.add_parser("report", help="generate the report"); i.set_defaults(fn=cmd_report); i.add_argument("--results")

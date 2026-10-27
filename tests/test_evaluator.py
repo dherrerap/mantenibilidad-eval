@@ -4,7 +4,8 @@ They cover the rules that weigh most on the results: level from criteria, rule S
 inter-layer dependencies), reading node:test coverage, the DV8 matrix and Unhealthy Inheritance, and the extraction of the relational
 schema (SQL, Sequelize migrations and models).
 """
-import json, sys, tempfile, unittest
+import contextlib, io, json, os, subprocess, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -15,6 +16,8 @@ import relational_analysis as ra  # noqa: E402
 import dv8_metrics  # noqa: E402
 import judge  # noqa: E402
 import cli  # noqa: E402
+import pg_analysis  # noqa: E402
+import pg_runtime  # noqa: E402
 
 
 class Opts:
@@ -522,6 +525,164 @@ class TestDataModelCriteria(unittest.TestCase):
         a = {x["id"]: x for x in ev.inventory_artifacts(artifact_model(schema={"tables": {}, "sources": {}}), [])}
         self.assertFalse(a["data_schema"]["present"])
         self.assertIn("no relational schema", a["data_schema"]["detail"])
+
+
+class TestLiveCatalog(unittest.TestCase):
+    """Real catalogs (recorded from PostgreSQL 18.6 with pg_schema.js) stand in for a running server: no PostgreSQL or Docker needed."""
+    def crit(self, m):
+        return ev.eval_data_model(m, {}, Opts())
+
+    def test_good_catalog_meets_the_measured_criteria_and_reports_index_usage(self):
+        cat = json.loads((FIX / "pg_catalog_ok.json").read_text(encoding="utf-8"))
+        crit, met, _, finding, _ = self.crit(dm_model(OK_SQL, ER_MATCH, GOOD_QUERIES, pg=cat))
+        self.assertEqual([crit[k]["ok"] for k in ("C1", "C3", "C4", "C6")], [True] * 4)
+        self.assertTrue(met["live_database"]); self.assertIn("live database", finding)
+        self.assertEqual(met["unused_indexes"], ["order_items.idx_order_items_product", "orders.orders_user_id_idx"])  # idx_scan = 0 (informational)
+        self.assertEqual(crit["C3"]["value"]["constrained_columns"], "13/14 = 93%")
+
+    def test_weak_catalog_fails_c1_c3_and_c4(self):
+        cat = json.loads((FIX / "pg_catalog_weak.json").read_text(encoding="utf-8"))
+        crit = self.crit(dm_model(OK_SQL, ER_MATCH, ["SELECT * FROM orders WHERE user_id = $1"], pg=cat))[0]
+        self.assertEqual(crit["C1"]["value"]["without_primary_key"], ["audit_log"])
+        self.assertEqual(crit["C1"]["value"]["implicit_relations"], ["audit_log.user_id", "orders.user_id"])
+        self.assertEqual([crit[k]["ok"] for k in ("C1", "C3", "C4", "C6")], [False] * 4)
+        self.assertEqual(crit["C3"]["value"]["float_money_columns"], ["orders.total (double precision)"])
+
+    def test_catalog_types_map_to_the_same_families_as_the_static_schema(self):
+        live = ra.from_catalog(json.loads((FIX / "pg_catalog_ok.json").read_text(encoding="utf-8")), RUBRIC_REL)
+        static = dm_model(OK_SQL)["schema"]
+        fam = lambda sc: {(t, c): d["family"] for t, tb in sc["tables"].items() for c, d in tb["columns"].items()}
+        self.assertEqual(fam(live), fam(static))
+
+    def test_load_pg_reads_the_dump_next_to_the_results_and_forgets_it_when_absent(self):
+        with tempfile.TemporaryDirectory() as t:
+            m = {}
+            self.assertNotIn("pg", ev.load_pg(t, m))
+            (Path(t) / "pg_schema.json").write_text(json.dumps({"tables": {}}), encoding="utf-8")
+            self.assertEqual(ev.load_pg(t, m)["pg"], {"tables": {}})
+            (Path(t) / "pg_schema.json").unlink()
+            self.assertNotIn("pg", ev.load_pg(t, m))
+
+
+class TestPgRuntime(unittest.TestCase):
+    def test_database_names_are_always_eval_prefixed_and_validated(self):
+        self.assertEqual(pg_runtime.eval_db_name("claude-n1-ecommerce-r1"), "eval_claude_n1_ecommerce_r1")
+        self.assertEqual(pg_runtime.eval_db_name("My App; DROP"), "eval_my_app_drop")
+        self.assertTrue(len(pg_runtime.eval_db_name("x" * 200)) <= 55)
+        self.assertTrue(pg_runtime.valid_eval_db("eval_a_1")); self.assertFalse(pg_runtime.valid_eval_db("postgres")); self.assertFalse(pg_runtime.valid_eval_db("eval_A"))
+        self.assertFalse(pg_runtime.valid_eval_db("eval_a; DROP DATABASE x"))
+
+    def test_db_url_keeps_credentials_and_query_and_masking_hides_the_password(self):
+        url = pg_runtime.db_url("postgres://eva:p%40ss@db.example:5433/postgres?sslmode=require", "eval_x")
+        self.assertEqual(url, "postgres://eva:p%40ss@db.example:5433/eval_x?sslmode=require")
+        self.assertEqual(pg_runtime.password_of(url), "p@ss")
+        self.assertEqual(pg_runtime.mask("connect eva:p@ss failed", url), "connect eva:*** failed")
+        self.assertEqual(pg_runtime.build_url("u", "p w", "127.0.0.1", 5432, "eval_a"), "postgresql://u:p%20w@127.0.0.1:5432/eval_a")
+
+
+class TestPgSchemaScript(unittest.TestCase):
+    def node(self, code):
+        p = subprocess.run(["node", "-e", code], cwd=ROOT, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return json.loads(p.stdout)
+
+    def test_name_guard_url_and_type_formatting(self):
+        r = self.node("const m=require('./pg_schema.js');console.log(JSON.stringify([m.validDbName('eval_a_b'),m.validDbName('postgres'),m.validDbName('eval_A'),"
+                      "m.urlFor('postgres://u:p@h:5/postgres?sslmode=require','eval_x'),m.quoteIdent('a\"b'),"
+                      "m.typeOf({data_type:'character varying',character_maximum_length:50}),m.typeOf({data_type:'numeric',numeric_precision:10,numeric_scale:2}),"
+                      "m.typeOf({data_type:'ARRAY',udt_name:'_text'}),m.typeOf({data_type:'USER-DEFINED',udt_name:'order_status'}),m.typeOf({data_type:'integer',numeric_precision:32})]))")
+        self.assertEqual(r, [True, False, False, "postgres://u:p@h:5/eval_x?sslmode=require", '"a""b"', "character varying(50)", "numeric(10,2)", "text[]", "order_status", "integer"])
+
+    def test_the_cli_refuses_databases_that_are_not_eval(self):
+        for cmd in ("create", "drop"):
+            p = subprocess.run(["node", "pg_schema.js", cmd, "production"], cwd=ROOT, capture_output=True, text=True, timeout=60,
+                               env={**os.environ, "PG_ADMIN_URL": "postgres://u:p@127.0.0.1:1/postgres"})
+            self.assertEqual(p.returncode, 2); self.assertIn("only databases named eval_", p.stderr)
+
+    def test_dump_catalog_maps_constraints_indexes_and_quotes(self):
+        script = r"""
+const {dumpCatalog}=require('./pg_schema.js');
+const client={async query(text){
+  if(/SHOW server_version/.test(text))return{rows:[{server_version:'16.4'}]};
+  if(/current_database/.test(text))return{rows:[{name:'eval_t'}]};
+  if(/information_schema\.columns/.test(text))return{rows:[
+    {table_name:'orders',column_name:'id',data_type:'integer',is_nullable:'NO',column_default:null,is_identity:'YES'},
+    {table_name:'orders',column_name:'user_id',data_type:'integer',is_nullable:'YES',column_default:null,is_identity:'NO'}]};
+  if(/pg_constraint/.test(text))return{rows:[
+    {name:'orders_pkey',kind:'p',table_name:'orders',columns:['id'],ref_columns:[],definition:'PRIMARY KEY (id)'},
+    {name:'orders_user_fk',kind:'f',table_name:'orders',columns:['user_id'],ref_table:'users',ref_columns:['id'],on_delete:'c',definition:''},
+    {name:'orders_chk',kind:'c',table_name:'orders',columns:['id'],ref_columns:[],definition:'CHECK ((id > 0))'}]};
+  if(/pg_index/.test(text))return{rows:[{table_name:'orders',name:'orders_user_idx',is_unique:false,is_primary:false,is_valid:true,method:'btree',predicate:null,scans:3,columns:['"userId"']}]};
+  if(/count\(\*\)/.test(text))return{rows:[{n:7}]};
+  throw new Error('unexpected query '+text);}};
+dumpCatalog(client).then(c=>console.log(JSON.stringify(c)));"""
+        c = self.node(script)["tables"]["orders"]
+        self.assertEqual((c["primary_key"], c["rows"]), (["id"], 7))
+        self.assertEqual(c["columns"]["id"]["default"], "identity"); self.assertTrue(c["columns"]["user_id"]["nullable"])
+        self.assertEqual(c["foreign_keys"], [{"name": "orders_user_fk", "columns": ["user_id"], "ref_table": "users", "ref_columns": ["id"], "on_delete": "CASCADE"}])
+        self.assertEqual(c["checks"][0]["expr"], "CHECK ((id > 0))")
+        self.assertEqual(c["indexes"][0]["columns"], ["userId"]); self.assertEqual(c["indexes"][0]["scans"], 3)
+
+
+class TestPgAnalysisFlow(unittest.TestCase):
+    """The orchestration of pg_analysis.py with the database and the backend replaced by mocks."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        (t / "app" / "backend").mkdir(parents=True)
+        self.res = t / "results" / "claude-n1-ecommerce-r1"
+        self.res.mkdir(parents=True)
+        (self.res / "meta.json").write_text(json.dumps({"run_id": "claude-n1-ecommerce-r1"}), encoding="utf-8")
+        (self.res / "metrics.json").write_text(json.dumps({"app": str(t / "app")}), encoding="utf-8")
+        self.calls = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def fake_node(self, fail=(), tables=True):
+        def node_pg(args, admin_url, timeout=300):
+            self.calls.append(args[0])
+            if args[0] in fail:
+                return 1, "boom"
+            if args[0] == "dump":
+                Path(args[2]).write_text(json.dumps({"tables": {"t": {}} if tables else {}}), encoding="utf-8")
+            return 0, args[0] + " ok"
+        return node_pg
+
+    def run_flow(self, node, backend_error=None, **kw):
+        seen = {}
+        def exercise(be, env, port, res, wait, skip_seed, log):
+            seen["env"] = env
+            return backend_error
+        with mock.patch.object(pg_analysis, "node_pg", node), mock.patch.object(pg_analysis, "exercise_backend", exercise), \
+                mock.patch.dict(os.environ, {"PG_ADMIN_URL": "postgres://admin:topsecret@h:5432/postgres"}), contextlib.redirect_stdout(io.StringIO()):
+            err, db = pg_analysis.analyze(self.res, "postgres://admin:topsecret@h:5432/postgres", **kw)
+        return err, db, seen
+
+    def test_creates_dumps_and_drops_the_database_and_hides_the_admin_url_from_the_app(self):
+        err, db, seen = self.run_flow(self.fake_node())
+        self.assertIsNone(err); self.assertEqual(db, "eval_claude_n1_ecommerce_r1"); self.assertEqual(self.calls, ["create", "dump", "drop"])
+        self.assertTrue((self.res / "pg_schema.json").exists())
+        self.assertNotIn("PG_ADMIN_URL", seen["env"])
+        self.assertEqual(seen["env"]["DATABASE_URL"], "postgres://admin:topsecret@h:5432/eval_claude_n1_ecommerce_r1"); self.assertIn("PORT", seen["env"])
+
+    def test_drops_the_database_even_when_the_backend_fails(self):
+        err, _, _ = self.run_flow(self.fake_node(), backend_error="the backend did not open the port")
+        self.assertIn("did not open the port", err); self.assertEqual(self.calls, ["create", "drop"])
+        self.assertFalse((self.res / "pg_schema.json").exists())
+
+    def test_keep_leaves_the_database_and_a_failed_create_drops_nothing(self):
+        self.run_flow(self.fake_node(), keep=True)
+        self.assertEqual(self.calls, ["create", "dump"])
+        self.calls.clear()
+        err, _, _ = self.run_flow(self.fake_node(fail=("create",)))
+        self.assertIn("could not create", err); self.assertEqual(self.calls, ["create"])
+
+    def test_an_empty_catalog_falls_back_to_the_static_analysis_and_a_failed_drop_is_reported(self):
+        err, _, _ = self.run_flow(self.fake_node(tables=False))
+        self.assertIn("no tables", err); self.assertFalse((self.res / "pg_schema.json").exists())
+        err, _, _ = self.run_flow(self.fake_node(fail=("drop",)))
+        self.assertIn("COULD NOT DROP eval_claude_n1_ecommerce_r1", err)
 
 
 class TestRiskSummary(unittest.TestCase):

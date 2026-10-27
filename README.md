@@ -69,7 +69,8 @@ Details in [docs/manual-review.md](docs/manual-review.md).
 | `ast_metrics.js` | Code analysis with ts-morph (complexity, classes, literals, schemas, routes…). |
 | `dv8_metrics.py` | Computes DL and PC with DV8 from the dependency graph. |
 | `manual_template.py` | Generates the guide and draft for the manual review. |
-| `mongo_analysis.py`, `mongo_schema.js`, `seed_api.py` | Analyze the data model on a real MongoDB database (equivalent to MongoDB Compass): `--mongo` in `cli.py evaluate`. See `docs/methodology.md`. |
+| `relational_schema.py`, `relational_analysis.py` | Extract the relational schema from SQL files and Sequelize migrations/models, and measure the data model criteria (including the ER comparison). |
+| `pg_analysis.py`, `pg_schema.js`, `pg_seed.py`, `pg_runtime.py` | Analyze the data model on a real PostgreSQL database: `--postgres` in `cli.py evaluate` (needs `PG_ADMIN_URL`). See `docs/methodology.md`. |
 | `judge.py` | A model different from the generator decides the pending design-judgment criteria (`--judge` in `cli.py evaluate`). See `docs/manual-review.md`. |
 | `rubric.json` | **All the framework's thresholds, weights and lists** (including the input-artifact table and the dashboard cut-offs). Adjust it here, not in the code. |
 | `dv8/matrix-template.json` | Template of the dependency matrix consumed by DV8. |

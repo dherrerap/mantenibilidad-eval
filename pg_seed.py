@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-seed_api.py — Common data for analyzing the data model on a real database.
+pg_seed.py — Common data for analyzing the data model on a real PostgreSQL database.
 
-After the acceptance gate (which leaves 2-3 documents per collection) it creates, using only the API from the requirements,
-enough users and orders for the observed schema, document size and array growth to mean something.
-It is the SAME script for all apps, so the results are comparable.
+After the acceptance gate (which leaves a few rows per table) it creates, using only the HTTP API from the requirements,
+25 users with 1 to 3 orders each (1 to 3 lines per order), so the tables and indexes of the real database hold comparable data.
+It is the SAME script for all apps, so the results are comparable. Identifiers are opaque (integers or UUIDs).
 
 Usage: python seed_api.py --base http://127.0.0.1:4000 [--users 25]
 Standard library only. Reuses `call` from acceptance_check.py.
@@ -25,7 +25,7 @@ def main():
     s, prods = call(a.base, "GET", "/api/products")
     if s != 200 or not isinstance(prods, list):
         print(json.dumps({"error": f"GET /api/products returned {s}"})); return 1
-    ids = [p.get("id", p.get("_id")) for p in prods if (p.get("stock") or 0) > 1]  # no sold-out items: a 409 would void the whole order
+    ids = [p.get("id") for p in prods if (p.get("stock") or 0) > 1]  # no sold-out items: a 409 would void the whole order
     if not ids:
         print(json.dumps({"error": "no products in stock"})); return 1
     stamp = str(int(time.time() * 1000))
