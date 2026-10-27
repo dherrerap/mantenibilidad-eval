@@ -1,66 +1,90 @@
 {
-  "_comentario": "Parametrización del marco (Tablas 24-27 de PIA02). Todo umbral o peso editable vive aquí, no en el código.",
-  "pesos_subcaracteristicas": {
-    "Testabilidad": 0.30,
-    "Analizabilidad": 0.24,
-    "Modularidad": 0.24,
-    "Modificabilidad": 0.22
+  "_comment": "Framework parameters (Tables 24-27 of PIA02). Every editable threshold or weight lives here, not in the code.",
+  "subcharacteristic_weights": {
+    "Testability": 0.30,
+    "Analyzability": 0.24,
+    "Modularity": 0.24,
+    "Modifiability": 0.22
   },
-  "parcial_min_fraccion": 0.5,
-  "puntaje_nivel": { "Cumple": 1.0, "Parcial": 0.5, "No cumple": 0.0 },
-  "severidad_nivel": { "Cumple": "Ninguna", "Parcial": "Media", "No cumple": "Alta" },
-  "puntos": {
-    "capas":        { "nombre": "Separación de responsabilidades entre capas", "categoria": "Estructura y modularidad", "subcaracteristicas": ["Modularidad"], "tipo": "Automatizable" },
-    "ciclomatica":  { "nombre": "Complejidad ciclomática", "categoria": "Estructura y modularidad", "subcaracteristicas": ["Modularidad", "Modificabilidad"], "tipo": "Automatizable" },
-    "cohesion":     { "nombre": "Cohesión de los módulos de responsabilidad compartida", "categoria": "Estructura y modularidad", "subcaracteristicas": ["Modularidad", "Modificabilidad"], "tipo": "Mixto" },
-    "jerarquias":   { "nombre": "Profundidad y amplitud de las jerarquías de herencia o composición", "categoria": "Estructura y modularidad", "subcaracteristicas": ["Modularidad"], "tipo": "Automatizable" },
-    "tecnologias":  { "nombre": "Selección de tecnologías/frameworks y riesgo de obsolescencia", "categoria": "Dependencias e integración", "subcaracteristicas": ["Analizabilidad", "Modificabilidad"], "tipo": "Manual" },
-    "acoplamiento": { "nombre": "Acoplamiento externo y volumen de dependencias declaradas", "categoria": "Dependencias e integración", "subcaracteristicas": ["Modularidad"], "tipo": "Automatizable" },
-    "modelo_datos": { "nombre": "Diseño del modelo de datos", "categoria": "Dependencias e integración", "subcaracteristicas": ["Modularidad", "Analizabilidad"], "tipo": "Manual" },
-    "contratos":    { "nombre": "Definición de contratos de comunicación entre componentes", "categoria": "Dependencias e integración", "subcaracteristicas": ["Modularidad", "Testabilidad"], "tipo": "Mixto" },
-    "observabilidad": { "nombre": "Presencia y consistencia de mecanismos de observabilidad", "categoria": "Transversal de calidad", "subcaracteristicas": ["Analizabilidad"], "tipo": "Mixto" },
-    "pruebas":      { "nombre": "Coberturas y diseño de pruebas", "categoria": "Transversal de calidad", "subcaracteristicas": ["Testabilidad"], "tipo": "Automatizable" },
-    "configuracion": { "nombre": "Separación de configuración y código", "categoria": "Transversal de calidad", "subcaracteristicas": ["Modificabilidad"], "tipo": "Automatizable" }
+  "partial_min_fraction": 0.5,
+  "level_score": { "Meets": 1.0, "Partial": 0.5, "Fails": 0.0 },
+  "level_severity": { "Meets": "None", "Partial": "Medium", "Fails": "High" },
+  "points": {
+    "layers":        { "name": "Separation of responsibilities between layers", "category": "Structure and modularity", "subcharacteristics": ["Modularity"], "type": "Automatable" },
+    "cyclomatic":    { "name": "Cyclomatic complexity", "category": "Structure and modularity", "subcharacteristics": ["Modularity", "Modifiability"], "type": "Automatable" },
+    "cohesion":      { "name": "Cohesion of modules with shared responsibility", "category": "Structure and modularity", "subcharacteristics": ["Modularity", "Modifiability"], "type": "Mixed" },
+    "hierarchies":   { "name": "Depth and breadth of inheritance or composition hierarchies", "category": "Structure and modularity", "subcharacteristics": ["Modularity"], "type": "Automatable" },
+    "technologies":  { "name": "Technology/framework selection and obsolescence risk", "category": "Dependencies and integration", "subcharacteristics": ["Analyzability", "Modifiability"], "type": "Manual" },
+    "coupling":      { "name": "External coupling and volume of declared dependencies", "category": "Dependencies and integration", "subcharacteristics": ["Modularity"], "type": "Automatable" },
+    "data_model":    { "name": "Data model design", "category": "Dependencies and integration", "subcharacteristics": ["Modularity", "Analyzability"], "type": "Manual" },
+    "contracts":     { "name": "Definition of communication contracts between components", "category": "Dependencies and integration", "subcharacteristics": ["Modularity", "Testability"], "type": "Mixed" },
+    "observability": { "name": "Presence and consistency of observability mechanisms", "category": "Cross-cutting quality", "subcharacteristics": ["Analyzability"], "type": "Mixed" },
+    "tests":         { "name": "Test coverage and design", "category": "Cross-cutting quality", "subcharacteristics": ["Testability"], "type": "Automatable" },
+    "configuration": { "name": "Separation of configuration and code", "category": "Cross-cutting quality", "subcharacteristics": ["Modifiability"], "type": "Automatable" }
   },
-  "umbrales": {
-    "capas": { "cumple_max_violaciones_pct": 0.0, "parcial_max_violaciones_pct": 5.0, "min_capas_identificables": 2 },
-    "ciclomatica": { "umbral_funcion": 20, "cumple_X_min": 0.98, "parcial_X_min": 0.95 },
-    "cohesion": { "fanout_max": 5, "pct_fanout_max": 5.0, "DL_min": 0.60, "dios_loc_min": 300, "dios_fanin_min": 8 },
-    "jerarquias": { "profundidad_max": 7, "hijos_max": 10 },
-    "tecnologias": { "pct_mayor_atrasada_max": 20.0, "vuln_altas_criticas_max": 0 },
-    "acoplamiento": { "deps_salientes_max": 10, "X_min": 0.90, "PC_max": 0.20, "pct_sin_uso_max": 10.0, "incluir_devdependencies": false },
-    "contratos": { "cobertura_min": 90.0 },
-    "observabilidad": { "X_min": 0.80 },
-    "pruebas": { "lineas_min": 70.0, "ramas_min": 50.0 },
-    "configuracion": {
-      "cwe1051_ignorar_fallback_env": false,
-      "_dup_literal": "CWE-1052 por regla S1192 de SonarQube (eslint-plugin-sonarjs no-duplicate-string): umbral 3, longitud mínima 10, sin literales ^\\w*$, ignora 'application/json'. Verificado contra el código fuente del plugin el 2026-10-13; la página rules.sonarsource.com no se pudo consultar.",
-      "dup_literal_umbral": 3,
+  "thresholds": {
+    "layers": { "meets_max_violations_pct": 0.0, "partial_max_violations_pct": 5.0, "min_identifiable_layers": 2 },
+    "cyclomatic": { "function_threshold": 20, "meets_X_min": 0.98, "partial_X_min": 0.95 },
+    "cohesion": { "fanout_max": 5, "pct_fanout_max": 5.0, "DL_min": 0.60, "god_loc_min": 300, "god_fanin_min": 8 },
+    "hierarchies": { "depth_max": 7, "children_max": 10 },
+    "technologies": { "pct_major_outdated_max": 20.0, "vuln_high_critical_max": 0 },
+    "coupling": { "outgoing_deps_max": 10, "X_min": 0.90, "PC_max": 0.20, "pct_unused_max": 10.0, "include_devdependencies": false },
+    "cognitive": { "_comment": "Informational (does not change the level). SonarSource reference threshold for S3776: 15 per function.", "function_threshold": 15 },
+    "dead_code": { "_comment": "Informational. Production files that no other file imports and that are not entry points.", "entry_points": ["index", "server", "app", "main", "App", "setupTests", "reportWebVitals"] },
+    "supplementary": { "_comment": "Informational (do not change any level). Reference values from common practice, not from our own study.", "test_ratio_min": 0.3, "jsdoc_min_pct": 50.0, "component_loc_max": 150, "component_props_max": 5, "contract_fields_min_pct": 80.0 },
+    "duplication": { "_comment": "Informational (does not change any point's level). Reference threshold: 5% duplicated lines, a widespread practice (SonarQube).", "pct_max": 5.0, "min_lines": 5, "min_tokens": 50 },
+    "data_model": { "_comment": "C3: minimum % of fields with some constraint. C4: maximum % of code queries without an index. C2: maximum array elements and document size observed in the test database.", "constraints_min_pct": 50.0, "unindexed_queries_max_pct": 0.0, "array_max_elements": 1000, "doc_bytes_max": 16384 },
+    "contracts": { "coverage_min": 90.0 },
+    "observability": { "X_min": 0.80 },
+    "tests": { "lines_min": 70.0, "branches_min": 50.0 },
+    "configuration": {
+      "cwe1051_ignore_env_fallback": false,
+      "_dup_literal": "CWE-1052 via SonarQube rule S1192 (eslint-plugin-sonarjs no-duplicate-string): threshold 3, minimum length 10, no ^\\w*$ literals, ignores 'application/json'. Verified against the plugin source code on 2026-10-13; the rules.sonarsource.com page could not be consulted.",
+      "dup_literal_threshold": 3,
       "dup_literal_min_len": 10,
-      "dup_literal_ignorar_solo_palabra": true,
-      "dup_literal_ignorar": ["application/json"]
+      "dup_literal_ignore_word_only": true,
+      "dup_literal_ignore": ["application/json"]
     }
   },
-  "capas_por_defecto": {
-    "_comentario": "Heurística de directorios. Se puede sobreescribir por aplicación con <app>/.layers.json o --layers. Orden = prioridad de coincidencia.",
-    "presentacion": ["routes", "route", "controllers", "controller", "handlers", "api", "middlewares", "middleware", "views"],
-    "negocio": ["services", "service", "usecases", "use-cases", "domain", "core", "business", "logic"],
-    "datos": ["repositories", "repository", "repos", "dao", "models", "model", "schemas", "db", "database", "persistence", "entities"],
-    "compartida": ["utils", "util", "helpers", "lib", "shared", "common", "config", "constants", "types", "errors", "validators"],
-    "ambiguas": ["domain", "core", "entities"],
-    "_ambiguas": "Directorios cuya capa depende de la arquitectura (p. ej. 'domain' en DDD es el núcleo, no 'negocio' en N capas). Una violación que dependa de ellos queda pendiente de revisión manual (capas.C2) o de un .layers.json.",
-    "permitidas": [["presentacion", "negocio"], ["negocio", "datos"]]
+  "default_layers": {
+    "_comment": "Directory heuristic. Can be overridden per application with <app>/.layers.json or --layers. Order = matching priority.",
+    "presentation": ["routes", "route", "controllers", "controller", "handlers", "api", "middlewares", "middleware", "views"],
+    "business": ["services", "service", "usecases", "use-cases", "domain", "core", "business", "logic"],
+    "data": ["repositories", "repository", "repos", "dao", "models", "model", "schemas", "db", "database", "persistence", "entities"],
+    "shared": ["utils", "util", "helpers", "lib", "shared", "common", "config", "constants", "types", "errors", "validators"],
+    "ambiguous": ["domain", "core", "entities"],
+    "_ambiguous": "Directories whose layer depends on the architecture (e.g. 'domain' in DDD is the core, not 'business' in N-tier). A violation that depends on them stays pending manual review (layers.C2) or a .layers.json.",
+    "allowed": [["presentation", "business"], ["business", "data"]]
   },
-  "runtimes_con_soporte": {
-    "_comentario": "VERIFICAR contra las páginas oficiales de cada proyecto antes de congelar el experimento: estos mayores son un supuesto de trabajo, no un dato comprobado.",
-    "fecha": "2026-10-14",
+  "supported_runtimes": {
+    "_comment": "VERIFY against each project's official pages before freezing the experiment: these major versions are a working assumption, not a verified fact.",
+    "date": "2026-10-14",
     "node": [22, 24],
     "react": [18, 19],
     "express": [4, 5],
     "mongoose": [8, 9],
     "mongodb": [6, 7]
   },
+  "artifacts": [
+    { "id": "source_code", "name": "Source code", "level": "core", "feeds": ["layers", "cyclomatic", "cohesion", "hierarchies"], "evidence": "Structural" },
+    { "id": "data_schema", "name": "Data model schema / migrations", "level": "core", "feeds": ["data_model"], "evidence": "Structural" },
+    { "id": "manifests", "name": "Manifests and lockfiles", "level": "core", "feeds": ["technologies", "coupling"], "evidence": "Structural" },
+    { "id": "test_suite", "name": "Test suite, scripts and coverage report", "level": "complementary", "feeds": ["tests"], "evidence": "Structural", "absence": "high_finding" },
+    { "id": "contract_spec", "name": "Contract specification (OpenAPI, JSON Schema, DTOs)", "level": "complementary", "feeds": ["contracts"], "evidence": "Structural" },
+    { "id": "config_deploy", "name": "Configuration and deployment (.env.example, Dockerfile, CI)", "level": "complementary", "feeds": ["configuration"], "evidence": "Structural" },
+    { "id": "logging_config", "name": "Logging and metrics configuration", "level": "complementary", "feeds": ["observability"], "evidence": "Structural" },
+    { "id": "readme_docs", "name": "README, wiki, ADRs", "level": "complementary", "feeds": ["technologies", "data_model", "observability"], "evidence": "Declarative" },
+    { "id": "diagrams", "name": "Architecture diagrams", "level": "complementary", "feeds": ["layers", "coupling"], "evidence": "Declarative or derived" },
+    { "id": "agent_log", "name": "Agent prompt and session record", "level": "complementary", "feeds": [], "evidence": "Contextual" },
+    { "id": "glossary", "name": "Domain glossary or ontology", "level": "optional", "feeds": ["technologies", "data_model", "observability"], "evidence": "Declarative" }
+  ],
+  "risk_dashboard": {
+    "_comment": "Table 29. Semaphore cut-offs apply to the weighted subcharacteristic score (0-100): green >= green_min, yellow >= yellow_min, red below. hotspots_top_n = files listed per automatable indicator.",
+    "semaphore": { "green_min": 70.0, "yellow_min": 40.0 },
+    "hotspots_top_n": 5
+  },
   "libs_logger": ["winston", "pino", "bunyan", "log4js", "loglevel", "roarr"],
-  "libs_metricas": ["prom-client", "express-prom-bundle", "@opentelemetry/api", "@opentelemetry/sdk-node", "dd-trace", "newrelic"],
-  "libs_validacion": ["joi", "zod", "express-validator", "celebrate", "yup", "ajv", "class-validator", "express-openapi-validator"]
+  "libs_request_logger": ["morgan", "pino-http", "express-winston", "express-pino-logger", "koa-logger"],
+  "libs_metrics": ["prom-client", "express-prom-bundle", "@opentelemetry/api", "@opentelemetry/sdk-node", "dd-trace", "newrelic"],
+  "libs_validation": ["joi", "zod", "express-validator", "celebrate", "yup", "ajv", "class-validator", "express-openapi-validator"]
 }

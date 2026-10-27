@@ -1,6 +1,6 @@
 {
   "@schemaVersion" : "1.0",
-  "name" : "plantilla",
+  "name" : "template",
   "variables" : [ "src/a.js", "src/b.js", "src/c.js" ],
   "cells" : [ {
     "src" : 0,

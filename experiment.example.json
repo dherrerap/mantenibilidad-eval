@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy to experiment.json. All keys are optional; the command line takes precedence.",
+  "apps_dir": "apps",
+  "results": "results",
+  "domain": "ecommerce",
+  "model": "claude-sonnet-5-5",
+  "rep": 1,
+  "skip_tests": false,
+  "skip_dv8": false,
+  "offline": false,
+  "accept_heuristics": false,
+  "judge": null,
+  "judge_votes": 3
+}
