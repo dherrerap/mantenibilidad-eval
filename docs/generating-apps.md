@@ -51,7 +51,8 @@ schema, the *Data model design* point is not evaluable.
 
 ## Afterwards
 
-1. Note the **model** that generated the applications: `--model` will ask for it.
+1. Note the **model** that generated the applications: `--model` is required (the evaluator refuses to run without it unless you pass
+   `--allow-missing-model`, in which case the reports carry a warning).
 2. Run `python cli.py doctor` and then `python cli.py evaluate`.
 3. Optional: to know whether the application really works, use the acceptance gate. `run_experiment.py` starts PostgreSQL from the
    application's own `docker-compose.yml` (project and disposable database `eval_<run>`, removed afterwards), runs the backend with

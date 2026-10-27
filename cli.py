@@ -25,6 +25,7 @@ UTF8 = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 sys.path.insert(0, str(HERE))
 from dv8_metrics import DV8_DEFAULT  # noqa: E402
 import pg_runtime  # noqa: E402
+import evaluate as ev  # noqa: E402
 
 OK, FAIL, WARN = "✔", "✘", "!"
 SYMBOL = {"Meets": "✔", "Partial": "◐", "Fails": "✘"}
@@ -121,7 +122,7 @@ def options(a):
         v = getattr(a, name)
         return v if v not in (None, False) else cfg.get(name, default)
     return {"apps": a.apps or cfg.get("apps") or None, "apps_dir": pick("apps_dir", "apps"), "results": pick("results", "results"),
-            "domain": pick("domain", "ecommerce"), "model": pick("model", "n/a"), "rep": pick("rep", 1),
+            "domain": pick("domain", "ecommerce"), "model": pick("model", None), "allow_missing_model": pick("allow_missing_model", False), "rep": pick("rep", 1),
             "skip_tests": pick("skip_tests", False), "skip_dv8": pick("skip_dv8", False), "offline": pick("offline", False),
             "accept_heuristics": pick("accept_heuristics", False),
             "judge": pick("judge", None), "judge_votes": pick("judge_votes", 3), "judge_cmd": pick("judge_cmd", None),
@@ -141,8 +142,9 @@ def evaluate_app(app, o, dv8):
     agent, level = identity(app.name)
     run_id = f"{app.name}-{o['domain']}-r{o['rep']}"
     out = Path(o["results"]).resolve() / run_id
-    cmd = [PY, str(HERE / "evaluate.py"), "run", str(app), "--out", str(out), "--agent", agent, "--model", o["model"],
+    cmd = [PY, str(HERE / "evaluate.py"), "run", str(app), "--out", str(out), "--agent", agent, "--model", o["model"] or "n/a",
            "--level", level, "--domain", o["domain"], "--run-id", run_id]
+    if ev.model_missing(o["model"]): cmd.append("--allow-missing-model")  # cmd_evaluate already refused unless it was allowed
     if not o["skip_tests"]: cmd.append("--run-tests")
     if o["offline"]: cmd.append("--offline")
     if o["accept_heuristics"]: cmd.append("--accept-heuristics")
@@ -184,6 +186,7 @@ def record_environment(o, dv8, apps):
     rub = json.loads((HERE / "rubric.json").read_text(encoding="utf-8"))
     info = {"date": datetime.datetime.now().isoformat(timespec="seconds"), "python": platform.python_version(),
             "node": version(["node", "--version"]), "npm": version(["npm", "--version"]), "os": platform.platform(),
+            "generator_model": None if ev.model_missing(o["model"]) else o["model"], "generator_model_missing": ev.model_missing(o["model"]),
             "dv8": dv8, "apps": [a.name for a in apps], "options": {k: v for k, v in o.items() if k != "apps"},
             "supported_runtimes": rub.get("supported_runtimes", {}).get("date")}
     (res / "environment.json").write_text(json.dumps(info, indent=1, ensure_ascii=False), encoding="utf-8")
@@ -191,6 +194,9 @@ def record_environment(o, dv8, apps):
 
 def cmd_evaluate(a):
     o = options(a)
+    if ev.model_missing(o["model"]) and not o["allow_missing_model"]:
+        print("ERROR: " + ev.MODEL_ERROR)
+        return 2
     if o["apps"]:
         apps = [Path(p).resolve() for p in o["apps"]]
     else:
@@ -246,7 +252,10 @@ def write_report(res):
     env = json.loads((res / "environment.json").read_text(encoding="utf-8")) if (res / "environment.json").exists() else {}
     ids = [p["id"] for p in runs[0][2]]; names = {p["id"]: p["name"] for p in runs[0][2]}
     subs = list(runs[0][1]["subcharacteristics"])
-    L = ["# Maintainability report", "", f"Generated: {datetime.datetime.now():%Y-%m-%d %H:%M} · {len(runs)} application(s)", "",
+    no_model = [r[1]["meta"]["run_id"] for r in runs if ev.model_missing(r[1]["meta"].get("model"))]
+    model_txt = env.get("generator_model") or ("NOT RECORDED" if no_model else "")
+    L = ["# Maintainability report", "", f"Generated: {datetime.datetime.now():%Y-%m-%d %H:%M} · {len(runs)} application(s)" + (f" · Generator model: {model_txt}" if model_txt else ""), "",
+         *([f"> ⚠ **Generator model not recorded** for {', '.join(no_model)}. {ev.MODEL_WARNING}", ""] if no_model else []),
          "## Overall result (0–100)", "",
          "| Application | Level | Overall | " + " | ".join(subs) + " | Complete |", "|---|---|---|" + "---|" * len(subs) + "---|"]
     for d, pf, pts in runs:
@@ -323,8 +332,8 @@ def write_report(res):
             "Test coverage: with `node --test`, files that no test loads count as 0%, but their branches do not enter the denominator (branches overestimated)."]
     if any((d / "dv8" / "dv8_metrics.json").exists() for d, _, _ in runs):
         warn.append("DV8's DL and PC are computed on a matrix derived from dependency-cruiser (DV8 does not analyze JS/TS) and without isolated files.")
-    if any(r[1]["meta"].get("model") in (None, "n/a") for r in runs):
-        warn.append("The generator model was not recorded (`--model`): it is a variable of the experiment.")
+    if no_model:
+        warn.append(ev.MODEL_WARNING)
     L += ["## Methodological warnings", ""] + [f"- {x}" for x in warn]
     if env:
         L += ["", "## Environment", "", f"Python {env.get('python')} · Node {env.get('node')} · npm {env.get('npm')} · DV8: {env.get('dv8') or 'not used'}",
@@ -350,8 +359,10 @@ def main():
     e = sp.add_parser("evaluate", help="evaluate the applications"); e.set_defaults(fn=cmd_evaluate)
     e.add_argument("apps", nargs="*", help="app folders (by default, all of those in --apps-dir)")
     e.add_argument("--config", default="experiment.json")
-    e.add_argument("--apps-dir"); e.add_argument("--results"); e.add_argument("--domain"); e.add_argument("--model")
+    e.add_argument("--apps-dir"); e.add_argument("--results"); e.add_argument("--domain"); e.add_argument("--model", help="REQUIRED: the model that generated the applications")
     e.add_argument("--rep", type=int)
+    e.add_argument("--allow-missing-model", action="store_true", default=None, dest="allow_missing_model",
+                   help="evaluate without --model (profile.md and report.md carry a warning)")
     e.add_argument("--judge", help="judge model that decides the design-judgment criteria (must differ from the generator)")
     e.add_argument("--judge-votes", type=int, dest="judge_votes"); e.add_argument("--judge-cmd", dest="judge_cmd")
     e.add_argument("--allow-same-model", action="store_true", default=None)

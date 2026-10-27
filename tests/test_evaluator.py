@@ -4,7 +4,7 @@ They cover the rules that weigh most on the results: level from criteria, rule S
 inter-layer dependencies), reading node:test coverage, the DV8 matrix and Unhealthy Inheritance, and the extraction of the relational
 schema (SQL, Sequelize migrations and models).
 """
-import contextlib, io, json, os, subprocess, sys, tempfile, threading, unittest, uuid
+import argparse, contextlib, io, json, os, subprocess, sys, tempfile, threading, unittest, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 from pathlib import Path
@@ -1018,6 +1018,97 @@ class TestRuntimesAndArtifacts(unittest.TestCase):
         with mock.patch.dict(ev.EVALUATORS, {"data_model": stub}, clear=True):
             pt = ev.evaluate_points(m, {}, Opts())[0]
         self.assertTrue(pt["evaluable"]); self.assertIn("er_model", pt["missing_artifacts"]); self.assertEqual(pt["confidence"], "medium")
+
+
+class TestGeneratorModel(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.tmp.name) / "results"
+        quiet = contextlib.redirect_stdout(io.StringIO())
+        with quiet:
+            ev.cmd_run(cls.ns("x-nomodel", model=None, allow_missing_model=True))
+            ev.cmd_run(cls.ns("x-model", model="claude-sonnet-5-5"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    @classmethod
+    def ns(cls, run, **over):
+        base = dict(app=str(FIX / "sequelize_app"), out=str(cls.root / run), agent="x", model="m", level="N1", domain="ecommerce", run_id=run, manual=None,
+                    layers=None, test_cmd=None, run_tests=False, offline=True, accept_heuristics=False, allow_missing_model=False)
+        return argparse.Namespace(**{**base, **over})
+
+    def test_which_values_count_as_missing(self):
+        self.assertTrue(all(ev.model_missing(x) for x in (None, "", "  ", "n/a", "N/A", "none", "Unknown")))
+        self.assertFalse(any(ev.model_missing(x) for x in ("claude-sonnet-5-5", "gpt-5", "x")))
+
+    def test_evaluate_refuses_to_run_without_a_model_and_says_how_to_fix_it(self):
+        for missing in (None, "n/a", ""):
+            with self.assertRaises(SystemExit) as cm:
+                ev.cmd_run(self.ns("never", model=missing))
+            self.assertIn("--model", str(cm.exception)); self.assertIn("--allow-missing-model", str(cm.exception))
+        self.assertFalse((self.root / "never").exists())  # nothing was evaluated
+
+    def test_with_the_override_the_profile_carries_a_prominent_warning(self):
+        text = (self.root / "x-nomodel" / "profile.md").read_text(encoding="utf-8")
+        self.assertIn("Generator model not recorded", text); self.assertIn("Model: NOT RECORDED", text)
+        meta = json.loads((self.root / "x-nomodel" / "meta.json").read_text(encoding="utf-8"))
+        self.assertTrue(meta["model_missing"]); self.assertIsNone(meta["model"])
+
+    def test_with_a_model_there_is_no_warning_and_the_model_is_in_the_profile(self):
+        text = (self.root / "x-model" / "profile.md").read_text(encoding="utf-8")
+        self.assertNotIn("not recorded", text.lower()); self.assertIn("Model: claude-sonnet-5-5", text)
+        self.assertFalse(json.loads((self.root / "x-model" / "meta.json").read_text(encoding="utf-8"))["model_missing"])
+
+    def test_comparison_and_report_warn_only_about_the_runs_without_model(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            ev.cmd_aggregate(argparse.Namespace(dir=str(self.root), out=None))
+        cmp_ = (self.root / "_comparison" / "comparison.md").read_text(encoding="utf-8")
+        self.assertIn("Generator model not recorded** for x-nomodel.", cmp_)
+        ev.record_generator_model(self.root, None)
+        report = cli.write_report(self.root).read_text(encoding="utf-8")
+        self.assertIn("Generator model not recorded** for x-nomodel.", report); self.assertNotIn("for x-nomodel, x-model", report)
+        self.assertIn("Generator model: NOT RECORDED", report)
+        self.assertIn("- " + ev.MODEL_WARNING, report)  # also in the methodological warnings
+        ev.record_generator_model(self.root, "claude-sonnet-5-5")
+        self.assertIn("Generator model: claude-sonnet-5-5", cli.write_report(self.root).read_text(encoding="utf-8"))
+
+    def test_environment_json_records_the_model_and_keeps_other_keys(self):
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "environment.json").write_text(json.dumps({"python": "3.12"}), encoding="utf-8")
+            ev.record_generator_model(t, "claude-sonnet-5-5")
+            env = json.loads((Path(t) / "environment.json").read_text(encoding="utf-8"))
+            self.assertEqual((env["python"], env["generator_model"], env["generator_model_missing"]), ("3.12", "claude-sonnet-5-5", False))
+            ev.record_generator_model(t, "n/a")
+            env = json.loads((Path(t) / "environment.json").read_text(encoding="utf-8"))
+            self.assertEqual((env["generator_model"], env["generator_model_missing"]), (None, True))
+
+    def cli_args(self, **over):
+        base = dict(apps=[str(FIX / "sequelize_app")], config=str(Path(self.tmp.name) / "none.json"), apps_dir=None, results=str(Path(self.tmp.name) / "cli-results"),
+                    domain=None, model=None, rep=None, judge=None, judge_votes=None, judge_cmd=None, allow_same_model=None, postgres=None,
+                    skip_tests=True, skip_dv8=True, offline=True, accept_heuristics=None, allow_missing_model=None)
+        return argparse.Namespace(**{**base, **over})
+
+    def test_cli_evaluate_stops_before_doing_anything_without_a_model(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = cli.cmd_evaluate(self.cli_args())
+        self.assertEqual(rc, 2); self.assertIn("--model", out.getvalue()); self.assertIn("--allow-missing-model", out.getvalue())
+        self.assertFalse((Path(self.tmp.name) / "cli-results").exists())
+
+    def test_cli_options_read_the_model_and_the_override_from_the_config_file(self):
+        cfg = Path(self.tmp.name) / "exp.json"
+        cfg.write_text(json.dumps({"model": "claude-sonnet-5-5"}), encoding="utf-8")
+        o = cli.options(self.cli_args(config=str(cfg)))
+        self.assertEqual((o["model"], o["allow_missing_model"]), ("claude-sonnet-5-5", False))
+
+    def test_run_experiment_requires_the_model_too(self):
+        with mock.patch.object(sys, "argv", ["run_experiment.py", "--skip-acceptance"]):
+            with self.assertRaises(SystemExit) as cm:
+                run_experiment.main()
+        self.assertIn("--model", str(cm.exception))
 
 
 class TestRiskSummary(unittest.TestCase):

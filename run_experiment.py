@@ -32,6 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import pg_runtime as rt  # noqa: E402
+import evaluate as ev  # noqa: E402
 
 SPECS = HERE / "specs"
 # Default commands. VERIFY the flags with `claude --help` / `codex exec --help` for YOUR version.
@@ -144,7 +145,8 @@ def main():
     ap.add_argument("--level", default="N1,N2,N3")
     ap.add_argument("--domain", default="ecommerce")
     ap.add_argument("--repetitions", type=int, default=1)
-    ap.add_argument("--model")
+    ap.add_argument("--model", help="REQUIRED: the generator model (also passed to the agent's CLI as --model unless --agent-cmd is used)")
+    ap.add_argument("--allow-missing-model", action="store_true", help="run without --model (profile.md and report.md carry a warning)")
     ap.add_argument("--agent-cmd", help='custom template with {prompt}, e.g. "my-agent --run {prompt}"')
     ap.add_argument("--agent-timeout", type=int, default=3600)
     ap.add_argument("--skip-acceptance", action="store_true", help="do not run the functional gate (it needs Docker)")
@@ -156,7 +158,10 @@ def main():
     ap.add_argument("--exp", default="experiments"); ap.add_argument("--results", default="results")
     a = ap.parse_args()
 
+    if ev.model_missing(a.model) and not a.allow_missing_model:
+        sys.exit("ERROR: " + ev.MODEL_ERROR)
     exp_root, res_root = Path(a.exp).resolve(), Path(a.results).resolve()
+    ev.record_generator_model(res_root, a.model)
     if not a.skip_acceptance:
         cmd, why = rt.docker_status()
         if cmd is None:
@@ -186,6 +191,7 @@ def main():
         print("[evaluation] measuring maintainability …")
         cmd = [sys.executable, str(HERE / "evaluate.py"), "run", str(project), "--out", str(res_root / run_id),
                "--agent", agent, "--model", a.model or "n/a", "--level", level, "--domain", a.domain, "--run-id", run_id]
+        if ev.model_missing(a.model): cmd.append("--allow-missing-model")
         if not a.skip_tests: cmd.append("--run-tests")
         if a.accept_heuristics: cmd.append("--accept-heuristics")
         if a.offline: cmd.append("--offline")

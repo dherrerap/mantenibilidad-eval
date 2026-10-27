@@ -110,7 +110,9 @@ What the framework does **not** guarantee. Cite them alongside any result.
 
 ## Experiment
 
-- **The generator model is a variable.** If the model changes, the result changes. Always record `--model`. The
+- **The generator model is a variable.** If the model changes, the result changes. Always record `--model`: `cli.py evaluate`, `evaluate.py run` and
+  `run_experiment.py` refuse to run without it (`--allow-missing-model` overrides this and `profile.md` / `report.md` then say so), and it is recorded in
+  `results/environment.json`. The
   applications in the example run were generated with subagents whose model was assumed to be the same as the session's. The pilot's
   `experimentos/*/meta.json` files have `"modelo": null`: the model was not recorded and cannot be reconstructed from this repository.
 - **The specifications differ in more than one aspect** between levels (architectural style, quality attributes,

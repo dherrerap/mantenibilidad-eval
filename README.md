@@ -42,6 +42,9 @@ agent, without one level contaminating another, are in [docs/generating-apps.md]
 python cli.py evaluate --model "<model that generated the apps>"
 ```
 
+`--model` is required: the generator model is a variable of the experiment. Without it the command stops with an error; `--allow-missing-model`
+evaluates anyway, and then `profile.md` and `report.md` carry a prominent warning. The model is recorded in `results/environment.json`.
+
 For each app it evaluates the 11 points, runs the tests, computes DL and PC with DV8, leaves the manual review templates and
 finally aggregates the results. Useful options: `--skip-tests`, `--skip-dv8`, `--offline`, `--accept-heuristics`, or
 pass specific folders (`python cli.py evaluate path/app1 path/app2`). You can fix the options in `experiment.json`
