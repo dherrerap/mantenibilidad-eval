@@ -4,7 +4,8 @@ For an already evaluated run, generates the manual review templates:
   <res>/manual_review.md             guide with the statement of each criterion, the collected evidence and a suggestion
   <res>/manual_review.draft.json     same format as manual.json, with ok=null for the evaluator to decide
 
-Criteria it covers (those the script cannot decide): layers C2 (if left pending), cohesion C3, data model C1–C5, contracts C4.
+Criteria it covers (those the script cannot decide): layers C2 (if left pending), cohesion C3, data model C1–C6 (C2 and C5 are
+suggestions; the others are measured and can be overridden), contracts C4.
 Flow: 1) python3 manual_template.py results/<run>
       2) copy manual_review.draft.json to manual_review.json and fill in ok=true/false (and note)
       3) run the evaluation again: evaluate.py reads <res>/manual_review.json if --manual is not given.
@@ -77,6 +78,14 @@ def contracts_evidence(m, rub):
     return libs, has, len(m["ast"]["routes"])
 
 
+def data_model_point(res):
+    """The 'data_model' point of the scorecard (criteria with the evaluator's result), or None if the run has no scorecard yet."""
+    f = res / "scorecard.json"
+    if not f.exists():
+        return None
+    return next((x for x in json.loads(f.read_text(encoding="utf-8"))["points"] if x["id"] == "data_model"), None)
+
+
 def layers_point(res):
     """Returns the 'layers' point of the scorecard if its C2 was left pending manual review, or None."""
     f = res / "scorecard.json"
@@ -99,6 +108,21 @@ def main():
 
     coh_md, coh_sug = cohesion_evidence(m, T)
     table, sources, ms = model_evidence(m, app)
+    dm = data_model_point(res)
+    dm_rows, dm_items = [], {}
+    for cid in ("C1", "C2", "C3", "C4", "C5", "C6"):
+        c = ((dm or {}).get("criteria") or {}).get(cid)
+        if not c:
+            dm_rows.append(f"| {cid} | — | run the evaluation first |")
+            dm_items[cid] = None
+            continue
+        if c["ok"] is None:
+            res_txt = f"suggestion: {'true' if c['suggested'] else 'false'} (heuristic; decide it)"
+            dm_items[cid] = c["suggested"]
+        else:
+            res_txt = f"{'met' if c['ok'] else 'NOT met'} ({c['source']})"
+            dm_items[cid] = c["ok"]
+        dm_rows.append(f"| {cid} | {c['desc']} | {res_txt} |")
     libs, has_contract, n_routes = contracts_evidence(m, rub)
     contract_sug = bool(libs) and has_contract
 
@@ -117,13 +141,11 @@ def main():
          "Criterion: there is no 'god' module, no mixing of unrelated responsibilities in one module, and no excessive fragmentation.", ""] + coh_md + [
          "", f"**Suggestion:** {'true' if coh_sug else 'false'} (no 'god' module and no high fragmentation). Mixed responsibilities must be judged by reading the modules with the highest fan-out.", "",
          "## Data model", "", f"{len(m['schema']['tables'])} table(s) detected.", ""] + table + ["",
-         "| Criterion | Statement | Suggestion |", "|---|---|---|",
-         f"| C1 | Explicit entities and relations | {ms['C1']} |",
-         "| C2 | Reference or embedding consistent with access (is what is queried together stored together?) | — evaluator decides |",
-         f"| C3 | Schema validation (required/validate in each schema) | {ms['C3']} |",
-         f"| C4 | Indexes on query and relation fields | {ms['C4']} |",
-         "| C5 | No unjustified redundancy or inconsistent types | — evaluator decides |", "",
-         "Model code:", ""] + sources + ["",
+         "| Criterion | Statement | Result |", "|---|---|---|"] + dm_rows + ["",
+         "C2 (normalization consistent with access, up to 3NF) and C5 (no unjustified redundancy) are suggestions: read the schema, the queries and "
+         "`docs/entity-relationship-model.md` before deciding. The measured criteria can also be overridden if the evidence misled the program "
+         "(for example, a relation that the static analysis could not see).", "",
+         "Schema code:", ""] + sources + ["",
          "## Contracts · C4 — input validation consistent with the contract", "",
          f"- Machine-readable contract: {'yes' if has_contract else 'no'}; implemented routes: {n_routes}.",
          f"- Declared validation libraries: {', '.join(libs) or 'none'}.",
@@ -135,7 +157,7 @@ def main():
     draft = {"_instructions": "Change ok to true/false, save as manual_review.json and run the evaluation again.",
              **({"layers": {"C2": item(None, "")}} if layers else {}),
              "cohesion": {"C3": item(coh_sug, "")},
-             "data_model": {"C1": item(ms["C1"], ""), "C2": item(None, ""), "C3": item(ms["C3"], ""), "C4": item(ms["C4"], ""), "C5": item(None, "")},
+             "data_model": {cid: item(dm_items[cid], "") for cid in ("C1", "C2", "C3", "C4", "C5", "C6")},
              "contracts": {"C4": item(contract_sug, "")}}
     (res / "manual_review.draft.json").write_text(json.dumps(draft, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"{res.name}: manual_review.md and manual_review.draft.json")

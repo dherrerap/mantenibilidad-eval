@@ -3,7 +3,7 @@
 judge.py — Uses a language model (the "judge") to decide the criteria that no automatic measurement can resolve, so that the
 evaluation ends in a result and not in a range.
 
-What it decides: the pending design-judgment criteria (layers C2, cohesion C3, data model C1–C5, contracts C4). It does not
+What it decides: the pending design-judgment criteria (layers C2, cohesion C3, data model C1–C6, contracts C4). It does not
 decide those that depend on a missing measurement (DV8, network, test execution): those stay pending until it is available.
 
 How: for each criterion it builds a prompt with the statement and the evidence (code included), sends it to the judge model
@@ -29,17 +29,17 @@ sys.path.insert(0, str(HERE))
 import manual_template as mt  # noqa: E402
 
 DEFAULT_CMD = "claude -p --model {model}"
-JUDGEABLE = {"layers": {"C2"}, "cohesion": {"C3"}, "data_model": {"C1", "C2", "C3", "C4", "C5"}, "contracts": {"C4"}}
+JUDGEABLE = {"layers": {"C2"}, "cohesion": {"C3"}, "data_model": {"C1", "C2", "C3", "C4", "C5", "C6"}, "contracts": {"C4"}}
 MAX_EVIDENCE = 14000  # characters per criterion
 GUIDE = {
     ("layers", "C2"): "ok=true if the separation of responsibilities between layers is real: the flagged dependencies are legitimate in "
                       "this architecture, or the layers are connected through dependency injection. ok=false if there is improper coupling.",
     ("cohesion", "C3"): "ok=true only if there is NO 'god' module (very large and heavily referenced), NO shared modules that mix "
                         "unrelated responsibilities and NO excessive fragmentation. Read the code of the modules with the highest fan-out.",
-    ("data_model", "C2"): "ok=true if what is queried together is stored together: data that always travels with its entity is embedded and "
-                          "data that has a life of its own or grows without bound is referenced.",
-    ("data_model", "C5"): "ok=true if there is no unjustified duplicated data and no fields with the same meaning but different types "
-                          "across schemas.",
+    ("data_model", "C2"): "ok=true if the tables are normalized up to 3NF in a way that fits how the code reads and writes them (no repeating groups, "
+                          "no attribute that depends on a non-key attribute) and any denormalized copy (e.g. a price or name snapshot in an order line) "
+                          "is justified in the README or the ER document. ok=false for N+1 reads or unjustified duplication.",
+    ("data_model", "C5"): "ok=true if there is no unjustified duplicated data and no columns with the same meaning but different types across tables.",
     ("contracts", "C4"): "ok=true if the input validation of the routes is consistent with what the contract declares.",
 }
 

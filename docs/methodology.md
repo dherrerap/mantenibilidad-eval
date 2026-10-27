@@ -97,7 +97,7 @@ or completes) or **manual**.
 | **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. | auto |
 | **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime and framework supported (table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (`npm audit`). Queries the npm registry. | auto with network |
 | **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (`depcheck`). | auto |
-| **Data model** | Modularity, Analyzability | C1 explicit entities and relations · C2 reference or embedding consistent with access · C3 schema validation · C4 indexes on query and relation fields · C5 no unjustified redundancy or inconsistent types. | manual (with suggestions) |
+| **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 and C5 are suggestions |
 | **Contracts** | Modularity, Testability | C1 machine-readable contract (OpenAPI…) · C2 0 Spectral errors · C3 contract covers ≥ 90% of routes · C4 input validation consistent with the contract. | mixed |
 | **Observability** | Analyzability | C1 ≥ 80% of critical events logged (approximated with `catch` blocks that log or delegate to a handler that logs) · C2 structured logger and no `console.*` · C3 centralized error handling · C4 health check, metrics or traces. | mixed |
 | **Tests** | Testability | C1 0 CWE-478/484/1075 violations · C2 tests exist and pass · C3 line coverage ≥ 70% · C4 branch coverage ≥ 50%. | auto (requires running the tests) |
@@ -134,9 +134,36 @@ or completes) or **manual**.
 - **Supplementary indicators** (`supplementary.json` and section of `profile.md`; informational, not scored): test
   quality (cases without assertions, test LOC / production LOC, integration tests), documentation (% of functions with
   JSDoc, README topics), frontend (large components, components with many props, hooks without a dependency array,
-  frontend tests), static security (`eval`, literal credentials, Mongo queries with unfiltered `req.body`) and
-  schema-contract consistency (% of the Mongoose schema fields that appear in the OpenAPI). The reference thresholds
+  frontend tests), static security (`eval`, literal credentials, raw SQL built by interpolation or concatenation) and
+  schema-contract consistency (% of the table columns that appear, ignoring case and `_`, as a property in the OpenAPI). The reference thresholds
   are in `thresholds.supplementary` of `rubric.json`.
+- **Data model.** Evaluated over a relational schema that is extracted statically (`relational_schema.py`) from, in order of
+  preference: SQL files (`*.sql`: migrations, `schema.sql`, Prisma `migration.sql`), Sequelize migrations (`queryInterface.createTable`,
+  `addColumn`, `addConstraint`, `addIndex`; the `down` half is ignored) and Sequelize models (`sequelize.define`, `Model.init`,
+  `belongsTo`, `hasMany`, `hasOne`, `belongsToMany`). A table is decided entirely by the first source that defines it, and every element of
+  the normalized schema records its `source`; lower sources only add tables the higher ones do not mention. If no relational schema is found
+  the *Data model schema* artifact is missing and the point is **not evaluable**. The criteria:
+  - **C1** (automatic). Every table has a primary key, and no column named like a reference (`*_id`, `*Id`) lacks a foreign key. Such columns are reported
+    as *implicit relations*; a table's own single-column primary key is not one.
+  - **C2** (suggestion). Normalization up to 3NF consistent with how the code accesses the data. The program suggests `true` when there are no repeating
+    groups (`phone1`, `phone2`), no denormalized copies of a referenced column (`product_name` next to `product_id`) that the README or the ER document
+    leaves unjustified (a word such as *snapshot* or *denormalized* near the column name, list in `relational.denormalization_words`), and no
+    reads inside loops (N+1). 3NF itself is not verified: a person decides.
+  - **C3** (automatic). At least `thresholds.data_model.constraints_min_pct` of the non-primary-key columns declare some constraint (`NOT NULL`, `UNIQUE`,
+    `CHECK` or `FOREIGN KEY`), and no money-like column (name matches `relational.money_name_pattern`) uses a floating-point type (`FLOAT`, `REAL`,
+    `DOUBLE PRECISION`; use `NUMERIC`). Natural keys such as `email` without `UNIQUE` are listed as evidence but do not change the verdict. Sequelize `validate`
+    rules live in the application, not in the database, and do not count.
+  - **C4** (automatic). Every foreign key column set is the leading part of an index, unique constraint or primary key (PostgreSQL does not index foreign
+    keys by itself), and at most `thresholds.data_model.unindexed_queries_max_pct` of the distinct query filters have no index whose first column is one
+    of the filtered fields. Filters come from the AST (`where` of Sequelize `findOne`, `findAll`, `findAndCountAll`, `count`, `update`, `destroy`…, including
+    `Op.or` / `Op.and` branches) and from the `WHERE` clause of raw SQL strings. Filters by the primary key alone are not counted. A filter whose model or
+    table cannot be resolved, or that is built dynamically, is not counted (`queries_unresolved`, `dynamic_queries` in the metrics).
+  - **C5** (suggestion). The same column name (ignoring case and `_`) never has different type families in different tables, there are no tables with
+    identical columns and the naming convention is not mixed (snake_case with camelCase).
+  - **C6** (automatic). The Mermaid `erDiagram` in `docs/entity-relationship-model.md` matches the schema: the same entities (names compared ignoring case,
+    `_` and plurals), the same attributes in each entity, the same primary-key and foreign-key markers, and a relationship for each foreign key with the
+    "one" side on the referenced table. Differences in attribute types and in optionality (zero vs. one) are reported but are not mismatches. If the file is
+    missing or has no `erDiagram`, C6 fails and the *Entity-relationship model* artifact is recorded as absent.
 - **Technologies (C2).** The supported majors of Node, React and Express are queried from `endoflife.date` on every run with a
   network; Mongoose and MongoDB use the `rubric.json` table. The source is written in the criterion.
 
@@ -173,10 +200,10 @@ In addition to the dashboard above, to see at a glance where maintainability is 
 
 ## Heuristics
 
-Some criteria come with an automatic suggestion (data model C2 and C5, cohesion C3). Data model C2: there are references and some query resolves them with `populate`. C5: no field with different types across schemas and no identical schemas. They **do not count** as a
+Some criteria come with an automatic suggestion (data model C2 and C5, cohesion C3), described above. They **do not count** as a
 result unless `--accept-heuristics` is passed; by default they only guide the person doing the review.
 
-Data model C1, C3 and C4 are verifiable counts over the Mongoose schemas and count without accepting heuristics. Contracts C4 is
+Data model C1, C3, C4 and C6 are verifiable over the schema and count without accepting heuristics. Contracts C4 is
 automatic: there is a contract, there is a validation library, at least 90% of the POST/PUT/PATCH routes validate their input and the fields they
 validate (zod, Joi, yup, express-validator) exist as a property in the contract. Hierarchies C3 applies DV8's rules to the import
 graph. Observability C1 includes authentication and writes in addition to the `catch` blocks. Cohesion also reports DV8's IL

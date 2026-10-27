@@ -8,7 +8,7 @@ CREATE TABLE users (
 );
 
 CREATE TABLE IF NOT EXISTS public.products (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id SERIAL PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
   description TEXT,
   price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
@@ -27,7 +27,7 @@ CREATE TABLE orders (
 
 CREATE TABLE order_items (
   order_id INTEGER NOT NULL,
-  product_id UUID NOT NULL,
+  product_id INTEGER NOT NULL,
   quantity INTEGER NOT NULL CHECK (quantity > 0),
   unit_price NUMERIC(10, 2) NOT NULL,
   PRIMARY KEY (order_id, product_id),

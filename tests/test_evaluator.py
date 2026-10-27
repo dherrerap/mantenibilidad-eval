@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import evaluate as ev  # noqa: E402
 import relational_schema as rs  # noqa: E402
+import relational_analysis as ra  # noqa: E402
 import dv8_metrics  # noqa: E402
 import judge  # noqa: E402
 import cli  # noqa: E402
@@ -194,7 +195,7 @@ class TestSqlSchema(unittest.TestCase):
         self.assertEqual(T["users"]["primary_key"], ["id"]); self.assertEqual(T["order_items"]["primary_key"], ["order_id", "product_id"])
         c = T["products"]["columns"]
         self.assertEqual((c["price"]["type"], c["price"]["family"], c["price"]["nullable"]), ("numeric(10,2)", "numeric", False))
-        self.assertTrue(c["description"]["nullable"]); self.assertEqual(c["id"]["family"], "uuid")
+        self.assertTrue(c["description"]["nullable"]); self.assertEqual(c["id"]["family"], "integer")
         self.assertEqual(T["users"]["columns"]["id"]["family"], "integer"); self.assertFalse(T["users"]["columns"]["id"]["nullable"])  # serial
         self.assertEqual(T["orders"]["columns"]["status"]["default"], "'pending'")
 
@@ -242,8 +243,8 @@ class TestSqlSchema(unittest.TestCase):
 
     def test_type_families(self):
         fam = lambda x: rs.type_family(x, RUBRIC_REL)
-        self.assertEqual([fam("VARCHAR(10)"), fam("double precision"), fam("timestamp with time zone"), fam("int4[]"), fam("jsonb"), fam("citext")],
-                         ["string", "float", "timestamp", "array", "json", "string"])
+        self.assertEqual([fam("VARCHAR(10)"), fam("double precision"), fam("timestamp with time zone"), fam("int4[]"), fam("jsonb"), fam("citext"), fam("UUID")],
+                         ["string", "float", "timestamp", "array", "json", "string", "uuid"])
         self.assertIsNone(fam("geometry"))
         self.assertEqual(rs.sequelize_type({"$expr": "Sequelize.DECIMAL(10, 2)"}, RUBRIC_REL), "numeric(10,2)")
         self.assertEqual(rs.sequelize_type({"$expr": "DataTypes.ARRAY(DataTypes.TEXT)"}, RUBRIC_REL), "text[]")
@@ -309,6 +310,220 @@ class TestSequelizeSchema(unittest.TestCase):
         self.assertEqual(rs.extract([], {}, RUBRIC_REL)["tables"], {})
 
 
+def er_from(text):
+    if text is None:
+        return {"found": False, "diagram": False, "file": None, "entities": {}, "relationships": [], "text": ""}
+    return {"found": True, "diagram": True, "file": "docs/entity-relationship-model.md", "text": text, **ra.parse_er(text)}
+
+
+def dm_model(sql, er_text=None, queries=(), readme="", pg=None):
+    """Minimal evidence for eval_data_model: a schema from SQL, the parsed ER, raw SQL strings that stand for the code's queries."""
+    m = {"schema": rs.extract([("s.sql", sql)], {}, RUBRIC_REL), "er": er_from(er_text), "readme": readme,
+         "ast": {"queryFields": [], "sqlStrings": [{"file": "svc.js", "line": i + 1, "text": q} for i, q in enumerate(queries)]}}
+    if pg:
+        m["pg"] = pg
+    return m
+
+
+OK_SQL = (FIX / "schema_ok.sql").read_text(encoding="utf-8")
+WEAK_SQL = (FIX / "schema_weak.sql").read_text(encoding="utf-8")
+ER_MATCH = (FIX / "er_match.md").read_text(encoding="utf-8")
+ER_MISMATCH = (FIX / "er_mismatch.md").read_text(encoding="utf-8")
+GOOD_QUERIES = ["SELECT * FROM orders WHERE user_id = $1", "SELECT * FROM users u WHERE u.email = $1"]
+
+
+class AcceptHeuristics:
+    accept_heuristics = True
+
+
+class TestErModel(unittest.TestCase):
+    def test_parser_reads_entities_attributes_keys_and_cardinalities(self):
+        er = ra.parse_er(ER_MATCH)
+        self.assertEqual(sorted(er["entities"]), ["ORDERS", "ORDER_ITEMS", "PRODUCTS", "USERS"])
+        a = {x["name"]: x for x in er["entities"]["ORDER_ITEMS"]["attributes"]}
+        self.assertEqual(a["order_id"]["keys"], ["PK", "FK"]); self.assertEqual(a["unit_price"]["type"], "decimal")
+        self.assertEqual({x["name"]: x["keys"] for x in er["entities"]["USERS"]["attributes"]}["email"], ["UK"])
+        self.assertEqual(er["entities"]["USERS"]["attributes"][1]["comment"], "not null")
+        r = {(x["left"], x["right"]): x for x in er["relationships"]}
+        self.assertEqual(r[("USERS", "ORDERS")]["right_card"], "o{"); self.assertEqual(r[("PRODUCTS", "ORDER_ITEMS")]["label"], "appears in")
+        self.assertEqual(len(er["relationships"]), 3)
+
+    def test_parser_handles_aliases_quotes_unfenced_diagrams_and_no_diagram(self):
+        er = ra.parse_er('erDiagram\n  p["Product Item"] {\n    int id PK\n  }\n  "Order" ||--o{ p : has\n')
+        self.assertEqual(er["entities"]["p"]["alias"], "Product Item"); self.assertIn("Order", er["entities"])
+        self.assertEqual(ra.parse_er("# only prose, no diagram"), {"entities": {}, "relationships": []})
+        self.assertEqual(ra.card_flags("}|"), (True, False)); self.assertEqual(ra.card_flags("|o"), (False, True)); self.assertEqual(ra.card_flags("||"), (False, False))
+
+    def test_matching_er_has_no_mismatch(self):
+        c = ra.compare_er(er_from(ER_MATCH), dm_model(OK_SQL)["schema"], RUBRIC_REL)
+        self.assertTrue(c["matches"], c); self.assertEqual(c["mismatches"], 0)
+
+    def test_non_matching_er_reports_each_kind_of_difference(self):
+        c = ra.compare_er(er_from(ER_MISMATCH), dm_model(OK_SQL)["schema"], RUBRIC_REL)
+        self.assertFalse(c["matches"])
+        self.assertEqual(c["entities_not_in_schema"], ["COUPON"])
+        self.assertEqual(c["attributes_missing_in_er"], {"users": ["password_hash"]}); self.assertEqual(c["attributes_not_in_schema"], {"users": ["phone"]})
+        self.assertEqual(c["pk_mismatch"]["order_items"], {"schema": ["order_id", "product_id"], "er": []})
+        self.assertEqual(c["fk_mismatch"]["orders"], {"schema": ["user_id"], "er": []})  # user_id is not marked FK in the ER
+        self.assertEqual(c["relationships_missing_in_er"], ["order_items → products"]); self.assertEqual(c["relationships_not_in_schema"], ["COUPON — ORDER"])
+        self.assertEqual(c["cardinality_mismatch"], [])  # ORDER_ITEM }o--|| ORDER is many-to-one with ORDER on the 'one' side: fine
+        self.assertEqual(c["type_differences"], ["products.price: ER float vs schema numeric(10,2)"])
+
+    def test_inverted_cardinality_is_a_mismatch(self):
+        er = ER_MATCH.replace("ORDERS ||--|{ ORDER_ITEMS", "ORDERS }|--|| ORDER_ITEMS")
+        c = ra.compare_er(er_from(er), dm_model(OK_SQL)["schema"], RUBRIC_REL)
+        self.assertEqual(len(c["cardinality_mismatch"]), 1); self.assertIn("order_items → orders", c["cardinality_mismatch"][0])
+
+    def test_load_er_finds_the_file_case_insensitively(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.assertFalse(ra.load_er(t, RUBRIC_REL)["found"])
+            (Path(t) / "docs").mkdir(); (Path(t) / "docs" / "Entity-Relationship-Model.md").write_text(ER_MATCH, encoding="utf-8")
+            er = ra.load_er(t, RUBRIC_REL)
+            self.assertTrue(er["found"] and er["diagram"]); self.assertEqual(len(er["entities"]), 4)
+            (Path(t) / "docs" / "Entity-Relationship-Model.md").write_text("# no diagram yet", encoding="utf-8")
+            er = ra.load_er(t, RUBRIC_REL)
+            self.assertTrue(er["found"]); self.assertFalse(er["diagram"])
+
+
+class TestDataModelCriteria(unittest.TestCase):
+    def crit(self, m, opts=Opts):
+        return ev.eval_data_model(m, {}, opts())[0]
+
+    def ok_values(self, crit):
+        return {k: v["ok"] for k, v in crit.items()}
+
+    def test_meets_when_everything_holds_and_heuristics_are_accepted(self):
+        c = self.crit(dm_model(OK_SQL, ER_MATCH, GOOD_QUERIES), AcceptHeuristics)
+        self.assertEqual(self.ok_values(c), dict.fromkeys(["C1", "C2", "C3", "C4", "C5", "C6"], True))
+        self.assertEqual(ev.level_from(c)[0], "Meets")
+        self.assertEqual(c["C3"]["value"]["constrained_columns"], "13/14 = 93%")
+
+    def test_suggestions_do_not_count_without_accepting_heuristics_and_leave_a_range(self):
+        c = self.crit(dm_model(OK_SQL, ER_MATCH, GOOD_QUERIES))
+        self.assertEqual((c["C2"]["ok"], c["C5"]["ok"]), (None, None))
+        self.assertEqual((c["C2"]["suggested"], c["C5"]["suggested"]), (True, True)); self.assertEqual(c["C2"]["source"], "heuristic")
+        self.assertEqual([c[k]["ok"] for k in ("C1", "C3", "C4", "C6")], [True] * 4)
+        level, lo, hi = ev.level_from(c)
+        self.assertIsNone(level); self.assertEqual((lo, hi), ("Partial", "Meets"))  # 4 of 6 met for sure; the 2 suggestions decide the rest
+
+    def test_partial_when_half_or_more_are_met(self):
+        c = self.crit(dm_model(OK_SQL, ER_MISMATCH, GOOD_QUERIES + ["SELECT * FROM orders WHERE status = $1"]), AcceptHeuristics)
+        self.assertEqual(self.ok_values(c), {"C1": True, "C2": True, "C3": True, "C4": False, "C5": True, "C6": False})
+        self.assertEqual(ev.level_from(c)[0], "Partial")
+
+    def test_fails_when_fewer_than_half_are_met(self):
+        c = self.crit(dm_model(WEAK_SQL, None, ["SELECT * FROM orders WHERE user_id = $1"]), AcceptHeuristics)
+        v = self.ok_values(c)
+        self.assertEqual((v["C1"], v["C3"], v["C4"], v["C6"]), (False, False, False, False))
+        self.assertEqual(ev.level_from(c)[0], "Fails")
+
+    def test_c1_reports_tables_without_pk_and_implicit_relations(self):
+        v = self.crit(dm_model(WEAK_SQL))["C1"]["value"]
+        self.assertEqual(v["without_primary_key"], ["audit_log"]); self.assertEqual(v["implicit_relations"], ["audit_log.user_id", "orders.user_id"])
+        self.assertFalse(self.crit(dm_model("CREATE TABLE a (id int PRIMARY KEY, b_id int);"))["C1"]["ok"])
+        self.assertTrue(self.crit(dm_model("CREATE TABLE a (b_id int PRIMARY KEY); CREATE TABLE c (id int PRIMARY KEY, a_id int REFERENCES a (b_id));"))["C1"]["ok"])
+        self.assertTrue(self.crit(dm_model('CREATE TABLE a ("userId" int PRIMARY KEY, x text NOT NULL);'))["C1"]["ok"])  # the table's own key is not an implicit relation
+        self.assertFalse(self.crit(dm_model('CREATE TABLE a (id int PRIMARY KEY, "userId" int);'))["C1"]["ok"])  # camelCase *Id too
+
+    def test_c3_needs_enough_constraints_and_no_float_money(self):
+        c3 = self.crit(dm_model("CREATE TABLE p (id int PRIMARY KEY, name text NOT NULL, price float NOT NULL, note text);"))["C3"]
+        self.assertFalse(c3["ok"]); self.assertEqual(c3["value"]["float_money_columns"], ["p.price (float)"])  # 2/3 constrained, but FLOAT for money
+        c3 = self.crit(dm_model("CREATE TABLE p (id int PRIMARY KEY, name text, price numeric(10,2) NOT NULL, note text);"))["C3"]
+        self.assertFalse(c3["ok"]); self.assertEqual(c3["value"]["constrained_columns"], "1/3 = 33%")  # NUMERIC is right, but too few constraints
+        c3 = self.crit(dm_model("CREATE TABLE p (id int PRIMARY KEY, name text NOT NULL, price numeric(10,2) NOT NULL, note text);"))["C3"]
+        self.assertTrue(c3["ok"]); self.assertEqual(c3["value"]["float_money_columns"], [])
+
+    def test_c3_threshold_is_read_from_the_rubric(self):
+        sql = "CREATE TABLE p (id int PRIMARY KEY, a text NOT NULL, b text, c text, d text);"
+        self.assertFalse(self.crit(dm_model(sql))["C3"]["ok"])  # 1 of 4 = 25% < 50%
+        sql = "CREATE TABLE p (id int PRIMARY KEY, a text NOT NULL, b text NOT NULL, c text, d text);"
+        self.assertTrue(self.crit(dm_model(sql))["C3"]["ok"])  # 50%
+        self.assertEqual(ev.RUBRIC["thresholds"]["data_model"]["constraints_min_pct"], 50.0)
+
+    def test_c3_lists_natural_keys_without_unique_but_does_not_fail_on_them(self):
+        c3 = self.crit(dm_model("CREATE TABLE u (id int PRIMARY KEY, email text NOT NULL, name text NOT NULL);"))["C3"]
+        self.assertTrue(c3["ok"]); self.assertEqual(c3["value"]["natural_keys_without_unique"], ["u.email"])
+
+    def test_c4_foreign_keys_and_filters_need_an_index(self):
+        no_idx = OK_SQL.replace("CREATE INDEX orders_user_id_idx ON orders (user_id);", "")
+        c4 = self.crit(dm_model(no_idx, queries=GOOD_QUERIES))["C4"]
+        self.assertFalse(c4["ok"]); self.assertEqual(c4["value"]["fks_without_index"], ["orders(user_id)"])
+        self.assertEqual(c4["value"]["unindexed_queries"], [x for x in c4["value"]["unindexed_queries"] if x.startswith("orders.where(user_id)")])
+        self.assertTrue(self.crit(dm_model(OK_SQL, queries=GOOD_QUERIES))["C4"]["ok"])  # composite PK (order_id, product_id) serves the FK on order_id
+        bad = self.crit(dm_model(OK_SQL, queries=GOOD_QUERIES + ["UPDATE orders SET total = 0 WHERE status = 'x'"]))["C4"]
+        self.assertFalse(bad["ok"]); self.assertEqual(bad["value"]["unindexed_queries_pct"], 33.3)
+        pk_only = self.crit(dm_model(OK_SQL, queries=["SELECT * FROM users WHERE id = $1"]))["C4"]
+        self.assertTrue(pk_only["ok"]); self.assertEqual(pk_only["value"]["distinct_queries"], 0)  # filtering by the primary key is not a shape to check
+
+    def test_c4_uses_sequelize_where_filters_from_the_ast(self):
+        m = dm_model(OK_SQL)
+        m["schema"]["model_tables"] = {"Order": "orders"}
+        m["ast"]["queryFields"] = [{"file": "o.js", "line": 3, "model": "Order", "call": "findAll", "fields": ["userId"], "sort": [], "inLoop": False},
+                                   {"file": "o.js", "line": 9, "model": "Order", "call": "findOne", "fields": ["total"], "sort": [], "inLoop": False},
+                                   {"file": "o.js", "line": 9, "model": "Unknown", "call": "findOne", "fields": ["x"], "sort": [], "inLoop": False}]
+        c4 = self.crit(m)["C4"]
+        self.assertEqual(c4["value"]["unindexed_queries"], ["orders.where(total) in o.js:9"])  # userId resolves to user_id, which is indexed
+        self.assertEqual(c4["value"]["unresolved_queries"], 1)
+
+    def test_c2_suggestion_flags_repeating_groups_unjustified_copies_and_n_plus_one(self):
+        base = "CREATE TABLE products (id int PRIMARY KEY, name text NOT NULL); "
+        copy = base + "CREATE TABLE lines (id int PRIMARY KEY, product_id int NOT NULL REFERENCES products (id), product_name text NOT NULL);"
+        c2 = self.crit(dm_model(copy))["C2"]
+        self.assertFalse(c2["suggested"]); self.assertEqual(c2["value"]["denormalized_copies"], [{"copy": "lines.product_name", "of": "products.name", "justified": False}])
+        justified = self.crit(dm_model(copy, readme="lines.product_name is a snapshot of the name at the time of purchase."))["C2"]
+        self.assertTrue(justified["suggested"])
+        groups = self.crit(dm_model("CREATE TABLE c (id int PRIMARY KEY, phone1 text, phone2 text);"))["C2"]
+        self.assertFalse(groups["suggested"]); self.assertEqual(groups["value"]["repeating_groups"], ["c: phone1, phone2"])
+        m = dm_model(OK_SQL); m["schema"]["model_tables"] = {"Order": "orders"}
+        m["ast"]["queryFields"] = [{"file": "s.js", "line": 4, "model": "Order", "call": "findAll", "fields": [], "sort": [], "inLoop": True}]
+        self.assertFalse(self.crit(m)["C2"]["suggested"])
+
+    def test_c5_suggestion_flags_type_conflicts_duplicates_and_mixed_naming(self):
+        conflict = "CREATE TABLE a (id int PRIMARY KEY, qty integer); CREATE TABLE b (id int PRIMARY KEY, qty text);"
+        c5 = self.crit(dm_model(conflict))["C5"]
+        self.assertFalse(c5["suggested"]); self.assertEqual(len(c5["value"]["conflicts"]), 1); self.assertIn("qty", c5["value"]["conflicts"][0])
+        dup = "CREATE TABLE a (id int PRIMARY KEY, x text, y text); CREATE TABLE b (id int PRIMARY KEY, x text, y text);"
+        self.assertEqual(self.crit(dm_model(dup))["C5"]["value"]["duplicate_tables"], ["a = b"])
+        mixed = 'CREATE TABLE a (id int PRIMARY KEY, unit_price int, "createdAt" text);'
+        self.assertTrue(any("mixed naming" in x for x in self.crit(dm_model(mixed))["C5"]["value"]["conflicts"]))
+        self.assertTrue(self.crit(dm_model(OK_SQL))["C5"]["suggested"])
+
+    def test_c6_missing_er_or_missing_diagram_fails(self):
+        c6 = self.crit(dm_model(OK_SQL))["C6"]
+        self.assertFalse(c6["ok"]); self.assertIn("not found", c6["value"])
+        m = dm_model(OK_SQL, "no diagram here"); m["er"]["diagram"] = False
+        self.assertIn("no Mermaid erDiagram", self.crit(m)["C6"]["value"])
+        self.assertFalse(self.crit(m)["C6"]["ok"])
+        mismatch = self.crit(dm_model(OK_SQL, ER_MISMATCH))["C6"]
+        self.assertFalse(mismatch["ok"]); self.assertIn("entities_not_in_schema", mismatch["value"])
+
+    def test_manual_review_can_decide_any_criterion_and_overrides_the_suggestion(self):
+        m = dm_model(OK_SQL, ER_MATCH, GOOD_QUERIES)
+        c = ev.eval_data_model(m, {"data_model": {"C2": {"ok": False, "note": "N+1 on checkout"}}}, Opts())[0]
+        self.assertFalse(c["C2"]["ok"]); self.assertEqual((c["C2"]["source"], c["C2"]["value"]), ("manual", "N+1 on checkout"))
+
+    def test_live_database_catalog_decides_c1_c3_c4_and_c6(self):
+        # The static schema (no FK on orders.user_id) says C1 fails; the real database has the FK and its index: the catalog wins.
+        static_sql = OK_SQL.replace("user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,", "user_id INTEGER NOT NULL,")
+        self.assertFalse(self.crit(dm_model(static_sql, ER_MATCH, GOOD_QUERIES))["C1"]["ok"])
+        cat = json.loads((FIX / "pg_catalog_ok.json").read_text(encoding="utf-8"))
+        c = self.crit(dm_model(static_sql, ER_MATCH, GOOD_QUERIES, pg=cat))
+        self.assertEqual([c[k]["ok"] for k in ("C1", "C3", "C4", "C6")], [True] * 4)
+        self.assertEqual({c[k]["source"] for k in ("C1", "C3", "C4", "C6")}, {"auto (live database)"})
+        pts = ev.eval_data_model(dm_model(static_sql, ER_MATCH, GOOD_QUERIES, pg=cat), {}, Opts())
+        self.assertTrue(pts[1]["live_database"])
+
+    def test_live_catalog_tables_of_the_migration_tool_are_ignored(self):
+        cat = {"tables": {"SequelizeMeta": {"columns": {"name": {"name": "name", "type": "character varying(255)", "nullable": False, "default": None}},
+                                            "primary_key": ["name"], "foreign_keys": [], "unique": [], "checks": [], "indexes": []}}}
+        self.assertEqual(ra.from_catalog(cat, RUBRIC_REL)["tables"], {})
+
+    def test_an_empty_schema_means_the_data_schema_artifact_is_missing(self):
+        a = {x["id"]: x for x in ev.inventory_artifacts(artifact_model(schema={"tables": {}, "sources": {}}), [])}
+        self.assertFalse(a["data_schema"]["present"])
+        self.assertIn("no relational schema", a["data_schema"]["detail"])
+
+
 class TestRiskSummary(unittest.TestCase):
     def test_ranks_by_points_at_stake_and_flags_pending(self):
         pt = lambda i, subs, lvl, lo, hi: {"id": i, "name": i, "subcharacteristics": subs, "level": lvl, "level_min": lo, "level_max": hi,
@@ -324,7 +539,7 @@ class TestRiskSummary(unittest.TestCase):
 
 
 def artifact_model(**over):
-    m = {"readme": "", "env_example": False, "contract": {"files": []},
+    m = {"readme": "", "env_example": False, "contract": {"files": []}, "er": {"found": False, "diagram": False, "file": None, "entities": {}},
          "ast": {"files": [{"path": "a.js", "test": False}]}, "schema": {"tables": {"a": {}}, "sources": {"sql": 1}},
          "packages": {"packages": [{"dependencies": {}, "devDependencies": {}}]},
          "tests_static": {"test_cases": 0, "test_files": []}, "tests_run": {"executed": False}}

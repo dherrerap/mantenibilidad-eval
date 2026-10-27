@@ -16,7 +16,15 @@
     "hierarchies":   { "name": "Depth and breadth of inheritance or composition hierarchies", "category": "Structure and modularity", "subcharacteristics": ["Modularity"], "type": "Automatable" },
     "technologies":  { "name": "Technology/framework selection and obsolescence risk", "category": "Dependencies and integration", "subcharacteristics": ["Analyzability", "Modifiability"], "type": "Manual" },
     "coupling":      { "name": "External coupling and volume of declared dependencies", "category": "Dependencies and integration", "subcharacteristics": ["Modularity"], "type": "Automatable" },
-    "data_model":    { "name": "Data model design", "category": "Dependencies and integration", "subcharacteristics": ["Modularity", "Analyzability"], "type": "Manual" },
+    "data_model":    { "name": "Data model design", "category": "Dependencies and integration", "subcharacteristics": ["Modularity", "Analyzability"], "type": "Mixed",
+                       "criteria": {
+                         "C1": "Every table has a primary key and every relation is a declared foreign key (no implicit *_id columns)",
+                         "C2": "Normalization consistent with access (up to 3NF; denormalization justified)",
+                         "C3": "Integrity constraints declared in the schema (NOT NULL, UNIQUE, CHECK, appropriate types): at least {constraints_min_pct:.0f}% of the columns constrained and no FLOAT for money",
+                         "C4": "Indexes on foreign key columns and on the fields the code filters by",
+                         "C5": "No unjustified redundancy or inconsistent types (same column name with different types)",
+                         "C6": "The declared entity-relationship model matches the implemented schema"
+                       } },
     "contracts":     { "name": "Definition of communication contracts between components", "category": "Dependencies and integration", "subcharacteristics": ["Modularity", "Testability"], "type": "Mixed" },
     "observability": { "name": "Presence and consistency of observability mechanisms", "category": "Cross-cutting quality", "subcharacteristics": ["Analyzability"], "type": "Mixed" },
     "tests":         { "name": "Test coverage and design", "category": "Cross-cutting quality", "subcharacteristics": ["Testability"], "type": "Automatable" },
@@ -33,7 +41,7 @@
     "dead_code": { "_comment": "Informational. Production files that no other file imports and that are not entry points.", "entry_points": ["index", "server", "app", "main", "App", "setupTests", "reportWebVitals"] },
     "supplementary": { "_comment": "Informational (do not change any level). Reference values from common practice, not from our own study.", "test_ratio_min": 0.3, "jsdoc_min_pct": 50.0, "component_loc_max": 150, "component_props_max": 5, "contract_fields_min_pct": 80.0 },
     "duplication": { "_comment": "Informational (does not change any point's level). Reference threshold: 5% duplicated lines, a widespread practice (SonarQube).", "pct_max": 5.0, "min_lines": 5, "min_tokens": 50 },
-    "data_model": { "_comment": "C3: minimum % of fields with some constraint. C4: maximum % of code queries without an index. C2: maximum array elements and document size observed in the test database.", "constraints_min_pct": 50.0, "unindexed_queries_max_pct": 0.0, "array_max_elements": 1000, "doc_bytes_max": 16384 },
+    "data_model": { "_comment": "C3: minimum % of non-primary-key columns that declare some constraint (NOT NULL, UNIQUE, CHECK or FOREIGN KEY). C4: maximum % of distinct code query filters that no index can serve. Both values are carried over from the Mongo version of the rubric and have not been calibrated for relational schemas.", "constraints_min_pct": 50.0, "unindexed_queries_max_pct": 0.0 },
     "contracts": { "coverage_min": 90.0 },
     "observability": { "X_min": 0.80 },
     "tests": { "lines_min": 70.0, "branches_min": 50.0 },
@@ -92,7 +100,9 @@
     },
     "money_name_pattern": "(price|amount|total|cost|balance|subtotal|discount|tax|fee|salary|payment)",
     "implicit_fk_patterns": ["_id$", "[a-z0-9]Id$"],
-    "natural_key_names": ["email", "username", "sku", "slug"]
+    "natural_key_names": ["email", "username", "sku", "slug"],
+    "boilerplate_columns": ["id", "created_at", "updated_at", "deleted_at", "createdat", "updatedat", "deletedat"],
+    "denormalization_words": ["snapshot", "denormaliz", "historic", "at the time", "at time of", "justif", "copy of", "copied"]
   },
   "artifacts": [
     { "id": "source_code", "name": "Source code", "level": "core", "feeds": ["layers", "cyclomatic", "cohesion", "hierarchies"], "evidence": "Structural" },

@@ -1,0 +1,320 @@
+{
+ "database": "eval_fixture",
+ "server_version": "16.4",
+ "schema": "public",
+ "tables": {
+  "users": {
+   "columns": {
+    "id": {
+     "name": "id",
+     "type": "integer",
+     "nullable": false,
+     "default": "nextval(serial)"
+    },
+    "name": {
+     "name": "name",
+     "type": "character varying(100)",
+     "nullable": false,
+     "default": null
+    },
+    "email": {
+     "name": "email",
+     "type": "character varying(255)",
+     "nullable": false,
+     "default": null
+    },
+    "password_hash": {
+     "name": "password_hash",
+     "type": "text",
+     "nullable": false,
+     "default": null
+    },
+    "created_at": {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "default": "now()"
+    }
+   },
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "unique": [
+    {
+     "name": "users_email_key",
+     "columns": [
+      "email"
+     ]
+    }
+   ],
+   "checks": [],
+   "indexes": [
+    {
+     "name": "users_pkey",
+     "columns": [
+      "id"
+     ],
+     "unique": true,
+     "primary": true,
+     "method": "btree",
+     "predicate": null,
+     "valid": true,
+     "scans": 0
+    }
+   ],
+   "rows": 0
+  },
+  "products": {
+   "columns": {
+    "id": {
+     "name": "id",
+     "type": "integer",
+     "nullable": false,
+     "default": "nextval(serial)"
+    },
+    "name": {
+     "name": "name",
+     "type": "character varying(120)",
+     "nullable": false,
+     "default": null
+    },
+    "description": {
+     "name": "description",
+     "type": "text",
+     "nullable": true,
+     "default": null
+    },
+    "price": {
+     "name": "price",
+     "type": "numeric(10,2)",
+     "nullable": false,
+     "default": null
+    },
+    "stock": {
+     "name": "stock",
+     "type": "integer",
+     "nullable": false,
+     "default": "0"
+    }
+   },
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [],
+   "unique": [],
+   "checks": [
+    {
+     "name": "products_check",
+     "expr": "price >= 0",
+     "columns": [
+      "price"
+     ]
+    },
+    {
+     "name": "products_stock_nonneg",
+     "expr": "stock >= 0",
+     "columns": [
+      "stock"
+     ]
+    }
+   ],
+   "indexes": [
+    {
+     "name": "products_pkey",
+     "columns": [
+      "id"
+     ],
+     "unique": true,
+     "primary": true,
+     "method": "btree",
+     "predicate": null,
+     "valid": true,
+     "scans": 0
+    }
+   ],
+   "rows": 0
+  },
+  "orders": {
+   "columns": {
+    "id": {
+     "name": "id",
+     "type": "integer",
+     "nullable": false,
+     "default": "nextval(serial)"
+    },
+    "user_id": {
+     "name": "user_id",
+     "type": "integer",
+     "nullable": false,
+     "default": null
+    },
+    "status": {
+     "name": "status",
+     "type": "character varying(20)",
+     "nullable": false,
+     "default": "'pending'"
+    },
+    "total": {
+     "name": "total",
+     "type": "numeric(12,2)",
+     "nullable": false,
+     "default": null
+    },
+    "created_at": {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "default": "now()"
+    }
+   },
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [
+    {
+     "name": "orders_user_id_fkey",
+     "columns": [
+      "user_id"
+     ],
+     "ref_table": "users",
+     "ref_columns": [
+      "id"
+     ],
+     "on_delete": "CASCADE"
+    }
+   ],
+   "unique": [],
+   "checks": [
+    {
+     "name": "orders_status_chk",
+     "expr": "status IN ('pending', 'paid', 'shipped')",
+     "columns": [
+      "status"
+     ]
+    }
+   ],
+   "indexes": [
+    {
+     "name": "orders_pkey",
+     "columns": [
+      "id"
+     ],
+     "unique": true,
+     "primary": true,
+     "method": "btree",
+     "predicate": null,
+     "valid": true,
+     "scans": 0
+    },
+    {
+     "name": "orders_user_id_idx",
+     "columns": [
+      "user_id"
+     ],
+     "unique": false,
+     "primary": false,
+     "method": "btree",
+     "predicate": null,
+     "valid": true,
+     "scans": 0
+    }
+   ],
+   "rows": 0
+  },
+  "order_items": {
+   "columns": {
+    "order_id": {
+     "name": "order_id",
+     "type": "integer",
+     "nullable": false,
+     "default": null
+    },
+    "product_id": {
+     "name": "product_id",
+     "type": "integer",
+     "nullable": false,
+     "default": null
+    },
+    "quantity": {
+     "name": "quantity",
+     "type": "integer",
+     "nullable": false,
+     "default": null
+    },
+    "unit_price": {
+     "name": "unit_price",
+     "type": "numeric(10,2)",
+     "nullable": false,
+     "default": null
+    }
+   },
+   "primary_key": [
+    "order_id",
+    "product_id"
+   ],
+   "foreign_keys": [
+    {
+     "name": "order_items_order_id_fkey",
+     "columns": [
+      "order_id"
+     ],
+     "ref_table": "orders",
+     "ref_columns": [
+      "id"
+     ],
+     "on_delete": "CASCADE"
+    },
+    {
+     "name": "order_items_product_id_fkey",
+     "columns": [
+      "product_id"
+     ],
+     "ref_table": "products",
+     "ref_columns": [
+      "id"
+     ],
+     "on_delete": null
+    }
+   ],
+   "unique": [],
+   "checks": [
+    {
+     "name": "order_items_check",
+     "expr": "quantity > 0",
+     "columns": [
+      "quantity"
+     ]
+    }
+   ],
+   "indexes": [
+    {
+     "name": "order_items_pkey",
+     "columns": [
+      "order_id",
+      "product_id"
+     ],
+     "unique": true,
+     "primary": true,
+     "method": "btree",
+     "predicate": null,
+     "valid": true,
+     "scans": 0
+    },
+    {
+     "name": "idx_order_items_product",
+     "columns": [
+      "product_id"
+     ],
+     "unique": false,
+     "primary": false,
+     "method": "btree",
+     "predicate": null,
+     "valid": true,
+     "scans": 0
+    }
+   ],
+   "rows": 0
+  }
+ }
+}
