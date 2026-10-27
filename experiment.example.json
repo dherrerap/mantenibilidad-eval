@@ -9,6 +9,7 @@
   "skip_dv8": false,
   "offline": false,
   "accept_heuristics": false,
+  "postgres": false,
   "judge": null,
   "judge_votes": 3
 }

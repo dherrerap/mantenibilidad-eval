@@ -65,13 +65,20 @@
     "allowed": [["presentation", "business"], ["business", "data"]]
   },
   "supported_runtimes": {
-    "_comment": "VERIFY against each project's official pages before freezing the experiment: these major versions are a working assumption, not a verified fact.",
+    "_comment": "VERIFY against each project's official pages before freezing the experiment: these major versions are a working assumption, not a verified fact. node/react/express/postgresql are replaced on every run with a network by what endoflife.date reports (eol_products); sequelize and pg have no such source, so only this table applies to them.",
     "date": "2026-10-14",
     "node": [22, 24],
     "react": [18, 19],
     "express": [4, 5],
-    "mongoose": [8, 9],
-    "mongodb": [6, 7]
+    "postgresql": [14, 15, 16, 17, 18],
+    "sequelize": [6],
+    "pg": [8],
+    "unverified": {
+      "date": "2026-10-26",
+      "keys": ["postgresql", "sequelize", "pg"],
+      "basis": "postgresql: majors not yet EOL on this date according to endoflife.date (14 reaches EOL on 2026-11-12). sequelize: 6 is the 'latest' npm dist-tag and 7 is still an alpha, as seen on npm on this date. pg: 8 is the 'latest' npm dist-tag on this date. None of this was checked against the projects' own support policies."
+    },
+    "eol_products": { "node": "nodejs", "react": "react", "express": "express", "postgresql": "postgresql" }
   },
   "relational": {
     "_comment": "Relational schema extraction (relational_schema.py). source_preference: a table is decided entirely by the first source that defines it; lower sources only add tables the higher ones do not mention. type_families/sequelize_types are lookup tables, not a verified mapping of every PostgreSQL type.",
@@ -106,7 +113,8 @@
   },
   "artifacts": [
     { "id": "source_code", "name": "Source code", "level": "core", "feeds": ["layers", "cyclomatic", "cohesion", "hierarchies"], "evidence": "Structural" },
-    { "id": "data_schema", "name": "Data model schema / migrations", "level": "core", "feeds": ["data_model"], "evidence": "Structural" },
+    { "id": "data_schema", "name": "Data model schema / migrations (SQL, Sequelize migrations or models)", "level": "core", "feeds": ["data_model"], "evidence": "Structural" },
+    { "id": "er_model", "name": "Entity-relationship model (docs/entity-relationship-model.md)", "level": "complementary", "feeds": ["data_model"], "evidence": "Declarative" },
     { "id": "manifests", "name": "Manifests and lockfiles", "level": "core", "feeds": ["technologies", "coupling"], "evidence": "Structural" },
     { "id": "test_suite", "name": "Test suite, scripts and coverage report", "level": "complementary", "feeds": ["tests"], "evidence": "Structural", "absence": "high_finding" },
     { "id": "contract_spec", "name": "Contract specification (OpenAPI, JSON Schema, DTOs)", "level": "complementary", "feeds": ["contracts"], "evidence": "Structural" },

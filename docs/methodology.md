@@ -19,7 +19,8 @@ changes them, this page may become outdated and the file takes precedence.
 | Artifact | Level | Decision points it feeds | Evidence |
 |---|---|---|---|
 | Source code | Core | Layers, complexity, cohesion, hierarchies | Structural |
-| Data model schema / migrations | Core | Data model design | Structural |
+| Data model schema (SQL files, Sequelize migrations or models) | Core | Data model design | Structural |
+| Entity-relationship model (`docs/entity-relationship-model.md`) | Complementary | Data model design (C6) | Declarative |
 | Manifests and lockfiles | Core | Technology selection, external coupling | Structural |
 | Test suite, scripts and coverage report | Complementary* | Test coverage and design | Structural |
 | Contract specification (OpenAPI, JSON Schema, DTOs) | Complementary | Communication contracts | Structural |
@@ -95,7 +96,7 @@ or completes) or **manual**.
 | **Cyclomatic complexity** | Modularity, Modifiability | X = 1 − (functions with CC > 20)/(total). Meets X ≥ 0.98 · Partial X ≥ 0.95. | auto |
 | **Cohesion** | Modularity, Modifiability | C1 ≤ 5% of functions with fan-out > 5 · C2 DL (DV8) ≥ 60% · C3 checklist with no findings ("god" module, mixed responsibilities, fragmentation). | mixed |
 | **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. | auto |
-| **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime and framework supported (table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (`npm audit`). Queries the npm registry. | auto with network |
+| **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime, framework and PostgreSQL supported (endoflife.date; table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (`npm audit`). Queries the npm registry. | auto with network |
 | **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (`depcheck`). | auto |
 | **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 and C5 are suggestions |
 | **Contracts** | Modularity, Testability | C1 machine-readable contract (OpenAPI…) · C2 0 Spectral errors · C3 contract covers ≥ 90% of routes · C4 input validation consistent with the contract. | mixed |
@@ -164,8 +165,10 @@ or completes) or **manual**.
     `_` and plurals), the same attributes in each entity, the same primary-key and foreign-key markers, and a relationship for each foreign key with the
     "one" side on the referenced table. Differences in attribute types and in optionality (zero vs. one) are reported but are not mismatches. If the file is
     missing or has no `erDiagram`, C6 fails and the *Entity-relationship model* artifact is recorded as absent.
-- **Technologies (C2).** The supported majors of Node, React and Express are queried from `endoflife.date` on every run with a
-  network; Mongoose and MongoDB use the `rubric.json` table. The source is written in the criterion.
+- **Technologies (C2).** The supported majors of Node, React, Express and PostgreSQL are queried from `endoflife.date` on every run with a
+  network (`supported_runtimes.eol_products` in `rubric.json`); Sequelize and `pg` use the `rubric.json` table, and so does everything when offline.
+  The PostgreSQL version of the evaluated app is the major in the image tag of its `docker-compose.yml`. The table entries for PostgreSQL, Sequelize and
+  `pg` are unverified working assumptions (`supported_runtimes.unverified`); the source is written in the criterion.
 
 ## Data model on a real database
 

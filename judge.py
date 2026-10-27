@@ -97,7 +97,7 @@ def evidence(pid, cid, res, m, point):
 
 def build_prompt(pid, cid, statement, ev):
     guide = GUIDE.get((pid, cid), "")
-    return f"""You are a software architecture reviewer evaluating the maintainability of a MERN application (MongoDB, Express, React, Node).
+    return f"""You are a software architecture reviewer evaluating the maintainability of a PERN application (PostgreSQL, Express, React, Node).
 Decide ONE criterion from a checklist, using the evidence that follows. There is no other information: do not invent code you cannot see.
 
 CRITERION ({pid}.{cid}): {statement}

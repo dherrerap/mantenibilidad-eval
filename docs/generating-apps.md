@@ -8,7 +8,7 @@ If you already have the applications, skip to "Usage" in the [README](../README.
 | File | Content |
 |---|---|
 | `requirements-ecommerce.md` | What the application must do (the same for all levels). |
-| `technical-n1.md` | Level 1: MERN stack only, layered monolith and delivery conditions. |
+| `technical-n1.md` | Level 1: PERN stack (PostgreSQL, Express, React, Node) only, layered monolith and delivery conditions. |
 | `technical-n2.md` | Level 2: N1 plus expected quality attributes (understandable, modifiable, testable). |
 | `technical-n3.md` | Level 3: N2 plus explicit architectural guidelines (SRP, dependency injection, unit tests, validation, documenting decisions). |
 | `combiner-prompt.md` | The prompt that combines a technical specification with the requirements. `{LEVEL}` is replaced by `n1`, `n2` or `n3`. |
@@ -43,7 +43,11 @@ working folder, and forbid it from reading outside it. Afterwards verify that th
 ## Delivery conditions the evaluator expects
 
 `backend/` and `frontend/` at the root, each with a `package.json`, installable with `npm install` and runnable with
-`npm start`; a `README.md` with instructions. If either is missing, the package and test analysis will not see that part.
+`npm start`; the backend reads its port from `PORT` and the PostgreSQL connection string from `DATABASE_URL`; a `docker-compose.yml` at the root that
+starts PostgreSQL; a `README.md` with instructions; and `docs/entity-relationship-model.md` with a Mermaid `erDiagram` that matches the implemented schema
+(criterion C6 and the *Entity-relationship model* artifact). The backend must create its schema when it starts (the generated specs say how). If
+`backend/` or `frontend/` is missing, the package and test analysis will not see that part; if no SQL file, Sequelize migration or Sequelize model defines the
+schema, the *Data model design* point is not evaluable.
 
 ## Afterwards
 

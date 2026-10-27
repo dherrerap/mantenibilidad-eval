@@ -9,7 +9,7 @@ resolves them. This page explains how to do it and how the sources are combined.
 |---|---|---|
 | Layers | C2 | Only if there are no inter-layer dependencies, or if a violation depends on an ambiguous directory. `true`: the separation is real (or the doubtful dependency is legitimate in that architecture). `false`: there is improper coupling. |
 | Cohesion | C3 | There is no "god" module, no mixing of distinct responsibilities in one module and no excessive fragmentation. |
-| Data model | C1 to C5 | Explicit entities and relations · reference/embedding consistent with access · schema validation · indexes · no redundancy. |
+| Data model | C2, C5 (and C1, C3, C4, C6 if the evidence misled the program) | C2 normalization (≤ 3NF) consistent with access, denormalization justified · C5 no unjustified redundancy or inconsistent types. The measured criteria: C1 primary keys and declared foreign keys · C3 constraints declared · C4 indexes on foreign keys and query filters · C6 the ER model matches the schema. |
 | Contracts | C4 | Input validation is consistent with the contract. |
 | Hierarchies | C3 | Only if the project defines its own base class (Unhealthy Inheritance). |
 
@@ -30,8 +30,8 @@ Example `manual_review.json`:
 ```json
 {
   "layers":     { "C2": { "ok": true,  "note": "Services receive repositories by injection; no layer imports another." } },
-  "data_model": { "C1": { "ok": true,  "note": "lineSchema embedded in orderSchema." },
-                  "C2": { "ok": true,  "note": "The lines travel with the order." } }
+  "data_model": { "C2": { "ok": true,  "note": "order_items.unit_price is a documented price snapshot; no other copies." },
+                  "C5": { "ok": true,  "note": "All ids are integers; naming is snake_case throughout." } }
 }
 ```
 
@@ -40,7 +40,7 @@ You only need to include the criteria you decide; the others can be omitted or l
 ## The judge (a model decides what is pending)
 
 To get a result and not a range without reviewing each criterion by hand, a language model can decide the design-judgment
-criteria: layers C2, cohesion C3, data model C1 to C5 and contracts C4 (only those that remain pending).
+criteria: layers C2, cohesion C3, data model C1 to C6 and contracts C4 (only those that remain pending).
 
 ```
 python cli.py evaluate --judge claude-opus-5-5          # inside the flow

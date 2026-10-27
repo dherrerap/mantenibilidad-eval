@@ -925,6 +925,101 @@ class TestRunExperimentGate(unittest.TestCase):
             self.assertIn("no PostgreSQL service", self.gate()["error"])
 
 
+class TestRuntimesAndArtifacts(unittest.TestCase):
+    def test_rubric_replaces_the_mongo_runtimes_with_postgresql_sequelize_and_pg_marked_unverified(self):
+        sr = ev.RUBRIC["supported_runtimes"]
+        self.assertTrue({"node", "react", "express", "postgresql", "sequelize", "pg"} <= set(sr))
+        self.assertFalse({"mongoose", "mongodb"} & set(sr))
+        self.assertEqual(sorted(sr["unverified"]["keys"]), ["pg", "postgresql", "sequelize"]); self.assertRegex(sr["unverified"]["date"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertEqual(sr["eol_products"]["postgresql"], "postgresql")
+
+    def test_postgresql_support_is_read_from_endoflife_date_like_node_react_and_express(self):
+        seen = []
+        class Resp:
+            def __init__(self, url): self.url = url
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self):
+                seen.append(self.url)
+                return json.dumps([{"cycle": "18", "eol": "2030-11-14"}, {"cycle": "17.1", "eol": False}, {"cycle": "13", "eol": "2025-11-13"}]).encode()
+        with mock.patch("urllib.request.urlopen", lambda url, timeout=0: Resp(url)):
+            r = ev.fetch_eol(False)
+        self.assertEqual(sorted(r), ["express", "node", "postgresql", "react"])
+        self.assertEqual(r["postgresql"], [17, 18])  # 13 is past its EOL date
+        self.assertIn("https://endoflife.date/api/postgresql.json", seen)
+
+    def test_postgres_images_are_read_from_the_compose_file(self):
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "docker-compose.yml").write_text('services:\n  db:\n    image: postgres:14.2-alpine\n  old:\n    image: "postgres"\n  gis:\n    image: postgis/postgis:16-3.4\n  api:\n    image: node:22\n', encoding="utf-8")
+            imgs = ev.postgres_images(t)
+        self.assertEqual([(i["image"], i["major"]) for i in imgs], [("postgres:14.2-alpine", 14), ("postgres", None), ("postgis/postgis:16-3.4", 16)])
+
+    def tech(self, images=(), eol=None, deps=None):
+        deps = deps or {"pg": "^8.11.0", "sequelize": "^6.37.0"}
+        items = [{"pkg": k, "spec": v, "latest": "9.0.0" if k == "pg" else "6.37.8", "deprecated": None} for k, v in deps.items()]
+        m = {"eol": eol or {}, "postgres_images": list(images),
+             "packages": {"npm": {"ok": True, "items": items}, "audit": {"ok": True, "high": 0, "critical": 0},
+                          "packages": [{"dependencies": deps, "devDependencies": {}, "engines": {}}]}}
+        return ev.eval_technologies(m, {}, Opts)[0]["C2"]
+
+    def test_technologies_c2_checks_postgresql_sequelize_and_pg_against_the_table_or_endoflife(self):
+        self.assertTrue(self.tech([{"file": "docker-compose.yml", "image": "postgres:16-alpine", "major": 16}])["ok"])
+        bad = self.tech([{"file": "docker-compose.yml", "image": "postgres:12", "major": 12}])
+        self.assertFalse(bad["ok"]); self.assertEqual(bad["value"], ["postgresql 12 (postgres:12 in docker-compose.yml)"])
+        self.assertFalse(self.tech(deps={"pg": "^8.11.0", "sequelize": "^7.0.0-alpha.9"})["ok"])  # sequelize 7 is not in the (unverified) table
+        self.assertFalse(self.tech(deps={"pg": "^7.18.0", "sequelize": "^6.0.0"})["ok"])
+        # a supported-version list from endoflife.date replaces the table for postgresql
+        self.assertFalse(self.tech([{"file": "c.yml", "image": "postgres:14", "major": 14}], eol={"postgresql": [17, 18]})["ok"])
+        self.assertIn("endoflife.date", self.tech([], eol={"postgresql": [17, 18]})["desc"])
+        self.assertIn("unverified since 2026-10-26", self.tech()["desc"])
+
+    def test_an_unversioned_postgres_image_is_not_guessed(self):
+        c2 = self.tech([{"file": "docker-compose.yml", "image": "postgres", "major": None}])
+        self.assertTrue(c2["ok"]); self.assertEqual(c2["value"]["postgres_image_without_version_not_checked"], ["postgres in docker-compose.yml"])
+
+    def test_er_model_is_a_complementary_declarative_artifact_that_feeds_the_data_model(self):
+        a = {x["id"]: x for x in ev.RUBRIC["artifacts"]}
+        self.assertEqual((a["er_model"]["level"], a["er_model"]["evidence"], a["er_model"]["feeds"]), ("complementary", "Declarative", ["data_model"]))
+        self.assertEqual(a["data_schema"]["level"], "core")
+        self.assertIn("Sequelize", a["data_schema"]["name"])
+
+    def artifacts(self, er):
+        m = artifact_model(er=er, schema={"tables": {"a": {}}, "sources": {"sequelize_model": 1}})
+        m["artifacts"] = ev.inventory_artifacts(m, [])
+        return m, {x["id"]: x for x in m["artifacts"]}
+
+    def test_a_missing_er_file_records_the_artifact_as_absent_with_a_medium_finding(self):
+        m, a = self.artifacts({"found": False, "diagram": False, "file": None, "entities": {}})
+        self.assertFalse(a["er_model"]["present"]); self.assertIn("not found", a["er_model"]["detail"])
+        f = {x["artifact"]: x for x in ev.artifact_findings(m)}
+        self.assertEqual((f["er_model"]["severity"], f["er_model"]["affected_points"]), ("Medium", ["data_model"]))
+
+    def test_an_er_file_without_a_diagram_is_also_absent_and_a_real_diagram_is_present(self):
+        _, a = self.artifacts({"found": True, "diagram": False, "file": "docs/entity-relationship-model.md", "entities": {}})
+        self.assertFalse(a["er_model"]["present"]); self.assertIn("no erDiagram", a["er_model"]["detail"])
+        _, a = self.artifacts(er_from(ER_MATCH))
+        self.assertTrue(a["er_model"]["present"]); self.assertIn("4 entities", a["er_model"]["detail"])
+
+    def test_data_schema_accepts_sql_sequelize_migrations_and_sequelize_models(self):
+        sources = lambda src: self.artifact_for(src)
+        for src in ("sql", "sequelize_migration", "sequelize_model"):
+            self.assertTrue(sources(src)["present"], src)
+        self.assertFalse(self.artifact_for(None)["present"])
+
+    def artifact_for(self, src):
+        schema = {"tables": {"t": {}}, "sources": {src: 1}} if src else {"tables": {}, "sources": {}}
+        return {x["id"]: x for x in ev.inventory_artifacts(artifact_model(schema=schema), [])}["data_schema"]
+
+    def test_the_er_absence_lowers_the_confidence_of_the_data_model_point(self):
+        m, _ = self.artifacts({"found": False, "diagram": False, "file": None, "entities": {}})
+        m["readme"] = "# App"; m["artifacts"] = ev.inventory_artifacts(m, [])  # with a README, the ER is the only complementary gap of the data model
+        m.update({"graph": {}, "packages": {}, "tests_static": {"test_cases": 1, "test_files": []}})
+        stub = lambda *a: ({"C1": {"ok": True, "desc": "", "value": None, "source": "auto", "suggested": None}}, {}, [], "ok", None)
+        with mock.patch.dict(ev.EVALUATORS, {"data_model": stub}, clear=True):
+            pt = ev.evaluate_points(m, {}, Opts())[0]
+        self.assertTrue(pt["evaluable"]); self.assertIn("er_model", pt["missing_artifacts"]); self.assertEqual(pt["confidence"], "medium")
+
+
 class TestRiskSummary(unittest.TestCase):
     def test_ranks_by_points_at_stake_and_flags_pending(self):
         pt = lambda i, subs, lvl, lo, hi: {"id": i, "name": i, "subcharacteristics": subs, "level": lvl, "level_min": lo, "level_max": hi,

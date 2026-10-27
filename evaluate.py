@@ -29,6 +29,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import relational_schema as rs  # noqa: E402
 import relational_analysis as ra  # noqa: E402
+import pg_runtime  # noqa: E402
 BIN = HERE / "node_modules" / ".bin"
 RUBRIC = json.loads((HERE / "rubric.json").read_text(encoding="utf-8"))
 SKIP_DIRS = {"node_modules", "dist", "build", "coverage", ".git", ".next", "out"}
@@ -217,12 +218,13 @@ def find_contracts(app):
 
 
 def fetch_eol(offline):
-    """Supported major versions according to endoflife.date (node, react, express). Offline returns {} and the rubric.json table is used."""
+    """Supported major versions according to endoflife.date for the products in rubric.json (supported_runtimes.eol_products: node, react,
+    express, postgresql). Offline returns {} and the rubric.json table is used."""
     if offline:
         return {}
     import urllib.request
     today = datetime.date.today().isoformat(); res = {}
-    for key, product in (("node", "nodejs"), ("react", "react"), ("express", "express")):
+    for key, product in RUBRIC["supported_runtimes"]["eol_products"].items():
         try:
             with urllib.request.urlopen(f"https://endoflife.date/api/{product}.json", timeout=15) as r:
                 cycles = json.loads(r.read().decode("utf-8"))
@@ -231,6 +233,21 @@ def fetch_eol(offline):
         except Exception:
             continue
     return res
+
+
+def postgres_images(app):
+    """PostgreSQL images declared in the app's docker-compose files and their major version: [{file, image, major}].
+    `major` is None when the tag does not say it (postgres, postgres:latest, postgres:alpine)."""
+    out = []
+    for p in walk(app):
+        if p.name in pg_runtime.COMPOSE_NAMES:
+            for m in re.finditer(r"^\s*image:\s*[\"']?([^\s\"'#]+)", p.read_text(encoding="utf-8", errors="replace"), re.M):
+                img = m.group(1)
+                if pg_runtime.PG_IMAGE.search(img):
+                    tag = img.split(":", 1)[1] if ":" in img.rsplit("/", 1)[-1] else ""
+                    mm = re.match(r"(\d+)", tag)
+                    out.append({"file": rel(p, app), "image": img, "major": int(mm.group(1)) if mm else None})
+    return out
 
 
 def run_contract(app, out, contracts):
@@ -483,6 +500,7 @@ def collect(app, out, opts):
     m["ast"] = run_ast(app, out)
     m["schema"] = rs.extract(read_sql_files(app), m["ast"], RUBRIC["relational"])
     m["er"] = ra.load_er(app, RUBRIC["relational"])
+    m["postgres_images"] = postgres_images(app)
     m["graph"] = run_depcruise(app, out)
     inc_dev = RUBRIC["thresholds"]["coupling"]["include_devdependencies"]
     m["packages"] = analyze_packages(app, opts.offline, inc_dev)
@@ -746,9 +764,14 @@ def eval_technologies(m, manual, opts):
         eng = pkg["engines"].get("node")
         if eng and coerce_version(eng) and int(coerce_version(eng).split(".")[0]) not in S["node"]:
             unsupported.append(f"node {eng}")
+    images = m.get("postgres_images") or []
+    unsupported += [f"postgresql {i['major']} ({i['image']} in {i['file']})" for i in images if i["major"] is not None and i["major"] not in S["postgresql"]]
+    unversioned = [f"{i['image']} in {i['file']}" for i in images if i["major"] is None]
     vuln = pk["audit"]["high"] + pk["audit"]["critical"] if pk["audit"]["ok"] else None
     crit = {"C1": C(not dep, "No deprecated packages", [i["pkg"] for i in dep]),
-            "C2": C(not unsupported, f"Runtime and framework supported ({eol_source}; rest: rubric.json table, {RUBRIC['supported_runtimes']['date']})", unsupported),
+            "C2": C(not unsupported, f"Runtime, framework and PostgreSQL supported ({eol_source}; rest: rubric.json table, {RUBRIC['supported_runtimes']['date']}; "
+                                     f"postgresql/sequelize/pg unverified since {RUBRIC['supported_runtimes']['unverified']['date']})",
+                    unsupported if not unversioned else {"unsupported": unsupported, "postgres_image_without_version_not_checked": unversioned}),
             "C3": C(po <= T["pct_major_outdated_max"], "≤ 20% of direct dependencies with an outdated major version", f"{len(outdated)}/{len(items)} = {po:.1f}%"),
             "C4": C(None if vuln is None else vuln <= T["vuln_high_critical_max"], "0 high or critical vulnerabilities", vuln, source="auto" if vuln is not None else "pending (npm audit)")}
     apply_manual("technologies", crit, manual)
