@@ -75,7 +75,7 @@ Details in [docs/manual-review.md](docs/manual-review.md).
 | `rubric.json` | **All the framework's thresholds, weights and lists** (including the input-artifact table and the dashboard cut-offs). Adjust it here, not in the code. |
 | `dv8/matrix-template.json` | Template of the dependency matrix consumed by DV8. |
 | `specs/` | Technical specifications N1–N3, domain requirements and the generation prompt. |
-| `run_experiment.py`, `acceptance_check.py` | Optional: generate apps with an agent's CLI and test them against MongoDB. |
+| `run_experiment.py`, `acceptance_check.py` | Optional: generate apps with an agent's CLI and test them against PostgreSQL started from each app's own `docker-compose.yml` (needs Docker; without it the gate is skipped with a message). |
 | `docs/` | Methodology, limitations and guides. |
 | `tests/` | Tests of the evaluator itself: `python -m unittest discover -s tests -v`. |
 | `example/` | Report from a real run. |

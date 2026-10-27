@@ -24,6 +24,7 @@ PY = sys.executable
 UTF8 = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 sys.path.insert(0, str(HERE))
 from dv8_metrics import DV8_DEFAULT  # noqa: E402
+import pg_runtime  # noqa: E402
 
 OK, FAIL, WARN = "✔", "✘", "!"
 SYMBOL = {"Meets": "✔", "Partial": "◐", "Fails": "✘"}
@@ -86,6 +87,9 @@ def cmd_doctor(a):
             status = "did not respond"
     add(status == "valid license", "DV8 (optional: DL and PC)", f"{dv8 or '—'} · {status}",
         "Without DV8, DL and PC stay pending; use --skip-dv8 or install DV8 and set DV8_CONSOLE.", required=False)
+    compose, why = pg_runtime.docker_status()
+    add(compose is not None, "Docker + Compose (optional: acceptance gate)", " ".join(compose) if compose else why,
+        "Without Docker, run_experiment.py skips the acceptance gate (the apps are not checked against PostgreSQL).", required=False)
     try:
         socket.create_connection(("registry.npmjs.org", 443), timeout=5).close(); online = True
     except OSError:

@@ -4,7 +4,8 @@ They cover the rules that weigh most on the results: level from criteria, rule S
 inter-layer dependencies), reading node:test coverage, the DV8 matrix and Unhealthy Inheritance, and the extraction of the relational
 schema (SQL, Sequelize migrations and models).
 """
-import contextlib, io, json, os, subprocess, sys, tempfile, unittest
+import contextlib, io, json, os, subprocess, sys, tempfile, threading, unittest, uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 from pathlib import Path
 
@@ -18,6 +19,8 @@ import judge  # noqa: E402
 import cli  # noqa: E402
 import pg_analysis  # noqa: E402
 import pg_runtime  # noqa: E402
+import acceptance_check  # noqa: E402
+import run_experiment  # noqa: E402
 
 
 class Opts:
@@ -683,6 +686,243 @@ class TestPgAnalysisFlow(unittest.TestCase):
         self.assertIn("no tables", err); self.assertFalse((self.res / "pg_schema.json").exists())
         err, _, _ = self.run_flow(self.fake_node(fail=("drop",)))
         self.assertIn("COULD NOT DROP eval_claude_n1_ecommerce_r1", err)
+
+
+class ReferenceShop:
+    """In-memory implementation of the minimum HTTP interface of requirements-ecommerce.md (no database, no Docker), used to test the gate.
+    `money_as_string` and `object_ids` reproduce the two typical deviations the gate must catch."""
+    def __init__(self, money_as_string=False, object_ids=False):
+        self.money_as_string, self.object_ids = money_as_string, object_ids
+        self.next_id = 0
+        self.products = {n: {"id": self.new_id(), "name": n, "price": pr, "description": "d", "imageUrl": "u", "stock": st}
+                         for n, pr, st in (("T-shirt", 10.0, 20), ("Mug", 5.0, 2), ("Book", 20.0, 50))}
+        self.users, self.tokens, self.orders = {}, {}, {}
+
+    def new_id(self):
+        self.next_id += 1
+        return uuid.uuid4().hex[:24] if self.object_ids else self.next_id
+
+    def money(self, x):
+        return f"{x:.2f}" if self.money_as_string else x
+
+    def line(self, item):
+        p = next(p for p in self.products.values() if p["id"] == item["productId"])
+        gross = p["price"] * item["quantity"]
+        total = round(gross * (0.9 if item["quantity"] >= 3 else 1.0), 2)
+        return p, {"productId": p["id"], "quantity": item["quantity"], "unitPrice": self.money(p["price"]), "lineTotal": self.money(total)}, total
+
+    def handle(self, method, path, body, token):
+        user = self.tokens.get(token)
+        if (method, path) == ("POST", "/api/auth/register"):
+            if body["email"] in self.users:
+                return 409, None
+            self.users[body["email"]] = body
+            return 201, {"id": self.new_id()}
+        if (method, path) == ("POST", "/api/auth/login"):
+            u = self.users.get(body["email"])
+            if not u or u["password"] != body["password"]:
+                return 401, None
+            self.tokens[f"tok-{body['email']}"] = body["email"]
+            return 200, {"token": f"tok-{body['email']}"}
+        if (method, path) == ("GET", "/api/products"):
+            return 200, [{**p, "price": self.money(p["price"])} for p in self.products.values()]
+        if (method, path) == ("POST", "/api/cart/quote"):
+            lines = [self.line(i)[1:] for i in body["items"]]
+            return 200, {"lines": [l[0] for l in lines], "total": self.money(round(sum(l[1] for l in lines), 2))}
+        if not user:
+            return 401, None
+        if (method, path) == ("POST", "/api/checkout"):
+            rows = [self.line(i) for i in body["items"]]
+            if any(p["stock"] < i["quantity"] for (p, _, _), i in zip(rows, body["items"])):
+                return 409, None
+            for (p, _, _), i in zip(rows, body["items"]):
+                p["stock"] -= i["quantity"]
+            o = {"id": self.new_id(), "status": "pending", "total": round(sum(r[2] for r in rows), 2), "user": user}
+            self.orders[str(o["id"])] = o
+            return 201, {"id": o["id"], "status": "pending", "total": self.money(o["total"])}
+        if (method, path) == ("GET", "/api/orders"):
+            return 200, [{"id": o["id"], "status": o["status"], "total": self.money(o["total"])} for o in self.orders.values() if o["user"] == user]
+        if method == "PATCH" and path.startswith("/api/orders/") and path.endswith("/status"):
+            o = self.orders.get(path.split("/")[3])
+            if not o or o["user"] != user:
+                return 404, None
+            order = ["pending", "paid", "shipped"]
+            if order.index(body["status"]) != order.index(o["status"]) + 1:
+                return 409, None
+            o["status"] = body["status"]
+            return 200, {"id": o["id"], "status": o["status"]}
+        return 404, None
+
+
+def serve(shop):
+    class H(BaseHTTPRequestHandler):
+        def do_any(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or "null") if n else None
+            token = (self.headers.get("Authorization") or "").replace("Bearer ", "")
+            status, out = shop.handle(self.command, self.path, body, token)
+            data = json.dumps(out).encode() if out is not None else b""
+            self.send_response(status); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers()
+            self.wfile.write(data)
+        do_GET = do_POST = do_PATCH = do_any
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+class TestAcceptanceGate(unittest.TestCase):
+    def gate(self, **kw):
+        srv = serve(ReferenceShop(**kw))
+        try:
+            res = acceptance_check.run(f"http://127.0.0.1:{srv.server_port}")
+        finally:
+            srv.shutdown(); srv.server_close()
+        return res, {c["case"]: c["ok"] for c in res["cases"]}
+
+    def test_a_correct_shop_passes_every_case(self):
+        res, cases = self.gate()
+        self.assertEqual(res["acceptance_pct"], 100.0, [c for c in res["cases"] if not c["ok"]])
+        self.assertGreaterEqual(res["total"], 25)
+
+    def test_money_as_strings_fails_only_the_json_number_cases(self):
+        res, cases = self.gate(money_as_string=True)
+        failed = sorted(k for k, v in cases.items() if not v)
+        self.assertEqual(failed, ["cart/quote: lines carry numeric unitPrice and lineTotal (3 T-shirt = 10 x 3 -10% = 27)",
+                                  "catalog: ids are integers or UUIDs and prices are JSON numbers",
+                                  "checkout: id is an integer or UUID and total is a JSON number",
+                                  "orders: each order has id, status and a numeric total"])
+        self.assertTrue(cases["cart/quote: 3 T-shirt = 27.00 (discount)"])  # the amounts themselves are right: one defect, four findings, no cascade
+
+    def test_objectid_style_ids_fail_the_opaque_id_cases_but_the_rest_still_works(self):
+        res, cases = self.gate(object_ids=True)
+        failed = sorted(k for k, v in cases.items() if not v)
+        self.assertEqual(failed, ["catalog: ids are integers or UUIDs and prices are JSON numbers",
+                                  "checkout: id is an integer or UUID and total is a JSON number",
+                                  "orders: each order has id, status and a numeric total"])
+        self.assertTrue(cases["statuses: pending→paid→shipped in order"])  # ids are passed back untouched
+
+    def test_helpers(self):
+        self.assertTrue(all(map(acceptance_check.is_number, [1, 1.5, -2])))
+        self.assertFalse(any(map(acceptance_check.is_number, ["10.00", True, None, [1]])))
+        ids = [7, "0b6f2c1e-3c4d-4a5b-8c9d-0123456789ab", "507f1f77bcf86cd799439011", "7", True, None]
+        self.assertEqual([acceptance_check.is_opaque_id(i) for i in ids], [True, True, False, False, False, False])
+
+    def test_an_unreachable_server_fails_every_case_without_crashing(self):
+        with mock.patch.object(acceptance_check, "call", return_value=(0, "connection refused")):  # what call() returns on a network error
+            res = acceptance_check.run("http://127.0.0.1:1")
+        self.assertEqual(res["passed"], 0); self.assertGreater(res["total"], 20)
+
+
+COMPOSE_CONFIG = {"services": {"api": {"image": "node:22", "environment": {"PORT": "3000"}},
+                               "db": {"image": "postgres:16-alpine", "environment": {"POSTGRES_USER": "shop", "POSTGRES_PASSWORD": "pw", "POSTGRES_DB": "shopdb"},
+                                      "ports": [{"target": 5432, "published": "5432"}]}}}
+
+
+class TestComposeHelpers(unittest.TestCase):
+    def test_picks_the_postgres_service_by_image_or_by_environment(self):
+        self.assertEqual(pg_runtime.pick_postgres_service(COMPOSE_CONFIG), "db")
+        by_env = {"services": {"web": {"image": "nginx"}, "store": {"image": "custom/db", "environment": ["POSTGRES_PASSWORD=x"]}}}
+        self.assertEqual(pg_runtime.pick_postgres_service(by_env), "store")
+        self.assertIsNone(pg_runtime.pick_postgres_service({"services": {"web": {"image": "nginx"}}}))
+        for img in ("postgres", "docker.io/library/postgres:15", "postgis/postgis:16-3.4", "bitnami/postgresql:16"):
+            self.assertEqual(pg_runtime.pick_postgres_service({"services": {"x": {"image": img}}}), "x", img)
+
+    def test_credentials_use_the_image_defaults_when_unset(self):
+        self.assertEqual(pg_runtime.pg_credentials(COMPOSE_CONFIG["services"]["db"]), ("shop", "pw", "shopdb"))
+        self.assertEqual(pg_runtime.pg_credentials({"image": "postgres"}), ("postgres", "", "postgres"))
+        self.assertEqual(pg_runtime.pg_credentials({"environment": ["POSTGRES_USER=a", "POSTGRES_PASSWORD=b"]}), ("a", "b", "a"))
+
+    def test_published_port_parsing_and_compose_file_lookup(self):
+        self.assertEqual(pg_runtime.parse_published_port("0.0.0.0:49153\n[::]:49153\n"), 49153)
+        self.assertIsNone(pg_runtime.parse_published_port("")); self.assertIsNone(pg_runtime.parse_published_port("no port here"))
+        with tempfile.TemporaryDirectory() as t:
+            self.assertIsNone(pg_runtime.find_compose(t))
+            (Path(t) / "compose.yaml").write_text("services: {}", encoding="utf-8")
+            self.assertEqual(pg_runtime.find_compose(t).name, "compose.yaml")
+            (Path(t) / "docker-compose.yml").write_text("services: {}", encoding="utf-8")
+            self.assertEqual(pg_runtime.find_compose(t).name, "docker-compose.yml")  # the documented name wins
+
+    def test_docker_status_reports_why_it_is_unavailable(self):
+        with mock.patch.object(pg_runtime.shutil, "which", return_value=None):
+            cmd, why = pg_runtime.docker_status()
+        self.assertIsNone(cmd); self.assertIn("not installed", why)
+        with mock.patch.object(pg_runtime.shutil, "which", return_value="docker"), \
+                mock.patch.object(pg_runtime.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)):
+            cmd, why = pg_runtime.docker_status()
+        self.assertIsNone(cmd); self.assertIn("daemon is not running", why)
+
+
+class FakeCompose:
+    """Stands in for pg_runtime.Compose: records the calls and can fail at a step."""
+    log, fail_at = [], None
+
+    def __init__(self, cmd, file, project, log_path):
+        FakeCompose.log.append(("init", project))
+
+    def step(self, name, result):
+        if name != "create_database":
+            FakeCompose.log.append((name,))
+        return (1, "", "failed") if FakeCompose.fail_at == name else result
+
+    def config(self): FakeCompose.log.append(("config",)); return COMPOSE_CONFIG
+    def up(self, svc): return self.step("up", (0, "", ""))
+    def port(self, svc, p=5432): FakeCompose.log.append(("port",)); return 54321
+    def wait_ready(self, svc, user, seconds=90): FakeCompose.log.append(("wait_ready", user)); return True
+    def create_database(self, svc, user, db): FakeCompose.log.append(("create_database", db)); return self.step("create_database", (0, "", ""))
+    def down(self): FakeCompose.log.append(("down",)); return 0, "", ""
+
+
+class TestRunExperimentGate(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name) / "project"; (self.project / "backend").mkdir(parents=True)
+        self.exp = Path(self.tmp.name) / "exp"; self.exp.mkdir()
+        FakeCompose.log, FakeCompose.fail_at = [], None
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def gate(self, backend=None):
+        backend = backend or (lambda be, env, port, expdir, wait=90: {"passed": 25, "total": 25, "acceptance_pct": 100.0, "env": env})
+        with mock.patch.object(pg_runtime, "docker_status", return_value=(["docker", "compose"], None)), mock.patch.object(pg_runtime, "Compose", FakeCompose), \
+                mock.patch.object(run_experiment, "run_backend_gate", backend), mock.patch.object(pg_runtime, "wait_for_port", return_value=True):
+            return run_experiment.acceptance(self.project, self.exp, "claude-n1-ecommerce-r1")
+
+    def test_skips_clearly_when_docker_is_not_available(self):
+        (self.project / "docker-compose.yml").write_text("services: {}", encoding="utf-8")
+        with mock.patch.object(pg_runtime, "docker_status", return_value=(None, "Docker is not installed or not on PATH")):
+            self.assertEqual(run_experiment.acceptance(self.project, self.exp, "r"), {"skipped": True, "reason": "Docker is not installed or not on PATH"})
+
+    def test_a_missing_compose_file_or_backend_is_an_error_not_a_skip(self):
+        self.assertIn("docker-compose.yml not found", run_experiment.acceptance(self.project, self.exp, "r")["error"])
+        self.assertIn("backend/", run_experiment.acceptance(Path(self.tmp.name) / "none", self.exp, "r")["error"])
+
+    def test_starts_postgres_creates_the_disposable_database_runs_the_backend_and_tears_down(self):
+        (self.project / "docker-compose.yml").write_text("services: {}", encoding="utf-8")
+        res = self.gate()
+        steps = [x[0] for x in FakeCompose.log]
+        self.assertEqual(steps, ["init", "config", "up", "port", "wait_ready", "create_database", "down"])
+        self.assertIn(("create_database", "eval_claude_n1_ecommerce_r1"), FakeCompose.log); self.assertIn(("init", "eval_claude_n1_ecommerce_r1"), FakeCompose.log)
+        self.assertEqual(res["env"]["DATABASE_URL"], "postgresql://shop:pw@127.0.0.1:54321/eval_claude_n1_ecommerce_r1")
+        self.assertTrue(res["env"]["PORT"].isdigit()); self.assertNotIn("PG_ADMIN_URL", res["env"])
+
+    def test_teardown_happens_when_a_step_fails_or_the_backend_raises(self):
+        (self.project / "docker-compose.yml").write_text("services: {}", encoding="utf-8")
+        FakeCompose.fail_at = "up"
+        self.assertIn("docker compose up failed", self.gate()["error"]); self.assertEqual(FakeCompose.log[-1], ("down",))
+        FakeCompose.log, FakeCompose.fail_at = [], "create_database"
+        self.assertIn("could not create the disposable database", self.gate()["error"]); self.assertEqual(FakeCompose.log[-1], ("down",))
+        FakeCompose.log, FakeCompose.fail_at = [], None
+        def boom(*a, **k):
+            raise RuntimeError("npm exploded")
+        self.assertEqual(self.gate(backend=boom), {"error": "npm exploded"}); self.assertEqual(FakeCompose.log[-1], ("down",))
+
+    def test_a_compose_file_without_a_postgres_service_is_reported(self):
+        (self.project / "docker-compose.yml").write_text("services: {}", encoding="utf-8")
+        with mock.patch.object(FakeCompose, "config", lambda self: {"services": {"web": {"image": "nginx"}}}):
+            self.assertIn("no PostgreSQL service", self.gate()["error"])
 
 
 class TestRiskSummary(unittest.TestCase):

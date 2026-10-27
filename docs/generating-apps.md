@@ -49,5 +49,8 @@ working folder, and forbid it from reading outside it. Afterwards verify that th
 
 1. Note the **model** that generated the applications: `--model` will ask for it.
 2. Run `python cli.py doctor` and then `python cli.py evaluate`.
-3. Optional: to know whether the application really works, use the acceptance gate
-   (`acceptance_check.py`, requires MongoDB) or test it by hand.
+3. Optional: to know whether the application really works, use the acceptance gate. `run_experiment.py` starts PostgreSQL from the
+   application's own `docker-compose.yml` (project and disposable database `eval_<run>`, removed afterwards), runs the backend with
+   `DATABASE_URL` and `PORT`, and checks the minimum HTTP interface of `specs/requirements-ecommerce.md` with `acceptance_check.py`
+   (money as JSON numbers, opaque integer or UUID ids, the volume-discount examples, the stock rules). It needs Docker; without it the
+   gate is skipped and says so. Or test the application by hand.
