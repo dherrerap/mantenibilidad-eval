@@ -1135,6 +1135,41 @@ class TestSchemaInProductionCode(unittest.TestCase):
         self.assertTrue(a["present"]); self.assertIn("live database", a["detail"])
 
 
+class TestLayerNames(unittest.TestCase):
+    def layers(self, paths):
+        ast = {"files": [{"path": p, "test": False, "frontend": False} for p in paths]}
+        return ev.classify_layers(ast, ".", None)[0]
+
+    def test_pern_directory_names(self):
+        L = self.layers(["backend/src/http/validation/schemas.js", "backend/src/http/routes.js", "backend/src/data/Migrator.js",
+                         "backend/src/data/repositories/SequelizeOrderRepository.js", "backend/src/security/hasher.js", "backend/src/services/CartService.js"])
+        self.assertEqual(L["backend/src/http/validation/schemas.js"], "presentation")  # validation schemas are not the data layer
+        self.assertEqual((L["backend/src/http/routes.js"], L["backend/src/data/Migrator.js"], L["backend/src/security/hasher.js"]), ("presentation", "data", "shared"))
+        self.assertEqual((L["backend/src/data/repositories/SequelizeOrderRepository.js"], L["backend/src/services/CartService.js"]), ("data", "business"))
+
+    def test_schemas_outside_http_is_shared_not_data(self):
+        self.assertEqual(self.layers(["backend/src/schemas/order.js"])["backend/src/schemas/order.js"], "shared")
+
+
+class TestSqlInjectionIndicator(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as t:
+            app = Path(t) / "app"; (app / "backend").mkdir(parents=True)
+            (app / "backend" / "repo.js").write_text(
+                "const COLS = 'id, name';\nlet dynamicCols = process.env.COLS;\n"
+                "async function a(db, lock) { return db.query(`SELECT ${COLS} FROM t ${lock ? 'FOR UPDATE' : ''}`); }\n"   # constants: safe
+                "async function b(db, order) { return db.query(`SELECT * FROM t ORDER BY ${order}`); }\n"                    # parameter: injectable
+                "async function c(db, id) { return db.query('SELECT * FROM t WHERE id = ' + id); }\n"                         # concatenation: injectable
+                "async function d(db) { return db.query(`SELECT ${dynamicCols} FROM t`); }\n"                                  # `let`: not a constant
+                "async function e(db, id) { return db.query('SELECT * FROM t WHERE id = $1', [id]); }\n", encoding="utf-8")
+            cls.ast = ev.run_ast(app, Path(t))
+
+    def test_only_non_constant_interpolation_is_flagged(self):
+        lines = sorted(x["line"] for x in self.ast["security"]["sqlInjection"])
+        self.assertEqual(lines, [4, 5, 6])
+
+
 class TestRiskSummary(unittest.TestCase):
     def test_ranks_by_points_at_stake_and_flags_pending(self):
         pt = lambda i, subs, lvl, lo, hi: {"id": i, "name": i, "subcharacteristics": subs, "level": lvl, "level_min": lo, "level_max": hi,

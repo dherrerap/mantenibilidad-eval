@@ -198,6 +198,26 @@ function lit(n, depth = 0) {
   return { $expr: n.getText().slice(0, 160) };
 }
 
+/** Is this expression a compile-time constant fragment (literal, ternary of literals, `const X = '…'`)? Interpolating those into SQL is
+ *  not injectable; interpolating parameters or request data is. */
+function isConstantFragment(e, depth = 0) {
+  if (!e || depth > 4) return false;
+  if (Node.isStringLiteral(e) || Node.isNoSubstitutionTemplateLiteral(e) || Node.isNumericLiteral(e)) return true;
+  if (Node.isParenthesizedExpression(e)) return isConstantFragment(e.getExpression(), depth + 1);
+  if (Node.isConditionalExpression(e)) return isConstantFragment(e.getWhenTrue(), depth + 1) && isConstantFragment(e.getWhenFalse(), depth + 1);
+  if (Node.isTemplateExpression(e)) return e.getTemplateSpans().every((sp) => isConstantFragment(sp.getExpression(), depth + 1));
+  if (Node.isBinaryExpression(e) && e.getOperatorToken().getKind() === SyntaxKind.PlusToken)
+    return isConstantFragment(e.getLeft(), depth + 1) && isConstantFragment(e.getRight(), depth + 1);
+  if (Node.isIdentifier(e)) {
+    const sym = e.getSymbol();
+    const decls = sym ? sym.getDeclarations() : [];
+    if (decls.length !== 1 || !Node.isVariableDeclaration(decls[0])) return false;
+    const st = decls[0].getVariableStatement();
+    return !!st && st.getDeclarationKind() === "const" && isConstantFragment(decls[0].getInitializer(), depth + 1);
+  }
+  return false;
+}
+
 const MIG_FNS = new Set(["createTable", "dropTable", "addColumn", "removeColumn", "changeColumn", "renameColumn", "renameTable",
   "addConstraint", "removeConstraint", "addIndex", "removeIndex"]);
 const ASSOC_FNS = new Set(["belongsTo", "hasMany", "hasOne", "belongsToMany"]);
@@ -399,9 +419,9 @@ for (const sf of project.getSourceFiles()) {
         if (/^(query|raw|execute|unsafe)$/.test(name)) {
           const a0 = n.getArguments()[0];
           const SQL_HEAD = /^\s*(select|insert|update|delete|with|create|alter|drop)\b/i;
-          const interpolated = a0 && Node.isTemplateExpression(a0) && SQL_HEAD.test(a0.getHead().getLiteralText());
+          const interpolated = a0 && Node.isTemplateExpression(a0) && SQL_HEAD.test(a0.getHead().getLiteralText()) && !isConstantFragment(a0);
           const concatenated = a0 && Node.isBinaryExpression(a0) && a0.getOperatorToken().getKind() === SyntaxKind.PlusToken &&
-            SQL_HEAD.test(a0.getLeft().getText().replace(/^['"`]/, "")) && !Node.isStringLiteral(a0.getRight());
+            SQL_HEAD.test(a0.getLeft().getText().replace(/^['"`]/, "")) && !isConstantFragment(a0);
           if (interpolated || concatenated) out.security.sqlInjection.push({ file, line, call: callee });
         }
       }

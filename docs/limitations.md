@@ -16,7 +16,7 @@ What the framework does **not** guarantee. Cite them alongside any result.
 
 ## Measurement
 
-- **Layers by directory name.** It is a heuristic. An app that organizes its layers with other names, or that connects them
+- **Layers by directory name.** It is a heuristic (names in `default_layers` of `rubric.json`; an app can ship a `.layers.json`). An app that organizes its layers with other names, or that connects them
   through dependency injection, gets "pending" and not an automatic result. Ambiguous directories (`domain`, `core`,
   `entities`) also leave the criterion under review.
 - **DL and PC on a derived matrix.** DV8 does not analyze JavaScript or TypeScript. The matrix comes from the `dependency-cruiser`
@@ -37,7 +37,8 @@ What the framework does **not** guarantee. Cite them alongside any result.
   in `docs/methodology.md`. They do not compare the schema with the contract field by field.
 - **Supplementary indicators** are heuristics over the code text and are not scored. "Without assertions" only recognizes
   `assert`, `expect` and `should`; credential detection looks at the variable name; the SQL check only sees a template
-  literal with `${}` or a `+` concatenation passed as the first argument of `query`, `raw`, `execute` or `unsafe`; the prop count of a component that receives `props` without
+  literal with `${}` or a `+` concatenation passed as the first argument of `query`, `raw`, `execute` or `unsafe`, and ignores interpolated constants
+  (literals, ternaries of literals, a module-level `const` string) but not parameters or values it cannot trace; the prop count of a component that receives `props` without
   destructuring is approximate. There is no mutation testing, dependency licenses or unused exports.
 - **Observability C1** is a proxy: critical events are `catch` blocks, functions that use `bcrypt`/`jwt`/`passport`
   (authentication) and those that write with Sequelize (`save`, `create`, `bulkCreate`, `update`, `destroy`, `upsert`…; raw `INSERT`/`UPDATE`

@@ -55,11 +55,11 @@
     }
   },
   "default_layers": {
-    "_comment": "Directory heuristic. Can be overridden per application with <app>/.layers.json or --layers. Order = matching priority.",
-    "presentation": ["routes", "route", "controllers", "controller", "handlers", "api", "middlewares", "middleware", "views"],
+    "_comment": "Directory heuristic. Can be overridden per application with <app>/.layers.json or --layers. Order = matching priority. 'schemas' is a shared (validation) name, not the data layer: with SQL the data layer is repositories/models/db; 'http' is presentation and 'data' is the data layer (PERN apps).",
+    "presentation": ["routes", "route", "controllers", "controller", "handlers", "api", "http", "middlewares", "middleware", "views"],
     "business": ["services", "service", "usecases", "use-cases", "domain", "core", "business", "logic"],
-    "data": ["repositories", "repository", "repos", "dao", "models", "model", "schemas", "db", "database", "persistence", "entities"],
-    "shared": ["utils", "util", "helpers", "lib", "shared", "common", "config", "constants", "types", "errors", "validators"],
+    "data": ["repositories", "repository", "repos", "dao", "models", "model", "data", "db", "database", "persistence", "entities"],
+    "shared": ["utils", "util", "helpers", "lib", "shared", "common", "config", "constants", "types", "errors", "validators", "validation", "schemas", "security"],
     "ambiguous": ["domain", "core", "entities"],
     "_ambiguous": "Directories whose layer depends on the architecture (e.g. 'domain' in DDD is the core, not 'business' in N-tier). A violation that depends on them stays pending manual review (layers.C2) or a .layers.json.",
     "allowed": [["presentation", "business"], ["business", "data"]]
