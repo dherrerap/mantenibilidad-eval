@@ -69,6 +69,18 @@ def evidence(pid, cid, res, m, point):
             parts.append(read(app, f, 60))
             if len(parts) > 8:
                 break
+        if not files:
+            # No inter-layer dependency was found (typical with dependency injection): without code there is nothing to judge, so show where
+            # the wiring happens (files that belong to no layer, e.g. a composition root) and one file of each layer.
+            prod = [f["path"] for f in m["ast"]["files"] if not f["test"] and not f["frontend"]]
+            wiring = [p for p in prod if p not in layers and re.search(r"(compos|wiring|container|app|server|index|main)", Path(p).stem, re.I)][:3]
+            per_layer = {}
+            for p, v in layers.items():
+                per_layer.setdefault(v["layer"], []).append(p)
+            parts.append("No dependency between layers was detected. Wiring and one example per layer follow, to judge from the code whether the layers "
+                         "are really separated (dependencies injected through constructors/contracts) or only look separated.")
+            for f in wiring + [sorted(v)[0] for k, v in sorted(per_layer.items()) if k in ("presentation", "business", "data")]:
+                parts.append(read(app, f, 70))
     elif pid == "cohesion":
         md, _ = mt.cohesion_evidence(m, rub["thresholds"]["cohesion"])
         parts += md
@@ -84,6 +96,13 @@ def evidence(pid, cid, res, m, point):
     elif pid == "data_model":
         table, sources, _ = mt.model_evidence(m, Path(app))
         parts += table
+        # The criteria ask whether denormalization is justified and whether the ER corresponds to the schema: show those documents first.
+        er = m.get("er") or {}
+        if er.get("text"):
+            parts.append(f"### {er['file']} (the ER document delivered with the app)\n" + er["text"][:3500])
+        else:
+            parts.append("The app delivers no ER document.")
+        parts.append("### README (first 2500 characters)\n" + ((m.get("readme") or "(no README)")[:2500]))
         for f in sorted({t["file"].split(":")[0] for t in m["schema"]["tables"].values() if t.get("file")}):
             parts.append(read(app, f, 90))
         parts.append("Queries in the code (model, filter fields, sort, in loop): " + json.dumps([[q["model"], q["fields"], q["sort"], q["inLoop"]] for q in m["ast"].get("queryFields", [])], ensure_ascii=False))

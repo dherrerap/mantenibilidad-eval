@@ -1170,6 +1170,34 @@ class TestSqlInjectionIndicator(unittest.TestCase):
         self.assertEqual(lines, [4, 5, 6])
 
 
+class TestJudgeEvidence(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name); self.res = t / "res"; self.res.mkdir(); (t / "app" / "src").mkdir(parents=True)
+        (self.res / "metrics.json").write_text("{}", encoding="utf-8")
+        for name, body in (("compositionRoot.js", "wire(new Repo(), new Service())"), ("ctrl.js", "controller code"), ("svc.js", "service code"), ("repo.js", "repo code")):
+            (t / "app" / "src" / name).write_text(body, encoding="utf-8")
+        files = [{"path": f"src/{n}", "test": False, "frontend": False, "loc": 1} for n in ("compositionRoot.js", "ctrl.js", "svc.js", "repo.js")]
+        self.m = {"app": str(t / "app"), "ast": {"files": files, "queryFields": [], "routes": []}, "readme": "Prices are copied into order lines as a snapshot.",
+                  "schema": {"tables": {}}, "er": {"found": True, "file": "docs/entity-relationship-model.md", "text": "erDiagram\n  USERS { int id PK }"}}
+        (self.res / "detected_layers.json").write_text(json.dumps({"src/ctrl.js": {"layer": "presentation"}, "src/svc.js": {"layer": "business"},
+                                                                    "src/repo.js": {"layer": "data"}}), encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_data_model_evidence_includes_the_er_document_and_the_readme(self):
+        text = judge.evidence("data_model", "C2", self.res, self.m, {"finding": "f", "evidence": []})
+        self.assertIn("erDiagram", text); self.assertIn("snapshot", text)
+        self.m["er"] = {"found": False, "text": ""}
+        self.assertIn("delivers no ER document", judge.evidence("data_model", "C2", self.res, self.m, {"finding": "f", "evidence": []}))
+
+    def test_layers_evidence_shows_the_wiring_and_one_file_per_layer_when_there_are_no_dependencies(self):
+        text = judge.evidence("layers", "C2", self.res, self.m, {"finding": "0 inter-layer dependencies", "evidence": []})
+        for needle in ("wire(new Repo()", "controller code", "service code", "repo code"):
+            self.assertIn(needle, text)
+
+
 class TestRiskSummary(unittest.TestCase):
     def test_ranks_by_points_at_stake_and_flags_pending(self):
         pt = lambda i, subs, lvl, lo, hi: {"id": i, "name": i, "subcharacteristics": subs, "level": lvl, "level_min": lo, "level_max": hi,
