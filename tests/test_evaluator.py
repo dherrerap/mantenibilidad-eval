@@ -1111,6 +1111,30 @@ class TestGeneratorModel(unittest.TestCase):
         self.assertIn("--model", str(cm.exception))
 
 
+class TestSchemaInProductionCode(unittest.TestCase):
+    INIT = ("const SCHEMA_SQL = `\nCREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT NOT NULL UNIQUE);\n"
+            "CREATE TABLE IF NOT EXISTS orders (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id));\n"
+            "CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);`;\nmodule.exports = { init: (pool) => pool.query(SCHEMA_SQL) };\n")
+
+    def test_ddl_run_by_the_backend_at_start_up_is_the_schema(self):
+        with tempfile.TemporaryDirectory() as t:
+            app = Path(t) / "app"; (app / "backend" / "src" / "db").mkdir(parents=True)
+            (app / "backend" / "src" / "db" / "init.js").write_text(self.INIT, encoding="utf-8")
+            ast = ev.run_ast(app, Path(t))
+        sc = rs.extract([], ast, RUBRIC_REL)
+        self.assertEqual(sorted(sc["tables"]), ["orders", "users"]); self.assertEqual(sc["sources"], {"sql": 2})
+        o = sc["tables"]["orders"]
+        self.assertEqual(([f["ref_table"] for f in o["foreign_keys"]], [i["columns"] for i in o["indexes"]]), (["users"], [["user_id"]]))
+        self.assertTrue(o["file"].startswith("backend/src/db/init.js:"))
+
+    def test_a_live_database_with_tables_makes_the_data_schema_artifact_present(self):
+        m = artifact_model(schema={"tables": {}, "sources": {}}); m["artifacts"] = ev.inventory_artifacts(m, [])
+        self.assertFalse(next(a for a in m["artifacts"] if a["id"] == "data_schema")["present"])
+        m["pg"] = {"tables": {"t": {}}}
+        a = next(a for a in ev.refresh_schema_artifact(m)["artifacts"] if a["id"] == "data_schema")
+        self.assertTrue(a["present"]); self.assertIn("live database", a["detail"])
+
+
 class TestRiskSummary(unittest.TestCase):
     def test_ranks_by_points_at_stake_and_flags_pending(self):
         pt = lambda i, subs, lvl, lo, hi: {"id": i, "name": i, "subcharacteristics": subs, "level": lvl, "level_min": lo, "level_max": hi,

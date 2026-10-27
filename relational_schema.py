@@ -657,9 +657,12 @@ def migrations_builder(migs, R):
     return b
 
 
-def sql_in_migrations(sql_strings, R):
-    """Raw DDL executed from JS migrations (queryInterface.sequelize.query('CREATE TABLE …')) goes through the SQL parser."""
-    return [(f"{s['file']}:{s['line']}", s["text"]) for s in sql_strings if s.get("migration") and re.match(r"\s*(create|alter|drop)\b", s["text"], re.I)]
+def ddl_strings(sql_strings, migration):
+    """DDL found in string/template literals of the production code, as [(file:line, text)], in file order.
+    migration=True: those inside a migrations folder (labelled sequelize_migration); False: the rest, typically an `init.js` that runs
+    `CREATE TABLE IF NOT EXISTS …` when the backend starts (labelled sql, like a .sql file)."""
+    return sorted((f"{s['file']}:{s['line']}", s["text"]) for s in sql_strings
+                  if bool(s.get("migration")) == migration and re.match(r"\s*(create|alter|drop)\b", s["text"], re.I))
 
 
 # ───────────────────────── 3. Sequelize models ─────────────────────────
@@ -821,12 +824,13 @@ def extract(sql_files, ast, R):
     seq = ast.get("sequelize") or {"models": [], "associations": [], "migrations": []}
     sqlb = sql_builder(sql_files, R)
     migs = migrations_builder(seq.get("migrations", []), R)
-    raw = sql_in_migrations(ast.get("sqlStrings", []), R)
-    for path, text in raw:  # DDL in JS migrations: same parser, labelled as a migration
+    for path, text in ddl_strings(ast.get("sqlStrings", []), True):  # DDL in JS migrations: same parser, labelled as a migration
         tmp = Builder("sequelize_migration")
         tmp.tables = migs.tables
         apply_sql(tmp, text, path, R)
         migs.unparsed += tmp.unparsed
+    for path, text in ddl_strings(ast.get("sqlStrings", []), False):  # DDL executed by the backend at start-up
+        apply_sql(sqlb, text, path, R)
     modb, model_tables = models_builder(seq, R)
     order = {"sql": sqlb, "sequelize_migration": migs, "sequelize_model": modb}
     tables = merge([order[s] for s in R["source_preference"] if s in order], R)

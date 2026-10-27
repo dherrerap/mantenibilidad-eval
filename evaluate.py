@@ -1178,6 +1178,16 @@ def evaluate_points(m, manual, opts):
     return pts
 
 
+def refresh_schema_artifact(m):
+    """The data_schema artifact also counts as present when the live database (pg_schema.json) has tables, even if the code
+    builds its schema in a way the static extraction cannot read."""
+    live = (m.get("pg") or {}).get("tables")
+    for a in m.get("artifacts") or []:
+        if a["id"] == "data_schema" and not a["present"] and live:
+            a["present"], a["detail"] = True, f"{len(live)} table(s) from the live database (the static extraction found none)"
+    return m
+
+
 def load_pg(out, m):
     """Adds to `m` what pg_analysis.py dumped (<out>/pg_schema.json): the catalog of the real database. Without the file the static
     schema is used."""
@@ -1489,6 +1499,7 @@ def cmd_run(a):
     print(f"[1/4] Collecting evidence from {app} …")
     m = collect(app, out, a)
     load_pg(out, m)
+    refresh_schema_artifact(m)
     meta = {"run_id": a.run_id or out.name, "agent": a.agent, "model": a.model, "model_missing": model_missing(a.model), "level": a.level, "domain": a.domain,
             "accept_heuristics": a.accept_heuristics, "run_tests": a.run_tests, "offline": a.offline, "date": m["date"]}
     (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
@@ -1517,7 +1528,7 @@ def cmd_aggregate(a):
     for d in runs:
         meta = json.loads((d / "meta.json").read_text()); manual = json.loads((d / "manual.json").read_text())
         class O: accept_heuristics = meta.get("accept_heuristics", False)
-        load_judge(d, manual); load_pg(d, ms[d.name])
+        load_judge(d, manual); load_pg(d, ms[d.name]); refresh_schema_artifact(ms[d.name])
         pts, prof = evaluate_profile(ms[d.name], manual, O)
         write_outputs(d, meta, pts, prof, ms[d.name])
         acc = None

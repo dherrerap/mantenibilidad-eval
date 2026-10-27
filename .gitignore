@@ -15,3 +15,6 @@ experiment.json
 *.dv8-dsm
 coverage/
 lcov.info
+
+# Extra result folders (e.g. results-pern/)
+results-*/
