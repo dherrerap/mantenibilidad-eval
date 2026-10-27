@@ -65,6 +65,35 @@
     "mongoose": [8, 9],
     "mongodb": [6, 7]
   },
+  "relational": {
+    "_comment": "Relational schema extraction (relational_schema.py). source_preference: a table is decided entirely by the first source that defines it; lower sources only add tables the higher ones do not mention. type_families/sequelize_types are lookup tables, not a verified mapping of every PostgreSQL type.",
+    "source_preference": ["sql", "sequelize_migration", "sequelize_model"],
+    "er_model_path": "docs/entity-relationship-model.md",
+    "ignore_tables": ["SequelizeMeta", "SequelizeData", "schema_migrations", "knex_migrations", "knex_migrations_lock", "_prisma_migrations", "pgmigrations"],
+    "type_families": {
+      "integer": ["int", "int2", "int4", "int8", "integer", "smallint", "bigint", "serial", "serial2", "serial4", "serial8", "bigserial", "smallserial", "tinyint", "mediumint"],
+      "numeric": ["numeric", "decimal", "money"],
+      "float": ["real", "float", "float4", "float8", "double", "double precision"],
+      "string": ["varchar", "character varying", "char", "character", "bpchar", "text", "citext", "string", "name"],
+      "boolean": ["boolean", "bool"],
+      "date": ["date", "dateonly"],
+      "timestamp": ["timestamp", "timestamptz", "timestamp with time zone", "timestamp without time zone", "datetime", "time", "timetz", "time with time zone", "time without time zone", "interval"],
+      "uuid": ["uuid"],
+      "json": ["json", "jsonb"],
+      "binary": ["bytea", "blob"],
+      "enum": ["enum"],
+      "array": ["array"]
+    },
+    "sequelize_types": {
+      "STRING": "varchar(255)", "CHAR": "char(255)", "TEXT": "text", "CITEXT": "citext", "INTEGER": "integer", "BIGINT": "bigint", "SMALLINT": "smallint",
+      "TINYINT": "smallint", "MEDIUMINT": "integer", "FLOAT": "float", "REAL": "real", "DOUBLE": "double precision", "DECIMAL": "numeric", "NUMERIC": "numeric",
+      "BOOLEAN": "boolean", "DATE": "timestamp with time zone", "DATEONLY": "date", "TIME": "time", "NOW": "timestamp with time zone", "UUID": "uuid",
+      "UUIDV4": "uuid", "UUIDV1": "uuid", "JSON": "json", "JSONB": "jsonb", "BLOB": "bytea", "ENUM": "enum", "ARRAY": "array", "INET": "inet", "CIDR": "cidr", "MACADDR": "macaddr"
+    },
+    "money_name_pattern": "(price|amount|total|cost|balance|subtotal|discount|tax|fee|salary|payment)",
+    "implicit_fk_patterns": ["_id$", "[a-z0-9]Id$"],
+    "natural_key_names": ["email", "username", "sku", "slug"]
+  },
   "artifacts": [
     { "id": "source_code", "name": "Source code", "level": "core", "feeds": ["layers", "cyclomatic", "cohesion", "hierarchies"], "evidence": "Structural" },
     { "id": "data_schema", "name": "Data model schema / migrations", "level": "core", "feeds": ["data_model"], "evidence": "Structural" },
@@ -86,5 +115,6 @@
   "libs_logger": ["winston", "pino", "bunyan", "log4js", "loglevel", "roarr"],
   "libs_request_logger": ["morgan", "pino-http", "express-winston", "express-pino-logger", "koa-logger"],
   "libs_metrics": ["prom-client", "express-prom-bundle", "@opentelemetry/api", "@opentelemetry/sdk-node", "dd-trace", "newrelic"],
+  "libs_integration_test": ["supertest", "pg-mem", "testcontainers", "@testcontainers/postgresql", "sequelize", "pg"],
   "libs_validation": ["joi", "zod", "express-validator", "celebrate", "yup", "ajv", "class-validator", "express-openapi-validator"]
 }

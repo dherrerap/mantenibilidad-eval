@@ -51,21 +51,21 @@ def cohesion_evidence(m, T):
 
 
 def model_evidence(m, app):
-    S = m["ast"]["schemas"]
-    table = ["| Schema | File | Fields | required | validated | refs | embedded | indexes |", "|---|---|---|---|---|---|---|---|"]
-    for s in S:
-        table.append(f"| {s['name']} | `{s['file']}` | {s['fields']} | {s['required']} | {s['validated']} | {s['refs']} | {s['embedded']} | "
-                     f"{s['indexedFields'] + s['schemaIndexCalls']} |")
+    """Table of the extracted relational schema and the code of the files that decided it. `sug` is filled by the evaluator."""
+    T = m["schema"]["tables"]
+    table = ["| Table | Source | Columns | Primary key | Foreign keys | Unique | Checks | Indexes |", "|---|---|---|---|---|---|---|---|"]
+    for name, t in T.items():
+        fks = ", ".join(f"{'+'.join(f['columns'])}→{f['ref_table']}" for f in t["foreign_keys"]) or "—"
+        table.append(f"| {name} | {t['source']} | {len(t['columns'])} | {', '.join(t['primary_key']) or '**none**'} | {fks} | {len(t['unique'])} | "
+                     f"{len(t['checks'])} | {len(t['indexes'])} |")
     sources = []
-    for f in sorted({s["file"] for s in S}):
+    for f in sorted({t["file"].split(":")[0] for t in T.values() if t.get("file")}):
         p = app / f
         if p.exists():
             lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
-            sources.append(f"<details><summary><code>{f}</code> ({len(lines)} lines)</summary>\n\n```js\n" + "\n".join(lines[:MODEL_LINES]) + "\n```\n</details>")
-    sug = {"C1": len(S) >= 1 and (len(S) == 1 or any(s["refs"] or s["embedded"] for s in S)),
-           "C3": len(S) >= 1 and all(s["required"] > 0 for s in S),
-           "C4": len(S) >= 1 and any(s["indexedFields"] + s["schemaIndexCalls"] for s in S)}
-    return table, sources, sug
+            lang = "sql" if f.lower().endswith(".sql") else "js"
+            sources.append(f"<details><summary><code>{f}</code> ({len(lines)} lines)</summary>\n\n```{lang}\n" + "\n".join(lines[:MODEL_LINES]) + "\n```\n</details>")
+    return table, sources, {"C1": None, "C3": None, "C4": None}
 
 
 def contracts_evidence(m, rub):
@@ -116,7 +116,7 @@ def main():
          "## Cohesion · C3 — checklist with no findings", "",
          "Criterion: there is no 'god' module, no mixing of unrelated responsibilities in one module, and no excessive fragmentation.", ""] + coh_md + [
          "", f"**Suggestion:** {'true' if coh_sug else 'false'} (no 'god' module and no high fragmentation). Mixed responsibilities must be judged by reading the modules with the highest fan-out.", "",
-         "## Data model", "", f"{len(m['ast']['schemas'])} schemas detected.", ""] + table + ["",
+         "## Data model", "", f"{len(m['schema']['tables'])} table(s) detected.", ""] + table + ["",
          "| Criterion | Statement | Suggestion |", "|---|---|---|",
          f"| C1 | Explicit entities and relations | {ms['C1']} |",
          "| C2 | Reference or embedding consistent with access (is what is queried together stored together?) | — evaluator decides |",

@@ -84,17 +84,9 @@ def evidence(pid, cid, res, m, point):
     elif pid == "data_model":
         table, sources, _ = mt.model_evidence(m, Path(app))
         parts += table
-        for f in sorted({s["file"] for s in m["ast"]["schemas"]}):
+        for f in sorted({t["file"].split(":")[0] for t in m["schema"]["tables"].values() if t.get("file")}):
             parts.append(read(app, f, 90))
-        parts.append(f"populate calls in the code: {len(m['ast'].get('populateCalls', []))}")
-        mg = (m.get("mongo") or {}).get("collections")
-        if mg:  # what MongoDB Compass would show on the real database after exercising the app
-            for name, col in mg.items():
-                parts.append(f"Real database · {name}: {col['documents']} documents; ObjectId: {col['objectid']}; document arrays: {col['document_arrays']}; "
-                             f"mixed types: {col['mixed_type_fields']}; indexes: {[i['key'] for i in col['indexes']]}; server validator: {bool(col['validator'])}; "
-                             f"document size (B): {col.get('size_bytes')}; array length: {col.get('arrays')}")
-            parts.append("Relations detected in the data (field → target collection): " + json.dumps(m["mongo"].get("relations", []), ensure_ascii=False))
-            parts.append("Queries in the code (model, filter, sort, in loop): " + json.dumps([[q["model"], q["fields"], q["sort"], q["inLoop"]] for q in m["ast"].get("queryFields", [])], ensure_ascii=False))
+        parts.append("Queries in the code (model, filter fields, sort, in loop): " + json.dumps([[q["model"], q["fields"], q["sort"], q["inLoop"]] for q in m["ast"].get("queryFields", [])], ensure_ascii=False))
         parts.append("Implemented routes: " + ", ".join(f"{r['method']} {r['path']}" for r in m["ast"]["routes"][:25]))
     elif pid == "contracts":
         parts.append("Routes and whether they validate their input: " + ", ".join(f"{r['method']} {r['path']} ({'validates' if r.get('validated') else 'unvalidated'})" for r in m["ast"]["routes"]))

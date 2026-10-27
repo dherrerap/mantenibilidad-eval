@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
  * ast_metrics.js — Structural AST metrics (ts-morph) for the maintainability
- * evaluation framework. Processes the JS/JSX/TS/TSX files of a MERN application.
+ * evaluation framework. Processes the JS/JSX/TS/TSX files of a PERN application.
  *
  * Usage: node ast_metrics.js <app_directory> <output.json>
  *
  * Produces, among others: cyclomatic complexity and fan-out per function,
  * class hierarchies, switch without default / fall-through (CWE-478/484),
  * labeled jumps (CWE-1075), network literals (CWE-1051) and duplicates
- * (CWE-1052), console.*, catch blocks, error middleware, Express routes
- * and Mongoose schemas.
+ * (CWE-1052), console.*, catch blocks, error middleware, Express routes and
+ * the raw material of the relational schema: Sequelize models, associations and
+ * migrations (queryInterface.*), raw SQL strings and query filters (`where`).
+ * The schema itself is assembled and normalized by relational_schema.py.
  */
 const fs = require("fs");
 const path = require("path");
@@ -143,8 +145,9 @@ const out = {
   switchesMissingDefault: [], fallthrough: [], labeledJumps: [],
   consoleCalls: [], networkLiterals: [], literalOccurrences: {},
   catchBlocks: { total: 0, logging: 0, delegating: 0, silent: [] },
-  errorMiddleware: [], routes: [], mounts: [], schemas: [], populateCalls: [],
-  testCases: [], docs: [], components: [], hooks: [], security: { evalCalls: [], secrets: [], nosqlInjection: [] },
+  errorMiddleware: [], routes: [], mounts: [],
+  sequelize: { models: [], associations: [], migrations: [] }, sqlStrings: [],
+  testCases: [], docs: [], components: [], hooks: [], security: { evalCalls: [], secrets: [], sqlInjection: [] },
   validationFields: [], queryFields: [],
   processEnvAccess: 0, envFiles: {}, imports: [],
 };
@@ -160,7 +163,105 @@ const VALIDATED = (call) => {
   const txt = call.getText();
   return /\b(validate\w*|celebrate|checkSchema|body\s*\(|param\s*\(|query\s*\(|schema\w*|zod|joi|yup|ajv)\b|\.(safeParse|parse|validateAsync|validateSync)\s*\(|validationResult/i.test(txt);
 };
-const NET_RE = /^(https?|mongodb(\+srv)?|redis|amqps?|ftp|wss?):\/\/|(^|[^\w.])localhost\b|\b(\d{1,3}\.){3}\d{1,3}\b/i;
+const NET_RE = /^(https?|postgres(ql)?|mysql|redis|amqps?|ftp|wss?):\/\/|(^|[^\w.])localhost\b|\b(\d{1,3}\.){3}\d{1,3}\b/i;
+
+
+// ───────── relational schema extraction (Sequelize models/migrations, raw SQL) ─────────
+/** Property name of an object literal member as plain text; computed names keep their brackets: "[Op.or]". */
+const propName = (nameNode) => (Node.isStringLiteral(nameNode) || Node.isNoSubstitutionTemplateLiteral(nameNode)
+  ? nameNode.getLiteralValue() : nameNode.getText());
+
+/** Converts a JS expression into JSON: literals and object/array literals are evaluated; anything else
+ *  (Sequelize.STRING(100), DataTypes.NOW, a model reference…) becomes {$expr: "<source text>"}. */
+function lit(n, depth = 0) {
+  if (!n) return null;
+  if (depth > 8) return { $expr: n.getText().slice(0, 160) };
+  if (Node.isParenthesizedExpression(n) || Node.isAsExpression(n) || Node.isAwaitExpression(n)) return lit(n.getExpression(), depth + 1);
+  if (Node.isObjectLiteralExpression(n)) {
+    const o = {};
+    for (const p of n.getProperties()) {
+      if (Node.isPropertyAssignment(p)) o[propName(p.getNameNode())] = lit(p.getInitializer(), depth + 1);
+      else if (Node.isShorthandPropertyAssignment(p)) o[p.getName()] = { $expr: p.getName() };
+      else if (Node.isSpreadAssignment(p)) (o.$spread ||= []).push(p.getExpression().getText().slice(0, 80));
+      else if (Node.isMethodDeclaration(p) || Node.isGetAccessor(p) || Node.isSetAccessor(p)) o[p.getName()] = { $expr: "function" };
+    }
+    return o;
+  }
+  if (Node.isArrayLiteralExpression(n)) return n.getElements().map((e) => lit(e, depth + 1));
+  if (Node.isStringLiteral(n) || Node.isNoSubstitutionTemplateLiteral(n)) return n.getLiteralValue();
+  if (Node.isNumericLiteral(n)) return Number(n.getLiteralValue());
+  if (Node.isPrefixUnaryExpression(n) && n.getOperatorToken() === SyntaxKind.MinusToken && Node.isNumericLiteral(n.getOperand())) return -Number(n.getOperand().getLiteralValue());
+  const k = n.getKind();
+  if (k === SyntaxKind.TrueKeyword) return true;
+  if (k === SyntaxKind.FalseKeyword) return false;
+  if (k === SyntaxKind.NullKeyword) return null;
+  return { $expr: n.getText().slice(0, 160) };
+}
+
+const MIG_FNS = new Set(["createTable", "dropTable", "addColumn", "removeColumn", "changeColumn", "renameColumn", "renameTable",
+  "addConstraint", "removeConstraint", "addIndex", "removeIndex"]);
+const ASSOC_FNS = new Set(["belongsTo", "hasMany", "hasOne", "belongsToMany"]);
+const SQL_START = /^\s*(select\s[\s\S]+\sfrom\s|insert\s+into\s|update\s+\S+\s+set\s|delete\s+from\s|create\s+(unique\s+)?(table|index)\s|alter\s+table\s|drop\s+(table|index)\s|with\s[\s\S]+\sselect\s)/i;
+
+/** Name of the model an expression refers to: `User`, `models.User`, `db.User`, `this` (inside a class). */
+function modelRef(expr) {
+  if (!expr) return null;
+  if (expr.getKind() === SyntaxKind.ThisKeyword || expr.getKind() === SyntaxKind.SuperKeyword) {
+    const cls = expr.getFirstAncestorByKind(SyntaxKind.ClassDeclaration) || expr.getFirstAncestorByKind(SyntaxKind.ClassExpression);
+    return cls && cls.getName ? cls.getName() || null : null;
+  }
+  if (Node.isIdentifier(expr)) return expr.getText();
+  if (Node.isPropertyAccessExpression(expr)) return expr.getName();
+  return null;
+}
+
+/** Is `n` inside the `down` half of a migration? Those calls undo the schema and are ignored. */
+function inDown(n) {
+  for (let c = n.getParent(); c; c = c.getParent()) {
+    if ((Node.isMethodDeclaration(c) || Node.isPropertyAssignment(c)) && c.getName() === "down") return true;
+    if (Node.isBinaryExpression(c) && /\.down$/.test(c.getLeft().getText())) return true;
+  }
+  return false;
+}
+
+function relational(n, file, line) {
+  // raw SQL strings (DDL for migrations and queries for filter analysis)
+  if (Node.isStringLiteral(n) || Node.isNoSubstitutionTemplateLiteral(n) || Node.isTemplateExpression(n)) {
+    const parent = n.getParent();
+    if (Node.isTemplateSpan && parent && Node.isTemplateSpan(parent)) return;
+    let text;
+    if (Node.isTemplateExpression(n)) text = n.getHead().getLiteralText() + n.getTemplateSpans().map((sp) => "$?" + sp.getLiteral().getLiteralText()).join("");
+    else text = n.getLiteralValue();
+    if (text.length > 12 && SQL_START.test(text))
+      out.sqlStrings.push({ file, line, text: text.slice(0, 6000), interpolated: Node.isTemplateExpression(n), migration: /(^|\/)migrations?\//.test(file) });
+    return;
+  }
+  if (!Node.isCallExpression(n) || !Node.isPropertyAccessExpression(n.getExpression())) return;
+  const callee = n.getExpression(), method = callee.getName(), args = n.getArguments();
+  // migrations: queryInterface.createTable / addColumn / addConstraint / addIndex …
+  if (MIG_FNS.has(method) && args.length >= 1 && (/queryInterface|\bqi\b/i.test(callee.getExpression().getText()) || /(^|\/)migrations?\//.test(file))) {
+    if (!inDown(n)) out.sequelize.migrations.push({ file, line, method, args: args.slice(0, 3).map((a) => lit(a)) });
+    return;
+  }
+  // models: sequelize.define('Name', attrs, opts)  |  Model.init(attrs, { sequelize, ... })
+  const isDefine = method === "define" && args.length >= 2 && Node.isStringLiteral(args[0]) && Node.isObjectLiteralExpression(args[1]);
+  const isInit = method === "init" && args.length >= 2 && Node.isObjectLiteralExpression(args[0]) && Node.isObjectLiteralExpression(args[1]) && !!args[1].getProperty("sequelize");
+  if (isDefine || isInit) {
+    const decl = n.getFirstAncestorByKind(SyntaxKind.VariableDeclaration);
+    const opts = lit(isDefine ? args[2] : args[1]) || {};
+    const owner = isInit ? modelRef(callee.getExpression()) : null;
+    out.sequelize.models.push({ file, line, kind: isDefine ? "define" : "init",
+      variable: isInit ? owner : (decl ? decl.getName() : null),
+      modelName: isDefine ? args[0].getLiteralValue() : (typeof opts.modelName === "string" ? opts.modelName : owner),
+      attributes: lit(isDefine ? args[1] : args[0]), options: opts });
+    return;
+  }
+  // associations: A.belongsTo(B, {...}) …
+  if (ASSOC_FNS.has(method) && args.length >= 1) {
+    out.sequelize.associations.push({ file, line, kind: method, source: modelRef(callee.getExpression()), target: modelRef(args[0]),
+      options: args[1] && Node.isObjectLiteralExpression(args[1]) ? lit(args[1]) : {} });
+  }
+}
 
 for (const sf of project.getSourceFiles()) {
   const file = rel(sf.getFilePath());
@@ -182,7 +283,7 @@ for (const sf of project.getSourceFiles()) {
     addCall(b); walkOwn(b, addCall);
     // critical event (framework: errors, authentication, writes) and whether the function logs it
     const cs = [...callees];
-    const WRITE_RE = /^(?!Object\.|Array\.|Promise\.|document\.).*\b(save|create|insertMany|insertOne|updateOne|updateMany|findOneAndUpdate|findByIdAndUpdate|deleteOne|deleteMany|findByIdAndDelete|findOneAndDelete|findByIdAndRemove|bulkWrite|remove)$/;
+    const WRITE_RE = /^(?!Object\.|Array\.|Promise\.|document\.).*\b(save|create|bulkCreate|update|destroy|upsert|findOrCreate|increment|decrement)$/;
     const AUTH_RE = /(bcrypt|bcryptjs|argon2)\.(compare|hash|verify)$|jwt\.(sign|verify)$|passport\.authenticate$/;
     const LOG_RE = /^(console\.(error|warn|log|info)|(logger|log)\.\w+|req\.log\.\w+)$/;
     const event = test || front ? null : (cs.some((c) => AUTH_RE.test(c)) ? "authentication" : (cs.some((c) => WRITE_RE.test(c)) ? "write" : null));
@@ -196,7 +297,8 @@ for (const sf of project.getSourceFiles()) {
   });
   // ---- supplementary indicators (test quality, documentation, frontend, static security)
   const SECRET_NAME = /(pass(word|wd)?|secret|token|api[_-]?key|private[_-]?key)$/i;
-  const QUERY_FNS = new Set(["find", "findOne", "findOneAndUpdate", "findOneAndDelete", "updateOne", "updateMany", "deleteOne", "deleteMany", "countDocuments"]);
+  // Sequelize model methods that take a `where`: index of the options argument that holds it
+  const QUERY_FNS = { findOne: 0, findAll: 0, findAndCountAll: 0, findOrCreate: 0, findCreateFind: 0, count: 0, max: 1, min: 1, sum: 1, update: 1, destroy: 0 };
   sf.forEachDescendant((n) => {
     const k = n.getKind();
     const line = n.getStartLineNumber();
@@ -241,31 +343,40 @@ for (const sf of project.getSourceFiles()) {
       }
       if (callee === "eval") out.security.evalCalls.push({ file, line });
       if (!front && Node.isPropertyAccessExpression(n.getExpression())) {
-        // Mongoose queries: model, filter and sort fields, and whether they occur inside a loop (N+1)
+        // Sequelize queries: model, `where` and `order` fields, and whether they occur inside a loop (N+1)
         const name = n.getExpression().getName();
-        if (QUERY_FNS.has(name) || /^findById/.test(name)) {
-          let root_ = n.getExpression();
-          while (Node.isPropertyAccessExpression(root_) || Node.isCallExpression(root_)) root_ = root_.getExpression();
-          const keys = (o) => {
-            if (!o || !Node.isObjectLiteralExpression(o)) return [];
-            return o.getProperties().flatMap((p) => {
+        if (Object.prototype.hasOwnProperty.call(QUERY_FNS, name)) {
+          const obj = n.getExpression().getExpression();
+          const model = Node.isPropertyAccessExpression(obj) ? obj.getName() : (Node.isIdentifier(obj) ? obj.getText() : null);
+          const opt = n.getArguments()[QUERY_FNS[name]];
+          const optProps = opt && Node.isObjectLiteralExpression(opt) ? opt : null;
+          const prop = (o, k) => {
+            const p = o && o.getProperty(k);
+            if (!p) return null;
+            return Node.isShorthandPropertyAssignment(p) ? { dynamic: true } : (Node.isPropertyAssignment(p) ? p.getInitializer() : null);
+          };
+          // `where` keys; Op.or / Op.and / Op.not (computed names) are walked, any other operator is skipped
+          const whereKeys = (w) => {
+            if (Node.isArrayLiteralExpression(w)) return w.getElements().flatMap(whereKeys);
+            if (!w || !Node.isObjectLiteralExpression(w)) return [];
+            return w.getProperties().flatMap((p) => {
               if (Node.isShorthandPropertyAssignment(p)) return [p.getName()];
               if (!Node.isPropertyAssignment(p)) return [];
-              const k = p.getName().replace(/['"]/g, "");
-              if (/^\$(or|and|nor)$/.test(k) && Node.isArrayLiteralExpression(p.getInitializer())) return p.getInitializer().getElements().flatMap(keys);
-              return k.startsWith("$") ? [] : [k];
+              const nameNode = p.getNameNode();
+              if (Node.isComputedPropertyName(nameNode)) return /Op\.(or|and|not)\]?$/.test(nameNode.getText()) ? whereKeys(p.getInitializer()) : [];
+              const k = nameNode.getText().replace(/['"]/g, "");
+              return k.startsWith("$") ? [] : [k]; // '$assoc.col$' refers to a joined table
             });
           };
+          const w = optProps ? prop(optProps, "where") : null;
+          const dynamic = !!(w && (w.dynamic || !Node.isObjectLiteralExpression(w))) || (!optProps && !!opt);
+          const order = optProps ? prop(optProps, "order") : null;
           const sortKeys = [];
-          let cur = n;
-          while (cur.getParent() && Node.isPropertyAccessExpression(cur.getParent()) && cur.getParent().getParent() && Node.isCallExpression(cur.getParent().getParent())) {
-            const call = cur.getParent().getParent();
-            if (cur.getParent().getName() === "sort") {
-              const s0 = call.getArguments()[0];
-              if (s0 && Node.isStringLiteral(s0)) s0.getLiteralValue().split(/\s+/).filter(Boolean).forEach((x) => sortKeys.push(x.replace(/^-/, "")));
-              else sortKeys.push(...keys(s0));
-            }
-            cur = call;
+          if (order && Node.isArrayLiteralExpression(order)) {
+            order.getElements().forEach((e) => {
+              const first = Node.isArrayLiteralExpression(e) ? e.getElements()[0] : e;
+              if (first && Node.isStringLiteral(first)) sortKeys.push(first.getLiteralValue());
+            });
           }
           const inLoop = (() => {
             let c = n.getParent();
@@ -282,13 +393,17 @@ for (const sf of project.getSourceFiles()) {
             }
             return false;
           })();
-          out.queryFields.push({ file, line, model: root_.getText(), call: name,
-            fields: /^findById/.test(name) ? ["_id"] : keys(n.getArguments()[0]), sort: sortKeys, inLoop });
+          if (model) out.queryFields.push({ file, line, model, call: name, fields: w && !w.dynamic ? whereKeys(w) : [], sort: sortKeys, inLoop, dynamic });
         }
-      }
-      if (Node.isPropertyAccessExpression(n.getExpression()) && QUERY_FNS.has(n.getExpression().getName())) {
-        const a0 = n.getArguments()[0];
-        if (a0 && /^req\.(body|query|params)$/.test(a0.getText())) out.security.nosqlInjection.push({ file, line, call: callee });
+        // raw SQL built by interpolation or concatenation: injectable (parameters/replacements are the safe form)
+        if (/^(query|raw|execute|unsafe)$/.test(name)) {
+          const a0 = n.getArguments()[0];
+          const SQL_HEAD = /^\s*(select|insert|update|delete|with|create|alter|drop)\b/i;
+          const interpolated = a0 && Node.isTemplateExpression(a0) && SQL_HEAD.test(a0.getHead().getLiteralText());
+          const concatenated = a0 && Node.isBinaryExpression(a0) && a0.getOperatorToken().getKind() === SyntaxKind.PlusToken &&
+            SQL_HEAD.test(a0.getLeft().getText().replace(/^['"`]/, "")) && !Node.isStringLiteral(a0.getRight());
+          if (interpolated || concatenated) out.security.sqlInjection.push({ file, line, call: callee });
+        }
       }
     }
     if (Node.isNewExpression(n) && n.getExpression().getText() === "Function") out.security.evalCalls.push({ file, line });
@@ -361,7 +476,6 @@ for (const sf of project.getSourceFiles()) {
       const callee = n.getExpression().getText();
       if (!front && /^console\.(log|error|warn|info|debug)$/.test(callee)) out.consoleCalls.push({ file, line });
       // Express routes
-      if (!front && /\.populate$/.test(callee)) out.populateCalls.push({ file, line });
       if (Node.isPropertyAccessExpression(n.getExpression())) {
         const m = n.getExpression().getName();
         const a0 = n.getArguments()[0];
@@ -399,36 +513,9 @@ for (const sf of project.getSourceFiles()) {
         /^_?err(or)?$/i.test(n.getParameters()[0].getName()) && !front)
       out.errorMiddleware.push({ file, line });
 
-    // ---- Mongoose Schema
-    if (Node.isNewExpression(n) && /(^|\.)Schema$/.test(n.getExpression().getText()) && !front) {
-      const arg = n.getArguments()[0];
-      const s = { file, line, name: null, fields: 0, required: 0, validated: 0, refs: 0, embedded: 0, indexedFields: 0, schemaIndexCalls: 0, timestamps: false, fieldTypes: {} };
-      if (arg && Node.isObjectLiteralExpression(arg)) {
-        arg.getProperties().forEach((p) => {
-          if (!Node.isPropertyAssignment(p)) return;
-          s.fields++;
-          const init = p.getInitializer();
-          const txt = init ? init.getText() : "";
-          const tm = txt.match(/^\[?\s*\{?\s*(?:type\s*:\s*)?\[?\s*(String|Number|Boolean|Date|Buffer|Map|Mixed|Decimal128|(?:mongoose\.)?Schema\.Types\.\w+|ObjectId)\b/);
-          if (tm) s.fieldTypes[p.getName().replace(/['"]/g, "")] = tm[1].replace(/^(mongoose\.)?Schema\.Types\./, "") + (txt.trim().startsWith("[") ? "[]" : "");
-          if (/\brequired\s*:/.test(txt)) s.required++;
-          if (/\b(enum|min|max|minlength|maxlength|match|validate|minLength|maxLength)\s*:/.test(txt)) s.validated++;
-          if (/\bref\s*:/.test(txt)) s.refs++;
-          if (/\b(index|unique)\s*:\s*true/.test(txt)) s.indexedFields++;
-          if (init && (Node.isArrayLiteralExpression(init) && /\{|Schema/.test(txt))) s.embedded++;
-        });
-      }
-      const opt = n.getArguments()[1];
-      if (opt && /timestamps\s*:\s*true/.test(opt.getText())) s.timestamps = true;
-      const decl = n.getFirstAncestorByKind(SyntaxKind.VariableDeclaration);
-      s.name = decl ? decl.getName() : null;
-      out.schemas.push(s);
-    }
+    // ---- relational schema material (Sequelize + raw SQL); interpreted by relational_schema.py
+    if (!front) relational(n, file, line);
   });
-  // schema.index({...}) and mongoose.model('Name')
-  const txt = sf.getFullText();
-  const idxCalls = (txt.match(/\.\s*index\s*\(\s*\{/g) || []).length;
-  if (idxCalls) out.schemas.filter((s) => s.file === file).forEach((s) => (s.schemaIndexCalls = idxCalls));
 }
 
 fs.writeFileSync(outFile, JSON.stringify(out, null, 1));

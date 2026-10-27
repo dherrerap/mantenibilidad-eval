@@ -1,7 +1,8 @@
 """Tests of the evaluator itself (no external dependencies):  python -m unittest discover -s tests -v
 
 They cover the rules that weigh most on the results: level from criteria, rule S1192, layers (with doubtful classification and with no
-inter-layer dependencies), reading node:test coverage, the DV8 matrix and Unhealthy Inheritance.
+inter-layer dependencies), reading node:test coverage, the DV8 matrix and Unhealthy Inheritance, and the extraction of the relational
+schema (SQL, Sequelize migrations and models).
 """
 import json, sys, tempfile, unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import evaluate as ev  # noqa: E402
+import relational_schema as rs  # noqa: E402
 import dv8_metrics  # noqa: E402
 import judge  # noqa: E402
 import cli  # noqa: E402
@@ -134,8 +136,8 @@ class TestNewMeasures(unittest.TestCase):
              "ast": {"files": [{"path": "a.js", "loc": 100, "test": False, "frontend": False}, {"path": "a.test.js", "loc": 10, "test": True, "frontend": False}],
                      "imports": [], "testCases": [{"file": "a.test.js", "line": 1, "asserts": False}],
                      "docs": [{"file": "a.js", "line": 1, "name": "f", "documented": True}, {"file": "a.js", "line": 5, "name": "g", "documented": False}],
-                     "components": [], "hooks": [], "security": {"evalCalls": [{"file": "a.js", "line": 3}], "secrets": [], "nosqlInjection": []},
-                     "schemas": [{"fieldTypes": {"name": "String", "qty": "Number"}}]}}
+                     "components": [], "hooks": [], "security": {"evalCalls": [{"file": "a.js", "line": 3}], "secrets": [], "sqlInjection": []}},
+             "schema": {"tables": {"items": {"columns": {"name": {"name": "name"}, "qty": {"name": "qty"}}}}}}
         r = {c["id"]: c for c in ev.supplementary_indicators(m)}
         self.assertEqual(r["tests_without_assertions"]["status"], "review")
         self.assertEqual(r["doc_jsdoc"]["value"], 50.0); self.assertEqual(r["doc_jsdoc"]["status"], "ok")
@@ -168,52 +170,143 @@ class TestNewMeasures(unittest.TestCase):
         m["packages"]["packages"][0]["dependencies"] = {"morgan": "1"}
         self.assertEqual(ev.eval_observability(m, {}, Opts())[0]["C1"]["value"], 1.0)
 
-    def test_data_model_detects_conflicting_types(self):
-        sch = lambda n, qty: {"file": "m.js", "line": 1, "name": n, "fields": 3, "required": 1, "validated": 0, "refs": 0, "embedded": 0,
-                              "indexedFields": 0, "schemaIndexCalls": 0, "fieldTypes": {"name": "String", "qty": qty, "x": "Date"}}
-        m = {"ast": {"schemas": [sch("a", "Number"), sch("b", "String")], "populateCalls": []}}
-        crit = ev.eval_data_model(m, {}, Opts())[0]
-        self.assertIsNone(crit["C5"]["ok"]); self.assertEqual(crit["C5"]["suggested"], False)
-        self.assertEqual(len(crit["C5"]["value"]["conflicts"]), 1)
-
-    @staticmethod
-    def _model(**mongo):
-        sch = lambda n: {"file": "m.js", "line": 1, "name": n, "fields": 4, "required": 3, "validated": 1, "refs": 0, "embedded": 0,
-                         "indexedFields": 0, "schemaIndexCalls": 0, "fieldTypes": {}}
-        col = lambda objectid, indexes: {"objectid": objectid, "indexes": [{"name": "_id_", "key": {"_id": 1}}] + indexes,
-                                         "fields": [], "mixed_type_fields": [], "arrays": [], "size_bytes": {"max": 500}}
-        ix = lambda field: {"name": field + "_1", "key": {field: 1}}
-        cols = {"orders": col(["userId"], [ix("userId")]), "users": col([], [ix("email")])}
-        cols.update(mongo.get("cols", {}))
-        return {"ast": {"schemas": [sch("Order"), sch("User")], "populateCalls": [], "queryFields": mongo.get("q", [])},
-                "mongo": {"collections": cols, "relations": mongo.get("rel", [])}}
-
-    def test_c4_with_real_database_requires_index_on_queried_fields(self):
-        q = lambda fields: {"file": "s.js", "line": 3, "model": "Order", "call": "find", "fields": fields, "sort": [], "inLoop": False}
-        ok = ev.eval_data_model(self._model(q=[q(["userId"])]), {}, Opts())[0]["C4"]
-        self.assertTrue(ok["ok"]); self.assertEqual(ok["source"], "auto (live database)")
-        with_id = ev.eval_data_model(self._model(q=[q(["_id", "status"])]), {}, Opts())[0]["C4"]
-        self.assertTrue(with_id["ok"])  # filters by _id: covered by the _id index
-        bad = ev.eval_data_model(self._model(q=[q(["userId"]), q(["status"])]), {}, Opts())[0]["C4"]
-        self.assertFalse(bad["ok"]); self.assertEqual(bad["value"]["unindexed_queries_pct"], 50.0)
-        no_rel = ev.eval_data_model(self._model(cols={"orders": {"objectid": ["userId"], "indexes": [{"name": "_id_", "key": {"_id": 1}}, {"name": "x", "key": {"x": 1}}],
-                                                                 "fields": [], "mixed_type_fields": [], "arrays": [], "size_bytes": None}}), {}, Opts())[0]["C4"]
-        self.assertFalse(no_rel["ok"])
-
-    def test_c1_detects_implicit_relations_from_the_data(self):
-        rel = {"collection": "orders", "field": "userId", "type": "String", "target": "users", "distinct": 5, "match": 1.0, "orphans": 0.0}
-        c1 = ev.eval_data_model(self._model(rel=[rel]), {}, Opts())[0]["C1"]
-        self.assertFalse(c1["ok"]); self.assertEqual(c1["value"]["implicit_relations"], ["orders.userId → users"])
-        declared = dict(rel, type="ObjectId", orphans=0.2, match=0.8)
-        c1 = ev.eval_data_model(self._model(rel=[declared]), {}, Opts())[0]["C1"]
-        self.assertTrue(c1["ok"]); self.assertEqual(len(c1["value"]["orphans"]), 1)
-
-    def test_data_model_helpers(self):
-        self.assertEqual(ev.collection_of("Order", ["orders", "users"]), "orders")
-        self.assertEqual(ev.collection_of("Category", ["categories"]), "categories")
-        self.assertIsNone(ev.collection_of("productRepository", ["products"]))
+    def test_naming_convention_helper(self):
         self.assertEqual(len(ev.mixed_naming_convention({"unit_price", "createdAt", "_id"})), 1)
         self.assertEqual(ev.mixed_naming_convention({"createdAt", "userId"}), [])
+
+
+FIX = ROOT / "tests" / "fixtures"
+RUBRIC_REL = ev.RUBRIC["relational"]
+
+
+def extract_sql(text):
+    return rs.extract([("x.sql", text)], {}, RUBRIC_REL)["tables"]
+
+
+class TestSqlSchema(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.t = rs.extract([("schema_ok.sql", (FIX / "schema_ok.sql").read_text(encoding="utf-8"))], {}, RUBRIC_REL)
+
+    def test_tables_columns_and_primary_keys(self):
+        T = self.t["tables"]
+        self.assertEqual(sorted(T), ["order_items", "orders", "products", "users"])
+        self.assertEqual(T["users"]["primary_key"], ["id"]); self.assertEqual(T["order_items"]["primary_key"], ["order_id", "product_id"])
+        c = T["products"]["columns"]
+        self.assertEqual((c["price"]["type"], c["price"]["family"], c["price"]["nullable"]), ("numeric(10,2)", "numeric", False))
+        self.assertTrue(c["description"]["nullable"]); self.assertEqual(c["id"]["family"], "uuid")
+        self.assertEqual(T["users"]["columns"]["id"]["family"], "integer"); self.assertFalse(T["users"]["columns"]["id"]["nullable"])  # serial
+        self.assertEqual(T["orders"]["columns"]["status"]["default"], "'pending'")
+
+    def test_foreign_keys_unique_checks_and_indexes_with_their_source(self):
+        T = self.t["tables"]
+        fks = {(tuple(f["columns"]), f["ref_table"], tuple(f["ref_columns"])) for t in T.values() for f in t["foreign_keys"]}
+        self.assertEqual(fks, {(("user_id",), "users", ("id",)), (("order_id",), "orders", ("id",)), (("product_id",), "products", ("id",))})
+        self.assertEqual(T["orders"]["foreign_keys"][0]["on_delete"], "CASCADE")
+        self.assertEqual(T["users"]["unique"][0]["columns"], ["email"])
+        self.assertEqual({tuple(c["columns"]) for c in T["products"]["checks"]}, {("price",), ("stock",)})
+        self.assertEqual([i["columns"] for i in T["orders"]["indexes"]], [["user_id"]])
+        self.assertEqual({el["source"] for t in T.values() for el in t["foreign_keys"] + t["indexes"]}, {"sql"})
+        self.assertEqual(self.t["sources"], {"sql": 4})
+
+    def test_alter_table_drop_and_comments_and_down_sections(self):
+        T = extract_sql("""
+            -- comment; with a semicolon
+            CREATE TABLE "Weird Name" (id int PRIMARY KEY, "camelCol" text, note text DEFAULT 'a;b'); /* block; comment */
+            CREATE TABLE a (id int, b_id int);
+            ALTER TABLE a ADD COLUMN c numeric(5, 2) NOT NULL, ADD CONSTRAINT a_pk PRIMARY KEY (id);
+            ALTER TABLE a ADD FOREIGN KEY (b_id) REFERENCES "Weird Name" (id);
+            ALTER TABLE a ALTER COLUMN b_id SET NOT NULL;
+            CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS a_c_uq ON a (lower(c::text), b_id DESC);
+            CREATE TABLE gone (id int); DROP TABLE IF EXISTS gone;
+            CREATE FUNCTION f() RETURNS void AS $$ BEGIN CREATE TABLE inside_function (x int); END $$ LANGUAGE plpgsql;
+            -- migrate:down
+            DROP TABLE a;
+        """)
+        self.assertEqual(sorted(T), ["Weird Name", "a"])  # quoted names keep their case; the DROP in the down section is ignored
+        self.assertIn("camelCol", T["Weird Name"]["columns"]); self.assertEqual(T["Weird Name"]["columns"]["note"]["default"], "'a;b'")
+        a = T["a"]
+        self.assertEqual(a["primary_key"], ["id"]); self.assertEqual(a["columns"]["c"]["type"], "numeric(5,2)")
+        self.assertFalse(a["columns"]["b_id"]["nullable"]); self.assertEqual(a["foreign_keys"][0]["ref_table"], "Weird Name")
+        self.assertEqual(a["foreign_keys"][0]["ref_columns"], ["id"])
+        self.assertTrue(a["indexes"][0]["unique"]); self.assertEqual(a["indexes"][0]["columns"], ["lower(c::text)", "b_id"])
+
+    def test_inline_references_without_columns_resolve_to_the_target_primary_key(self):
+        T = extract_sql("CREATE TABLE p (code text PRIMARY KEY); CREATE TABLE c (id int PRIMARY KEY, p_code text REFERENCES p);")
+        self.assertEqual(T["c"]["foreign_keys"][0]["ref_columns"], ["code"])
+
+    def test_down_files_and_ignored_tables(self):
+        t = rs.extract([("001_up.sql", "CREATE TABLE a (id int PRIMARY KEY);"), ("001_down.sql", "DROP TABLE a;"),
+                        ("002.sql", 'CREATE TABLE "SequelizeMeta" (name text PRIMARY KEY);')], {}, RUBRIC_REL)
+        self.assertEqual(list(t["tables"]), ["a"])
+
+    def test_type_families(self):
+        fam = lambda x: rs.type_family(x, RUBRIC_REL)
+        self.assertEqual([fam("VARCHAR(10)"), fam("double precision"), fam("timestamp with time zone"), fam("int4[]"), fam("jsonb"), fam("citext")],
+                         ["string", "float", "timestamp", "array", "json", "string"])
+        self.assertIsNone(fam("geometry"))
+        self.assertEqual(rs.sequelize_type({"$expr": "Sequelize.DECIMAL(10, 2)"}, RUBRIC_REL), "numeric(10,2)")
+        self.assertEqual(rs.sequelize_type({"$expr": "DataTypes.ARRAY(DataTypes.TEXT)"}, RUBRIC_REL), "text[]")
+
+
+class TestSequelizeSchema(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        out = Path(cls.tmp.name)
+        cls.ast = ev.run_ast(FIX / "sequelize_app", out)
+        cls.ast_models = ev.run_ast(FIX / "sequelize_models_only", out)
+        cls.s = rs.extract([], cls.ast, RUBRIC_REL)
+        cls.m = rs.extract([], cls.ast_models, RUBRIC_REL)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_migrations_decide_their_tables_and_models_fill_the_rest(self):
+        T = self.s["tables"]
+        self.assertEqual({n: t["source"] for n, t in T.items()},
+                         {"users": "sequelize_migration", "orders": "sequelize_migration", "order_items": "sequelize_migration", "Coupons": "sequelize_model"})
+        self.assertEqual(self.s["sources"], {"sequelize_migration": 3, "sequelize_model": 1})
+        # the model of `users` says email is nullable; the migration (higher preference) says NOT NULL
+        self.assertFalse(T["users"]["columns"]["email"]["nullable"])
+
+    def test_migration_operations_createTable_addConstraint_addIndex_and_down_ignored(self):
+        T = self.s["tables"]
+        self.assertEqual(T["order_items"]["primary_key"], ["order_id", "product_ref"])  # addConstraint 'primary key'
+        self.assertEqual([(f["columns"], f["ref_table"], f["source"]) for f in T["order_items"]["foreign_keys"]],
+                         [(["order_id"], "orders", "sequelize_migration")])
+        self.assertEqual(T["orders"]["checks"][0]["columns"], ["total"])
+        self.assertEqual([i["columns"] for i in T["orders"]["indexes"]], [["user_id"]])  # removeIndex lives in `down`: ignored
+        self.assertEqual(T["orders"]["columns"]["total"]["type"], "numeric(12,2)")
+        self.assertEqual(T["orders"]["foreign_keys"][0]["on_delete"], "CASCADE")
+        self.assertEqual(T["users"]["columns"]["name"]["type"], "varchar(100)"); self.assertIn("users", T)  # dropTable in `down` ignored
+
+    def test_model_only_table_gets_timestamps_default_pk_and_association_columns(self):
+        c = self.s["tables"]["Coupons"]
+        self.assertEqual(c["primary_key"], ["id"]); self.assertIn("createdAt", c["columns"])
+        self.assertEqual([(f["columns"], f["ref_table"], f["source"]) for f in c["foreign_keys"]], [(["UserId"], "users", "sequelize_model")])
+        self.assertEqual(self.s["model_tables"]["Order"], "orders")
+
+    def test_models_only_app_belongsToMany_hasMany_and_belongsTo(self):
+        T = self.m["tables"]
+        self.assertEqual(sorted(T), ["Courses", "Enrollments", "Students", "Teachers"])
+        self.assertEqual(T["Enrollments"]["primary_key"], ["StudentId", "CourseId"])
+        self.assertEqual({(f["columns"][0], f["ref_table"]) for f in T["Enrollments"]["foreign_keys"]}, {("StudentId", "Students"), ("CourseId", "Courses")})
+        self.assertEqual([(f["columns"], f["ref_table"]) for f in T["Courses"]["foreign_keys"]], [(["teacherId"], "Teachers")])  # hasMany + belongsTo: one FK
+        self.assertNotIn("createdAt", T["Teachers"]["columns"])  # timestamps: false
+        self.assertEqual(T["Courses"]["columns"]["price"]["family"], "float")
+
+    def test_query_filters_and_sql_strings_from_the_ast(self):
+        q = {(x["model"], x["call"]): x for x in self.ast["queryFields"]}
+        self.assertEqual(q[("Order", "findAll")]["fields"], ["user_id"]); self.assertEqual(q[("Order", "findAll")]["sort"], ["created_at"])
+        self.assertEqual(q[("User", "findOne")]["fields"], ["email", "name"])  # Op.or branches are walked
+        self.assertEqual(len(self.ast["security"]["sqlInjection"]), 1)  # only the template with ${} (the :named one is parameterized)
+        self.assertEqual(rs.table_for_model("Order", self.s), "orders"); self.assertEqual(rs.table_for_model("Coupon", self.s), "Coupons")
+        self.assertIsNone(rs.table_for_model("orderRepository", self.s))
+
+    def test_no_relational_schema_means_no_tables(self):
+        self.assertEqual(rs.extract([], {}, RUBRIC_REL)["tables"], {})
 
 
 class TestRiskSummary(unittest.TestCase):
@@ -232,7 +325,7 @@ class TestRiskSummary(unittest.TestCase):
 
 def artifact_model(**over):
     m = {"readme": "", "env_example": False, "contract": {"files": []},
-         "ast": {"files": [{"path": "a.js", "test": False}], "schemas": [{"name": "A"}]},
+         "ast": {"files": [{"path": "a.js", "test": False}]}, "schema": {"tables": {"a": {}}, "sources": {"sql": 1}},
          "packages": {"packages": [{"dependencies": {}, "devDependencies": {}}]},
          "tests_static": {"test_cases": 0, "test_files": []}, "tests_run": {"executed": False}}
     m.update(over)
@@ -257,7 +350,7 @@ class TestArtifacts(unittest.TestCase):
 
     def test_missing_core_artifact_makes_the_point_not_evaluable(self):
         from unittest import mock
-        m = artifact_model(ast={"files": [{"path": "a.js", "test": False}], "schemas": []}, readme="")
+        m = artifact_model(schema={"tables": {}, "sources": {}}, readme="")
         m["artifacts"] = ev.inventory_artifacts(m, [])
         boom = mock.Mock(side_effect=AssertionError("must not run without its core artifact"))
         stub = lambda *a: ({"C1": {"ok": True, "desc": "", "value": None, "source": "auto", "suggested": None}}, {}, [], "ok", None)
