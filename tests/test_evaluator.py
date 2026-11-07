@@ -992,7 +992,7 @@ class TestRuntimesAndArtifacts(unittest.TestCase):
         m, a = self.artifacts({"found": False, "diagram": False, "file": None, "entities": {}})
         self.assertFalse(a["er_model"]["present"]); self.assertIn("not found", a["er_model"]["detail"])
         f = {x["artifact"]: x for x in ev.artifact_findings(m)}
-        self.assertEqual((f["er_model"]["severity"], f["er_model"]["affected_points"]), ("Medium", ["data_model"]))
+        self.assertEqual((f["er_model"]["severity"], f["er_model"]["affected_points"]), ("Marginal", ["data_model"]))
 
     def test_an_er_file_without_a_diagram_is_also_absent_and_a_real_diagram_is_present(self):
         _, a = self.artifacts({"found": True, "diagram": False, "file": "docs/entity-relationship-model.md", "entities": {}})
@@ -1231,10 +1231,10 @@ class TestArtifacts(unittest.TestCase):
         self.assertTrue(a["source_code"]["present"] and a["manifests"]["present"] and a["config_deploy"]["present"] and a["glossary"]["present"])
         self.assertFalse(a["test_suite"]["present"] or a["contract_spec"]["present"] or a["diagrams"]["present"])
 
-    def test_missing_test_suite_is_a_high_finding_other_gaps_are_medium(self):
+    def test_missing_test_suite_is_a_critical_finding_other_gaps_are_marginal(self):
         m = artifact_model(); m["artifacts"] = ev.inventory_artifacts(m, [])
         f = {x["artifact"]: x["severity"] for x in ev.artifact_findings(m)}
-        self.assertEqual(f["test_suite"], "High"); self.assertEqual(f["contract_spec"], "Medium")
+        self.assertEqual(f["test_suite"], "Critical"); self.assertEqual(f["contract_spec"], "Marginal")
         self.assertNotIn("glossary", f)  # optional artifacts never produce findings
 
     def test_missing_core_artifact_makes_the_point_not_evaluable(self):
@@ -1248,8 +1248,8 @@ class TestArtifacts(unittest.TestCase):
         dm = pts["data_model"]
         self.assertFalse(dm["evaluable"]); self.assertIsNone(dm["level"]); self.assertEqual(dm["severity"], "Not evaluable")
         self.assertEqual(dm["confidence"], "n/a"); self.assertIsNone(dm["score_min"])
-        t = pts["tests"]  # no test suite: evaluated normally, but with a high-severity finding and lower confidence
-        self.assertTrue(t["evaluable"]); self.assertEqual(t["severity"], "High"); self.assertEqual(t["confidence"], "medium")
+        t = pts["tests"]  # no test suite: evaluated normally, but with a Critical finding (IEEE 1028, 6.8.3) and lower confidence
+        self.assertTrue(t["evaluable"]); self.assertEqual(t["severity"], "Critical"); self.assertEqual(t["confidence"], "medium")
 
 
 def point(pid, subs, level, severity, evaluable=True):
@@ -1265,22 +1265,22 @@ class TestDashboard(unittest.TestCase):
         return ev.risk_dashboard(points, prof, m)
 
     def test_semaphore_cutoffs_and_escalation(self):
-        pts = [point("p1", ["Testability"], "Meets", "None"), point("p2", ["Modularity"], "Fails", "High")]
+        pts = [point("p1", ["Testability"], "Meets", "Negligible"), point("p2", ["Modularity"], "Fails", "Critical")]
         subs = {"Testability": {"min": 80.0, "max": 80.0}, "Analyzability": {"min": 50.0, "max": 50.0}, "Modularity": {"min": 90.0, "max": 90.0}, "Modifiability": {"min": 10.0, "max": 10.0}}
         d = self.build(pts, subs)["semaphore"]
         self.assertEqual((d["Testability"]["state"], d["Analyzability"]["state"], d["Modifiability"]["state"]), ("green", "yellow", "red"))
         self.assertEqual(d["Modularity"]["state"], "red"); self.assertTrue(d["Modularity"]["escalated"])  # good average, forced red by a high finding
 
     def test_heatmap_unrelated_not_evaluable_and_escalated_cells(self):
-        pts = [point("p1", ["Testability"], "Meets", "None"), point("p2", ["Modularity", "Modifiability"], None, "Not evaluable", evaluable=False),
-               point("p3", ["Modularity"], "Partial", "High")]
+        pts = [point("p1", ["Testability"], "Meets", "Negligible"), point("p2", ["Modularity", "Modifiability"], None, "Not evaluable", evaluable=False),
+               point("p3", ["Modularity"], "Partial", "Critical")]
         subs = {s: {"min": 50.0, "max": 50.0} for s in ("Testability", "Analyzability", "Modularity", "Modifiability")}
         cells = {(c["point"], c["subcharacteristic"]): c for c in self.build(pts, subs)["heatmap"]}
         self.assertEqual(cells[("p1", "Testability")]["state"], "green")
         self.assertEqual(cells[("p1", "Modularity")]["state"], "unrelated")  # not related in Table 24
         self.assertEqual(cells[("p2", "Modularity")]["state"], "not_evaluable")  # distinct from Meets
         c = cells[("p3", "Modularity")]
-        self.assertEqual((c["state"], c["escalated"]), ("red", True))  # Partial but high severity
+        self.assertEqual((c["state"], c["escalated"]), ("red", True))  # Partial but Critical severity
 
     def test_hotspots_rank_worst_files(self):
         h = self.build([], {})["hotspots"]
@@ -1346,3 +1346,113 @@ class TestCLI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIso5055ScoredCriteria(unittest.TestCase):
+    """CWE-1080, CWE-561 and CWE-1041: weaknesses of the ISO/IEC 5055 maintainability measure that now change a level."""
+
+    def cohesion(self, files):
+        fns = [{"file": "a.js", "line": 1, "name": "f", "fanout": 0, "test": False}]
+        m = {"ast": {"functions": fns, "files": files, "classes": []}, "graph": {"modules": [], "cycles": []}}
+        return ev.eval_cohesion(m, {"dv8": {"DL": 0.9}}, Opts)[0]
+
+    def test_cwe1080_file_above_the_threshold_fails_c4(self):
+        c = self.cohesion([{"path": "big.js", "loc": 1001, "test": False}])
+        self.assertFalse(c["C4"]["ok"]); self.assertEqual(c["C4"]["value"], 1)
+
+    def test_cwe1080_file_at_the_threshold_passes(self):
+        self.assertTrue(self.cohesion([{"path": "ok.js", "loc": 1000, "test": False}])["C4"]["ok"])
+
+    def test_cwe1080_ignores_test_files(self):
+        self.assertTrue(self.cohesion([{"path": "big.test.js", "loc": 5000, "test": True}])["C4"]["ok"])
+
+    def coupling(self, files, modules):
+        m = {"ast": {"files": files, "functions": [], "classes": []},
+             "graph": {"modules": modules, "cycles": []},
+             "packages": {"unused": [], "direct": 4, "depcheck_ok": True}}
+        return ev.eval_coupling(m, {"dv8": {"PC": 0.1}}, Opts)[0]
+
+    def test_cwe561_orphan_production_file_fails_c5(self):
+        c = self.coupling([{"path": "index.js", "test": False}, {"path": "used.js", "test": False}, {"path": "orphan.js", "test": False}],
+                          [{"source": "index.js", "deps": [{"to": "used.js", "module": "used.js", "local": True}]}])
+        self.assertFalse(c["C5"]["ok"]); self.assertEqual(c["C5"]["value"], 1)
+
+    def test_cwe561_entry_points_and_imported_files_are_not_dead(self):
+        c = self.coupling([{"path": "index.js", "test": False}, {"path": "used.js", "test": False}],
+                          [{"source": "index.js", "deps": [{"to": "used.js", "module": "used.js", "local": True}]}])
+        self.assertTrue(c["C5"]["ok"])
+
+    def test_mmo_1_g_no_longer_counts_cycles_twice(self):
+        """A cycle must lower C1 only: counting it in the C2 numerator let one defect lower two criteria."""
+        mods = [{"source": "a.js", "deps": [{"to": "b.js", "module": "b.js", "local": True}]},
+                {"source": "b.js", "deps": [{"to": "a.js", "module": "a.js", "local": True}]}]
+        m = {"ast": {"files": [{"path": "a.js", "test": False}, {"path": "b.js", "test": False}], "functions": [], "classes": []},
+             "graph": {"modules": mods, "cycles": [["a.js", "b.js"]]},
+             "packages": {"unused": [], "direct": 4, "depcheck_ok": True}}
+        c = ev.eval_coupling(m, {"dv8": {"PC": 0.1}}, Opts)[0]
+        self.assertFalse(c["C1"]["ok"])   # the cycle is reported here
+        self.assertTrue(c["C2"]["ok"])    # and no longer penalised again here
+        self.assertEqual(c["C2"]["value"], 1.0)
+
+    def cyclomatic(self, dup=None, cc=1):
+        fns = [{"file": "a.js", "line": 1, "name": "f", "cc": cc, "cog": 1, "test": False}]
+        m = {"ast": {"functions": fns}}
+        if dup is not None:
+            m["duplication"] = {"ok": True, "pct": dup, "clones": 1, "top": ["src/a.js"]}
+        return ev.eval_cyclomatic(m, {}, Opts)
+
+    def test_cwe1041_duplication_within_the_threshold_keeps_meets(self):
+        crits, _, _, _, level = self.cyclomatic(dup=10.0)
+        self.assertTrue(crits["C3"]["ok"]); self.assertEqual(level[0], "Meets")
+
+    def test_cwe1041_duplication_above_the_threshold_lowers_the_level(self):
+        crits, _, _, _, level = self.cyclomatic(dup=20.0)
+        self.assertFalse(crits["C3"]["ok"]); self.assertEqual(level[0], "Partial")
+
+    def test_cwe1041_pending_when_jscpd_did_not_run_gives_a_range(self):
+        crits, _, _, _, level = self.cyclomatic(dup=None)
+        self.assertIsNone(crits["C3"]["ok"]); self.assertEqual(crits["C3"]["source"], "pending (jscpd)")
+        self.assertEqual((level[0], level[1], level[2]), (None, "Partial", "Meets"))
+
+    def test_complexity_leveling_is_preserved_when_duplication_is_fine(self):
+        self.assertEqual(self.cyclomatic(dup=1.0, cc=1)[4][0], "Meets")       # X = 1.00
+        self.assertEqual(self.cyclomatic(dup=1.0, cc=99)[4][0], "Fails")      # X = 0.00
+
+
+class TestBackingTraceability(unittest.TestCase):
+    """Every threshold and weight must declare its source: it is what the thesis cites."""
+
+    VALID = {"normative_exact", "normative_alternate", "normative_zero_count", "function_only", "tool_parameter", "own_calibration"}
+
+    def test_every_threshold_declares_a_backing(self):
+        missing = [f"thresholds.{p}.{k}" for p, vals in ev.RUBRIC["thresholds"].items() for k in vals
+                   if not k.startswith("_") and f"thresholds.{p}.{k}" not in ev.RUBRIC["backing"]]
+        self.assertEqual(missing, [], f"without backing: {missing}")
+
+    def test_top_level_weights_and_scales_declare_a_backing(self):
+        for key in ("subcharacteristic_weights", "partial_min_fraction", "level_score", "level_severity",
+                    "risk_dashboard.semaphore", "risk_dashboard.hotspots_top_n", "supported_runtimes"):
+            self.assertIn(key, ev.RUBRIC["backing"])
+
+    def test_every_backing_entry_has_a_known_type_and_a_locator_when_normative(self):
+        for key, b in ev.RUBRIC["backing"].items():
+            if key.startswith("_"):
+                continue
+            self.assertIn(b["type"], self.VALID, key)
+            if b["type"].startswith("normative") or b["type"] == "function_only":
+                self.assertTrue(b.get("standard") and b.get("locator"), f"{key} claims {b['type']} without a standard and locator")
+
+    def test_normative_exact_entries_match_the_value_in_the_rubric(self):
+        for path, default in (("thresholds.cyclomatic.function_threshold", 20), ("thresholds.cohesion.fanout_max", 5),
+                              ("thresholds.cohesion.file_loc_max", 1000), ("thresholds.hierarchies.depth_max", 7),
+                              ("thresholds.hierarchies.children_max", 10), ("thresholds.dead_code.structural_max_files", 0)):
+            group, key = path.split(".")[1], path.split(".")[2]
+            b = ev.RUBRIC["backing"][path]
+            self.assertEqual(b["type"], "normative_exact", path)
+            self.assertEqual(b["standard_default"], default, path)
+            self.assertEqual(ev.RUBRIC["thresholds"][group][key], default, f"{path} drifted from the ISO/IEC 5055 default")
+
+    def test_ascmm_coverage_adds_up(self):
+        c = ev.RUBRIC["backing"]["_coverage_ascmm"]
+        self.assertEqual(c["total_weaknesses"] - len(c["not_applicable_to_js_ts"]), c["applicable"])
+        self.assertEqual(len(c["scored"]) + len(c["informational"]) + len(c["not_detected"]), c["applicable"])

@@ -28,10 +28,15 @@ What the framework does **not** guarantee. Cite them alongside any result.
   computed on the graph (strongly connected components), not with DV8.
 - **Coverage with `node --test`** is measured with `c8 --all`. If `c8` is not installed, Node's native coverage is used, which
   overestimates branches because the files that no test loads do not enter the denominator.
-- **Duplication (jscpd)** is informational and detects textual clones by tokens; it does not see semantic duplication. The 5% threshold
-  is an external practice, not our own study.
-- **Cognitive complexity and dead code** are our own approximations, not the output of SonarQube or `knip`. Dead
-  code only sees files without importers; it does not detect unused exports or functions. Both are informational.
+- **Duplication (jscpd)** is now scored (Cyclomatic complexity C3) but detects textual clones by tokens only; it does not see semantic
+  duplication. The 10% threshold is the default ISO/IEC 5055 publishes for CWE-1041, but the standard applies it to the instructions of
+  each clone instance while `jscpd` reports duplicated lines across the whole application: the number is the standard's, the
+  measurement basis is not. It is also looser than the 5% it replaced.
+- **Cognitive complexity** is our own approximation, not the output of SonarQube, and stays informational.
+- **Dead code (CWE-561)** is now scored (Coupling C5) but only sees production files that nobody imports, which is the *structural*
+  half of the weakness, for which ISO/IEC 5055 sets the threshold at 0. It does not detect unused exports or functions, nor unreachable
+  statements inside a function, so the 5% the standard allows for *logically* dead code is not evaluated. It is our own approximation,
+  not the output of `knip`.
 - **Data model C2/C5 suggestions and contracts C4** are heuristics over the code and schema text (repeating groups, columns that copy a
   column of the referenced table, type names, validation middleware names). C2 does not verify third normal form: it only looks for the symptoms listed
   in `docs/methodology.md`. They do not compare the schema with the contract field by field.
@@ -125,3 +130,33 @@ What the framework does **not** guarantee. Cite them alongside any result.
 
 Running the tests of a model-generated application runs untrusted code: dependencies and `npm install` scripts
 included. Use a virtual machine or a disposable container.
+
+## Backing of the thresholds
+
+- **Only ISO/IEC 5055:2021 supplies numeric thresholds** among the standards of this study. ISO/IEC 25010:2023 is a quality model and
+  defines no measure; ISO/IEC 25023:2016 supplies measurement functions but its Scope states that it "does not assign ranges of values
+  of the measures to rated levels or to grades of compliance"; IEEE Std 1028-2008 governs the review process, not the metrics. Every
+  threshold is classified by strength of backing in `rubric.json` under `backing`, and the ones typed `own_calibration` have **no
+  source among these standards**. Read that map before citing any threshold as standards-based.
+- **DL and PC have no normative backing.** Decoupling Level and Propagation Cost are metrics of the DV8 tool: neither is a measure of
+  ISO/IEC 25023 nor a weakness of ISO/IEC 5055, so neither the metrics nor their cut-offs (60% and 20%) rest on the standards of this
+  study. They are declared as additional quality measures under ISO/IEC 25023 Clause 2(e), whose specification format lives in
+  ISO/IEC 25021, which is not part of this study.
+- **Line and branch coverage are not a testability measure.** ISO/IEC 25023 does carry a test coverage measure, RMa-4-S, but it sits
+  under Reliability/Maturity, is external, and defines coverage as the capabilities, scenarios or functions actually performed against
+  those included in the test suites, not as line or branch coverage. The 70% and 50% cut-offs have no source. The genuine generic
+  testability measure, MTe-1-G, is not implemented, so the subcharacteristic carrying the largest weight (30%) rests on a measure the
+  standard places elsewhere.
+- **Two highly recommended measures of modifiability are missing.** MMd-1-G and MMd-2-G are the only Generic measures of modifiability
+  and both are classified HR in ISO/IEC 25023, Annex A. Both require actual modification events, which a freshly generated application
+  does not have, so they are excluded under Clause 2(b). Section 6.2 of the standard recommends relating internal measures to the
+  external measures they are meant to predict, so the profile this framework produces is not validated against them.
+- **The weights come from a panel of four with low concordance.** Kendall's W over the rankings of Table 23 of PIA02 is 0.158
+  (chi-square 2.52, 4 df, critical value 9.49 at alpha 0.05): not statistically significant. The ranking of E4 also sums 17 instead of
+  15, because it assigns rank 5 twice and omits rank 3. Treat 30/24/24/22 as the priority profile of a small, dispersed panel and
+  report a sensitivity analysis, including the uniform 25% profile.
+- **The Technologies point has no backing at all.** Dependency obsolescence is not a weakness of the maintainability measure and is not
+  among the analysability or modifiability measures of ISO/IEC 25023. Counting high and critical vulnerabilities inside a
+  maintainability point also borrows from the Automated Source Code *Security* Measure, which the standard does not authorize.
+- **Ten of the 25 applicable ASCMM weaknesses are not detected** (`backing._coverage_ascmm`): CWE-407, 480, 570, 571, 783, 1064, 1084,
+  1085, 1090 and 1095. Four of the 29 do not apply to JavaScript or TypeScript.

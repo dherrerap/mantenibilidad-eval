@@ -74,7 +74,12 @@ For a point with *n* criteria:
 - A failing **mandatory** criterion forces "Fails": `contracts.C1` (machine-readable contract) and `tests.C2`
   (tests exist and pass).
 
-Layers and cyclomatic complexity additionally use percentage thresholds (see below).
+Layers additionally uses percentage thresholds (see below).
+
+The severity of each point follows the anomaly ranking of **IEEE Std 1028-2008, 6.8.3**: Meets → *Negligible*, Partial → *Marginal*,
+Fails → *Critical*. The fourth rank, *Catastrophic*, is not used: 6.8.3(a) reserves it for anomalies whose consequences are loss of
+life, failure of mission or very large economic or social loss and for which mitigation is not possible. *Critical* is the top rank in
+use and is what forces red in the dashboard.
 
 ## Scores
 
@@ -93,11 +98,11 @@ or completes) or **manual**.
 | Point | Subcharacteristics | Criteria | Type |
 |---|---|---|---|
 | **Layers** | Modularity | C1 at least 2 identifiable layers · C2 violations ≤ 5% of inter-layer dependencies (Meets at 0%, Partial up to 5%). Only presentation→business and business→data are allowed. | auto, with review if the evidence is ambiguous |
-| **Cyclomatic complexity** | Modularity, Modifiability | X = 1 − (functions with CC > 20)/(total). Meets X ≥ 0.98 · Partial X ≥ 0.95. | auto |
-| **Cohesion** | Modularity, Modifiability | C1 ≤ 5% of functions with fan-out > 5 · C2 DL (DV8) ≥ 60% · C3 checklist with no findings ("god" module, mixed responsibilities, fragmentation). | mixed |
+| **Cyclomatic complexity** | Modularity, Modifiability | C1 X ≥ 0.95 · C2 X ≥ 0.98, where X = 1 − (functions with CC > 20)/(total) · C3 ≤ 10% duplicated lines (CWE-1041). | auto |
+| **Cohesion** | Modularity, Modifiability | C1 ≤ 5% of functions with fan-out > 5 · C2 DL (DV8) ≥ 60% · C3 checklist with no findings ("god" module, mixed responsibilities, fragmentation) · C4 0 production files over 1000 LOC (CWE-1080). | mixed |
 | **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. | auto |
 | **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime, framework and PostgreSQL supported (endoflife.date; table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (`npm audit`). Queries the npm registry. | auto with network |
-| **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (`depcheck`). | auto |
+| **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (`depcheck`) · C5 0 structurally dead production files (CWE-561). | auto |
 | **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 and C5 are suggestions |
 | **Contracts** | Modularity, Testability | C1 machine-readable contract (OpenAPI…) · C2 0 Spectral errors · C3 contract covers ≥ 90% of routes · C4 input validation consistent with the contract. | mixed |
 | **Observability** | Analyzability | C1 ≥ 80% of critical events logged (approximated with `catch` blocks that log or delegate to a handler that logs) · C2 structured logger and no `console.*` · C3 centralized error handling · C4 health check, metrics or traces. | mixed |
@@ -114,6 +119,11 @@ or completes) or **manual**.
 - **Configuration C2.** Uses SonarQube rule S1192 (`no-duplicate-string` in `eslint-plugin-sonarjs`): threshold of 3
   repetitions, minimum length of 10, no literals made only of word characters and no `application/json`. Values
   verified against the plugin's code. It is an **absolute** rule: it does not depend on the other evaluated applications.
+- **MMo-1-G (Coupling C2).** The numerator counts the modules whose outgoing coupling is bounded. It no longer counts the absence of
+  dependency cycles: that is criterion C1 of the same point (CWE-1047), and counting it in both let a single defect lower two of the
+  five criteria. ISO/IEC 25023 defines the denominator as the components *specified* as required to be independent; a generated
+  application specifies no such set, so every module is used, which is the conservative reading. Modification declared under
+  Clause 2(d) of the standard.
 - **DL and PC (DV8).** They are computed on a dependency matrix built from the module graph, with the dependency
   type `Import`. DV8 does not analyze JavaScript or TypeScript by itself. The values **without isolated files** are used,
   because DV8 reports 100% DL when there is an isolated file (for example `vite.config.js`) and that distorts the result.
@@ -125,13 +135,17 @@ or completes) or **manual**.
   runner (`node --test`) it is run under `c8 --all`, which also instruments the files that no test loads, so
   lines and branches have the full denominator. If `c8` is not installed it falls back to `--experimental-test-coverage`
   (unloaded files add 0% of lines and their branches do not enter the denominator).
-- **Code duplication.** `jscpd` (≥ 5 lines and ≥ 50 tokens, excluding tests and `node_modules`) gives the percentage of duplicated
-  lines and the largest clones. It is **informational**: it is shown in the Cyclomatic complexity sheet but does not change any
-  level; the reference threshold (5%) is in `rubric.json` (`thresholds.duplication`).
+- **Code duplication (CWE-1041).** `jscpd` (≥ 5 lines and ≥ 50 tokens, excluding tests and `node_modules`) gives the percentage of
+  duplicated lines and the largest clones. It is **scored** as criterion C3 of Cyclomatic complexity, with the threshold of 10% that
+  ISO/IEC 5055 publishes for CWE-1041 (`thresholds.duplication.pct_max`). Caveat recorded in `backing`: the standard sets 10% *of the
+  instructions in each clone instance*, while `jscpd` reports the percentage of duplicated lines across the whole application, so the
+  numbers coincide but the measurements do not. If `jscpd` did not run, C3 stays pending and the point's level becomes a range.
 - **Cognitive complexity** (SonarSource, approximate): +1 per control structure, plus the nesting level, and +1 per
   sequence of logical operators. Nested functions are measured separately. Informational; reference of 15 per function.
-- **Probable dead code.** Production files that no other file imports and that are not entry points (`index`, `server`,
-  `app`…). Informational; listed in the Coupling evidence.
+- **Structurally dead code (CWE-561).** Production files that no other file imports and that are not entry points (`index`, `server`,
+  `app`…). **Scored** as criterion C5 of Coupling, with the threshold of 0 that ISO/IEC 5055 sets for structurally dead code. The 5%
+  allowance the same weakness gives to *logically* dead code is not applied, because unreachable statements inside a function are not
+  detected.
 - **Supplementary indicators** (`supplementary.json` and section of `profile.md`; informational, not scored): test
   quality (cases without assertions, test LOC / production LOC, integration tests), documentation (% of functions with
   JSDoc, README topics), frontend (large components, components with many props, hooks without a dependency array,
@@ -210,6 +224,21 @@ automatic: there is a contract, there is a validation library, at least 90% of t
 validate (zod, Joi, yup, express-validator) exist as a property in the contract. Hierarchies C3 applies DV8's rules to the import
 graph. Observability C1 includes authentication and writes in addition to the `catch` blocks. Cohesion also reports DV8's IL
 (`dv8_metrics.py` computes it) and Coupling reports the cliques.
+
+## Source of every threshold
+
+`rubric.json` carries a top-level `backing` map that states, for every threshold and weight, where its value comes from, keyed by its
+dotted path. The `type` field grades the strength of the backing: `normative_exact` (the value equals the default published by
+ISO/IEC 5055), `normative_alternate` (the standard publishes a default and this rubric uses another, which ISO/IEC 5055 permits
+provided the alternate threshold is set before the analysis), `normative_zero_count` (ISO/IEC 5055 scores the weakness by counting
+occurrences, so requiring zero is the reading consistent with Clause 9), `function_only` (ISO/IEC 25023 supplies the measurement
+function but no cut-off, because its Scope states that it "does not assign ranges of values of the measures to rated levels or to
+grades of compliance"), `tool_parameter` (the value comes from a tool's rule) and `own_calibration` (no source among the standards of
+this study, declared under ISO/IEC 25023 Clause 2(e)). Only ISO/IEC 5055 supplies numeric thresholds; ISO/IEC 25010 supplies the
+quality model only and IEEE Std 1028 the review process only. `backing` also records the coverage of the 29 weaknesses of the
+Automated Source Code Maintainability Measure (`_coverage_ascmm`), the conformance statement for ISO/IEC 25023 Clause 2
+(`_conformance_25023`, including the exclusions and their rationale) and the one for IEEE Std 1028 (`_conformance_1028`). The
+evaluator's tests fail if a threshold has no backing entry or if a `normative_exact` value drifts from the standard's default.
 
 ## Traceability
 

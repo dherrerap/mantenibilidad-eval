@@ -1,5 +1,5 @@
 {
-  "_comment": "Framework parameters (Tables 24-27 of PIA02). Every editable threshold or weight lives here, not in the code.",
+  "_comment": "Framework parameters (Tables 24-27 of PIA02). Every editable threshold or weight lives here, not in the code. Every threshold and weight is traced to its source in the top-level `backing` map.",
   "subcharacteristic_weights": {
     "Testability": 0.30,
     "Analyzability": 0.24,
@@ -8,7 +8,8 @@
   },
   "partial_min_fraction": 0.5,
   "level_score": { "Meets": 1.0, "Partial": 0.5, "Fails": 0.0 },
-  "level_severity": { "Meets": "None", "Partial": "Medium", "Fails": "High" },
+  "level_severity": { "Meets": "Negligible", "Partial": "Marginal", "Fails": "Critical" },
+  "_level_severity": "Anomaly ranking of IEEE Std 1028-2008, 6.8.3. The fourth rank, Catastrophic, is not used: 6.8.3(a) reserves it for anomalies whose consequences are loss of life, failure of mission or very large economic or social loss and for which mitigation is not possible, which a maintainability finding on a generated application does not reach. Critical is the top rank in use and is what the dashboard escalation forces.",
   "points": {
     "layers":        { "name": "Separation of responsibilities between layers", "category": "Structure and modularity", "subcharacteristics": ["Modularity"], "type": "Automatable" },
     "cyclomatic":    { "name": "Cyclomatic complexity", "category": "Structure and modularity", "subcharacteristics": ["Modularity", "Modifiability"], "type": "Automatable" },
@@ -33,14 +34,14 @@
   "thresholds": {
     "layers": { "meets_max_violations_pct": 0.0, "partial_max_violations_pct": 5.0, "min_identifiable_layers": 2 },
     "cyclomatic": { "function_threshold": 20, "meets_X_min": 0.98, "partial_X_min": 0.95 },
-    "cohesion": { "fanout_max": 5, "pct_fanout_max": 5.0, "DL_min": 0.60, "god_loc_min": 300, "god_fanin_min": 8 },
+    "cohesion": { "fanout_max": 5, "pct_fanout_max": 5.0, "DL_min": 0.60, "file_loc_max": 1000, "god_loc_min": 1000, "god_fanin_min": 8 },
     "hierarchies": { "depth_max": 7, "children_max": 10 },
     "technologies": { "pct_major_outdated_max": 20.0, "vuln_high_critical_max": 0 },
     "coupling": { "outgoing_deps_max": 10, "X_min": 0.90, "PC_max": 0.20, "pct_unused_max": 10.0, "include_devdependencies": false },
     "cognitive": { "_comment": "Informational (does not change the level). SonarSource reference threshold for S3776: 15 per function.", "function_threshold": 15 },
-    "dead_code": { "_comment": "Informational. Production files that no other file imports and that are not entry points.", "entry_points": ["index", "server", "app", "main", "App", "setupTests", "reportWebVitals"] },
-    "supplementary": { "_comment": "Informational (do not change any level). Reference values from common practice, not from our own study.", "test_ratio_min": 0.3, "jsdoc_min_pct": 50.0, "component_loc_max": 150, "component_props_max": 5, "contract_fields_min_pct": 80.0 },
-    "duplication": { "_comment": "Informational (does not change any point's level). Reference threshold: 5% duplicated lines, a widespread practice (SonarQube).", "pct_max": 5.0, "min_lines": 5, "min_tokens": 50 },
+    "dead_code": { "_comment": "CWE-561. Production files that no other file imports and that are not entry points are treated as structurally dead code, for which ISO/IEC 5055 sets the threshold at 0. The 5% allowance that CWE-561 gives to logically dead code is not used because unreachable statements inside a function are not detected.", "structural_max_files": 0, "entry_points": ["index", "server", "app", "main", "App", "setupTests", "reportWebVitals"] },
+    "supplementary": { "_comment": "Informational (do not change any level). Reference values from common practice, not from our own study, except component_props_max (see backing).", "test_ratio_min": 0.3, "jsdoc_min_pct": 50.0, "component_loc_max": 150, "component_props_max": 7, "contract_fields_min_pct": 80.0 },
+    "duplication": { "_comment": "CWE-1041. Scored: it lowers the level of the Cyclomatic complexity point. jscpd detection parameters: clones of at least 5 lines and 50 tokens, excluding tests and node_modules.", "pct_max": 10.0, "min_lines": 5, "min_tokens": 50 },
     "data_model": { "_comment": "C3: minimum % of non-primary-key columns that declare some constraint (NOT NULL, UNIQUE, CHECK or FOREIGN KEY). C4: maximum % of distinct code query filters that no index can serve. Both values are carried over from the Mongo version of the rubric and have not been calibrated for relational schemas.", "constraints_min_pct": 50.0, "unindexed_queries_max_pct": 0.0 },
     "contracts": { "coverage_min": 90.0 },
     "observability": { "X_min": 0.80 },
@@ -52,6 +53,158 @@
       "dup_literal_min_len": 10,
       "dup_literal_ignore_word_only": true,
       "dup_literal_ignore": ["application/json"]
+    }
+  },
+  "backing": {
+    "_comment": "Source of every threshold and weight, keyed by its dotted path in this file. `type` says how strong the backing is: normative_exact = the value equals the default the standard publishes; normative_alternate = the standard publishes a default and this rubric uses another, which ISO/IEC 5055 permits provided the alternate threshold is set before the analysis; normative_zero_count = ISO/IEC 5055 scores the weakness by counting occurrences (Clause 9), so requiring zero is the reading consistent with the standard; function_only = ISO/IEC 25023 supplies the measurement function but no cut-off, because its Scope states that it 'does not assign ranges of values of the measures to rated levels or to grades of compliance'; tool_parameter = the value comes from a tool's rule, not from a standard; own_calibration = no source among the standards of this study, declared under ISO/IEC 25023 Clause 2(e). Only ISO/IEC 5055:2021 supplies numeric thresholds; ISO/IEC 25010:2023 supplies the quality model only, and IEEE Std 1028-2008 the review process only.",
+
+    "subcharacteristic_weights": { "type": "own_calibration", "standard": null, "locator": "PIA02, Table 23 and Table 29", "standard_default": null, "deviation": null,
+      "note": "Borda count over the expert panel's rankings (5 points to the first place, 1 to the fifth), renormalized over the four retained subcharacteristics: Testability 15, Analyzability 12, Modularity 12, Modifiability 11, base 50. Reusability (8) is excluded with its subcharacteristic. ISO/IEC 25023 Clause 2(a) permits selecting which subcharacteristics to evaluate but assigns no weights. Kendall's W over the four rankings is 0.158 (chi-square 2.52, 4 df, critical value 9.49 at alpha 0.05): the panel's concordance is not statistically significant, so these weights are a priority profile of a small and dispersed panel, not a consensus, and a sensitivity analysis is required. The ranking of E4 in Table 23 sums 17 instead of 15 because it assigns rank 5 twice and omits rank 3; the published weights are reproduced by taking that table as transcribed." },
+
+    "partial_min_fraction": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Half of the criteria met yields Partial. No standard of this study grades levels: ISO/IEC 25023 Scope declines to assign rated levels or grades of compliance." },
+    "level_score": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Meets 1, Partial 0.5, Fails 0. The three-level scale is closest to the three exit dispositions of IEEE Std 1028-2008, 6.5.6.5 (accept with no or with rework verification, accept with rework verification, reinspect), but that clause is a disposition of a review, not a scoring scale." },
+    "level_severity": { "type": "normative_exact", "standard": "IEEE Std 1028-2008", "locator": "6.8.3", "standard_default": "Catastrophic / Critical / Marginal / Negligible", "deviation": "Catastrophic not used; see `_level_severity`." },
+
+    "thresholds.layers.meets_max_violations_pct": { "type": "normative_zero_count", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1054 (Invocation of a Control Element at an Unnecessarily Deep Horizontal Layer)", "standard_default": null, "deviation": null,
+      "note": "CWE-1054 carries no numeric default: the standard scores it by counting occurrences, so 0% for Meets is the reading consistent with Clause 9." },
+    "thresholds.layers.partial_max_violations_pct": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": "Relaxation of CWE-1054, which admits no occurrences.",
+      "note": "The Partial band up to 5% of inter-layer dependencies has no source among the standards of this study." },
+    "thresholds.layers.min_identifiable_layers": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "CWE-1054 presupposes that architectural layers exist but sets no minimum number." },
+
+    "thresholds.cyclomatic.function_threshold": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1121 (Excessive McCabe Cyclomatic Complexity)", "standard_default": 20, "deviation": null,
+      "note": "The standard's wording: 'default threshold for Cyclomatic Complexity is 20, alternate threshold can be set prior to analysis'." },
+    "thresholds.cyclomatic.meets_X_min": { "type": "function_only", "standard": "ISO/IEC 25023:2016", "locator": "8.8.1, Table 24, MMo-2-S (Cyclomatic complexity adequacy)", "standard_default": null, "deviation": null,
+      "note": "X = 1 - A/B is the measurement function of MMo-2-S verbatim, but the standard assigns no cut-off. MMo-2-S is classified UD in Annex A, Table A.1, the lowest recommendation level: 'use this quality measure as a reference when developing a new quality measure, because the measure has unknown reliability'. The point nonetheless carries full weight in two subcharacteristics because ISO/IEC 5055 gives the same property normative standing as CWE-1121." },
+    "thresholds.cyclomatic.partial_X_min": { "type": "function_only", "standard": "ISO/IEC 25023:2016", "locator": "8.8.1, Table 24, MMo-2-S", "standard_default": null, "deviation": null,
+      "note": "See meets_X_min. ISO/IEC 5055 scores CWE-1121 by counting occurrences, so a tolerance of 2% or 5% of the functions is a relaxation of the standard." },
+
+    "thresholds.cohesion.fanout_max": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1048 (Invokable Control Element with Large Number of Outward Calls)", "standard_default": 5, "deviation": null,
+      "note": "CWE-1048 defines fan-out over the invokable control element, that is the function or method, which is the granularity at which this criterion applies it." },
+    "thresholds.cohesion.pct_fanout_max": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": "Relaxation of CWE-1048, which admits no occurrences.",
+      "note": "The tolerance of 5% of the functions has no source among the standards of this study." },
+    "thresholds.cohesion.DL_min": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Decoupling Level is a metric of the DV8 tool. It is neither a measure of ISO/IEC 25023 nor a weakness of ISO/IEC 5055, so neither the metric nor the 60% cut-off has backing among the standards of this study. Declared as an additional quality measure under ISO/IEC 25023 Clause 2(e); the format that clause requires follows ISO/IEC 25021, which is not part of this study." },
+    "thresholds.cohesion.file_loc_max": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1080 (Source Code File with Excessive Number of Lines of Code)", "standard_default": 1000, "deviation": null,
+      "note": "Scored criterion: 0 production files above the threshold, per Clause 9." },
+    "thresholds.cohesion.god_loc_min": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1080", "standard_default": 1000, "deviation": null,
+      "note": "Size component of the 'god module' heuristic, aligned with CWE-1080. The heuristic is not CWE-1080: it additionally requires high fan-in (god_fanin_min), so a god module is a CWE-1080 file that many other files also depend on. Raising this from 300 to 1000 makes the heuristic markedly less sensitive on small generated applications; CWE-1080 itself is now scored through file_loc_max." },
+    "thresholds.cohesion.god_fanin_min": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "No weakness of ISO/IEC 5055 and no measure of ISO/IEC 25023 sets a fan-in threshold." },
+
+    "thresholds.hierarchies.depth_max": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1074 (Class with Excessively Deep Inheritance)", "standard_default": 7, "deviation": null },
+    "thresholds.hierarchies.children_max": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1086 (Class with Excessive Number of Child Classes)", "standard_default": 10, "deviation": null },
+
+    "thresholds.technologies.pct_major_outdated_max": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Dependency obsolescence is not a weakness of the Automated Source Code Maintainability Measure and is not among the analysability or modifiability measures of ISO/IEC 25023 (8.8.3 and 8.8.4). The whole Technologies point is a construct of this framework." },
+    "thresholds.technologies.vuln_high_critical_max": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Vulnerabilities belong to the Automated Source Code Security Measure of ISO/IEC 5055, not to the maintainability measure, so counting them inside a maintainability point is a cross-characteristic borrowing that the standard does not authorize." },
+
+    "thresholds.coupling.outgoing_deps_max": { "type": "normative_alternate", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1048", "standard_default": 5, "deviation": "10, and applied at module granularity rather than to the invokable control element.",
+      "note": "CWE-1048 sets 5 references for a function or method. This criterion counts distinct outgoing dependencies of a module, a granularity for which the standard publishes no default, so the value of 10 is own calibration." },
+    "thresholds.coupling.X_min": { "type": "function_only", "standard": "ISO/IEC 25023:2016", "locator": "8.8.1, Table 24, MMo-1-G (Coupling of components)", "standard_default": null, "deviation": "Denominator modified.",
+      "note": "MMo-1-G defines B as the 'number of specified components which are required to be independent'; this criterion uses every module, because a generated application specifies no such set, which is the conservative reading. Modification declared under Clause 2(d). MMo-1-G is classified R in Annex A, Table A.1. The numerator no longer counts the absence of dependency cycles, which is criterion C1 of this same point (CWE-1047)." },
+    "thresholds.coupling.PC_max": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Propagation Cost is a metric of the DV8 tool, neither a measure of ISO/IEC 25023 nor a weakness of ISO/IEC 5055. Neither the metric nor the 20% cut-off has backing among the standards of this study. Declared under ISO/IEC 25023 Clause 2(e)." },
+    "thresholds.coupling.pct_unused_max": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Unused declared dependencies are not a weakness of the maintainability measure of ISO/IEC 5055." },
+    "thresholds.coupling.include_devdependencies": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Scope switch, not a threshold: whether devDependencies count as declared dependencies." },
+
+    "thresholds.cognitive.function_threshold": { "type": "tool_parameter", "standard": null, "locator": "SonarSource rule S3776", "standard_default": null, "deviation": null,
+      "note": "Cognitive complexity is not a measure of ISO/IEC 25023 nor a weakness of ISO/IEC 5055. Informational: it changes no level." },
+
+    "thresholds.dead_code.structural_max_files": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-561 (Dead code)", "standard_default": 0, "deviation": "Only the structural half of the weakness is evaluated.",
+      "note": "The standard's wording: 'Thresholds are set at 5% logically dead code or 0% for code that is structurally dead'. A production file that no other file imports and that is not an entry point is structurally dead, hence the threshold of 0. The 5% allowance for logically dead code is not applied because unreachable statements inside a function are not detected." },
+    "thresholds.dead_code.entry_points": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Detection parameter: file names exempt from the orphan check. The standard defines no such list." },
+
+    "thresholds.supplementary.component_props_max": { "type": "normative_alternate", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1064 (Invokable Control Element with Signature Containing an Excessive Number of Parameters)", "standard_default": 7, "deviation": "Applied to the props of a frontend component rather than to the parameters of a function signature; informational only.",
+      "note": "The numeric value now matches the standard's default, but the object measured differs: CWE-1064 counts parameters of an invokable control element. CWE-1064 is not detected on function signatures." },
+    "thresholds.supplementary.test_ratio_min": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null },
+    "thresholds.supplementary.jsdoc_min_pct": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null },
+    "thresholds.supplementary.component_loc_max": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null },
+    "thresholds.supplementary.contract_fields_min_pct": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null },
+
+    "thresholds.duplication.pct_max": { "type": "normative_alternate", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1041 (Use of Redundant Code, Copy-Paste)", "standard_default": 10, "deviation": "Same numeric value, different measurement basis.",
+      "note": "CWE-1041 sets 'the maximum number of allowable copy-pasted instructions at 10% of the total instructions in the instance', that is per clone instance. jscpd reports the percentage of duplicated lines across the whole application, so matching the number 10 does not make the two measurements equivalent, and this value is looser than the 5% it replaces. Scored: it lowers the level of the Cyclomatic complexity point." },
+    "thresholds.duplication.min_lines": { "type": "tool_parameter", "standard": null, "locator": "jscpd", "standard_default": null, "deviation": null },
+    "thresholds.duplication.min_tokens": { "type": "tool_parameter", "standard": null, "locator": "jscpd", "standard_default": null, "deviation": null },
+
+    "thresholds.data_model.constraints_min_pct": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "No standard of this study addresses relational schema design: it is not among the 29 weaknesses of the maintainability measure of ISO/IEC 5055 nor among the maintainability measures of ISO/IEC 25023. Value carried over from the Mongo version of the rubric and not calibrated for relational schemas." },
+    "thresholds.data_model.unindexed_queries_max_pct": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "See constraints_min_pct." },
+
+    "thresholds.contracts.coverage_min": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "No measure of ISO/IEC 25023 and no weakness of ISO/IEC 5055 covers communication contracts. The testability measure MTe-1-G counts test functions implemented against test functions required, which is a different object." },
+
+    "thresholds.observability.X_min": { "type": "function_only", "standard": "ISO/IEC 25023:2016", "locator": "8.8.3, Table 26, MAn-1-G (System log completeness)", "standard_default": null, "deviation": null,
+      "note": "X = A/B with A the logs actually recorded and B the logs for which audit trails are required is the measurement function of MAn-1-G verbatim, and MAn-1-G is classified HR in Annex A, Table A.1, the highest recommendation level. The 80% cut-off is own calibration: the standard assigns none." },
+
+    "thresholds.tests.lines_min": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": "Mapped to Testability rather than to Reliability.",
+      "note": "ISO/IEC 25023 does carry a test coverage measure, RMa-4-S, but it sits under Reliability/Maturity (8.6.1, Table 15), is external, is classified R, and defines coverage as the capabilities, operational scenarios or functions actually performed against those included in the test suites, not as line or branch coverage. So line coverage is neither the same measure nor a testability measure, and the 70% cut-off has no source. The genuine generic testability measure, MTe-1-G, is not implemented." },
+    "thresholds.tests.branches_min": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": "See lines_min." },
+
+    "thresholds.configuration.dup_literal_threshold": { "type": "tool_parameter", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1052 (Excessive Use of Hard-Coded Literals in Initialization); parameters from SonarQube rule S1192", "standard_default": null, "deviation": null,
+      "note": "The weakness is normative and is scored by counting occurrences, but CWE-1052 publishes no numeric threshold; the detection parameters come from the eslint-plugin-sonarjs rule, which is a tool and not a standard of this study." },
+    "thresholds.configuration.dup_literal_min_len": { "type": "tool_parameter", "standard": null, "locator": "SonarQube rule S1192", "standard_default": null, "deviation": null },
+    "thresholds.configuration.dup_literal_ignore_word_only": { "type": "tool_parameter", "standard": null, "locator": "SonarQube rule S1192", "standard_default": null, "deviation": null,
+      "note": "Detection switch, not a threshold: literals made only of word characters are not counted." },
+    "thresholds.configuration.dup_literal_ignore": { "type": "tool_parameter", "standard": null, "locator": "SonarQube rule S1192", "standard_default": null, "deviation": null,
+      "note": "Detection parameter, not a threshold: literals the rule exempts." },
+    "thresholds.configuration.cwe1051_ignore_env_fallback": { "type": "own_calibration", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1051", "standard_default": null, "deviation": null,
+      "note": "Detection switch, not a threshold: whether a network literal used only as a fallback for an environment variable counts as an occurrence of CWE-1051. The standard does not address the case." },
+
+    "risk_dashboard.semaphore": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Cut-offs of 70 and 40 over the weighted score. This is precisely what ISO/IEC 25023 declines to supply: its Scope states that the standard 'does not assign ranges of values of the measures to rated levels or to grades of compliance because these values are defined based on the nature of the system, product or a part of the product'." },
+    "risk_dashboard.hotspots_top_n": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null },
+
+    "supported_runtimes": { "type": "own_calibration", "standard": null, "locator": "endoflife.date and the npm registry", "standard_default": null, "deviation": null,
+      "note": "External sources, not standards of this study. The entries for PostgreSQL, Sequelize and pg are unverified working assumptions; see supported_runtimes.unverified." },
+
+    "_coverage_ascmm": {
+      "_comment": "Coverage of the Automated Source Code Maintainability Measure of ISO/IEC 5055:2021 (6.4, Table 1: 29 parent weaknesses, no contributing weaknesses).",
+      "total_weaknesses": 29,
+      "not_applicable_to_js_ts": ["CWE-1045", "CWE-1055", "CWE-1079", "CWE-1087"],
+      "not_applicable_reason": "They depend on virtual destructors or on inheritance from more than one concrete class, which JavaScript and TypeScript do not have.",
+      "applicable": 25,
+      "scored": ["CWE-478", "CWE-484", "CWE-561", "CWE-1041", "CWE-1047", "CWE-1048", "CWE-1051", "CWE-1052", "CWE-1054", "CWE-1062", "CWE-1074", "CWE-1075", "CWE-1080", "CWE-1086", "CWE-1121"],
+      "informational": [],
+      "not_detected": ["CWE-407", "CWE-480", "CWE-570", "CWE-571", "CWE-783", "CWE-1064", "CWE-1084", "CWE-1085", "CWE-1090", "CWE-1095"],
+      "not_detected_with_published_default": { "CWE-1064": "7 parameters", "CWE-1084": "7 SQL or file operations", "CWE-1085": "2% commented-out instructions" },
+      "normalization": "ISO/IEC 5055 Annex C.1 proposes normalizing the measure by size to compare applications (ASCxM-density = ASCxM / AFP). Applications generated at different specificity levels do not have the same size, so the absolute count should be reported alongside a density."
+    },
+
+    "_conformance_25023": {
+      "_comment": "ISO/IEC 25023:2016 Clause 2 requires that, for each selected subcharacteristic, all Generic (G) measures of Clause 8 be used, with a rationale for every exclusion and for every modification.",
+      "selected_subcharacteristics": ["Modularity", "Analyzability", "Modifiability", "Testability"],
+      "excluded_subcharacteristics": { "Reusability": "Excluded under Clause 2(b). ISO/IEC 5055 defines no maintainability weakness oriented to reusability; ISO/IEC 25023 makes its measurement depend on design intent, which static analysis of the code cannot derive; and the definition in ISO/IEC 25010:2023, 3.7.2, requires the asset to be used in more than one system, which falls outside the experimental scope. This also excludes MRe-1-G, classified HR. See PIA02, 4.1.2." },
+      "generic_measures_used": { "MMo-1-G": "coupling.C2, with the denominator modified; see thresholds.coupling.X_min", "MAn-1-G": "observability.C1" },
+      "generic_measures_excluded": {
+        "MMd-1-G": "Modification efficiency (HR). Excluded under Clause 2(b): it requires the work time of actual modifications, which a freshly generated application does not have. Section 6.2 of the standard recommends relating internal measures to the external measures they are to predict, so the intended closure is a seeded-modification study over the generated applications.",
+        "MMd-2-G": "Modification correctness (HR). Excluded under Clause 2(b) for the same reason: it requires modifications already implemented and the incidents they caused.",
+        "MTe-1-G": "Test function completeness (R). Not implemented. The Tests point uses line and branch coverage instead, which in the vocabulary of the standard is RMa-4-S and belongs to Reliability/Maturity; see thresholds.tests.lines_min."
+      },
+      "available_unused_measures": {
+        "MRe-2-S": "Coding rules conformity (R). Its Note 2 states that the measure 'can also be applied to different characteristics and subcharacteristics such as analysability', so the standard itself authorizes transferring it. It would give normative backing to observability.C2, contracts.C2 and configuration.C3, which today have none.",
+        "MAn-2-S": "Diagnosis function effectiveness (R). Fits observability.C4 (health check, metrics, traces), today without a source.",
+        "MAn-3-S": "Diagnosis function sufficiency (R). Same as MAn-2-S.",
+        "MTe-2-S": "Autonomous testability (UD). Numerator and denominator are derivable from libs_integration_test, which the framework already detects."
+      }
+    },
+
+    "_conformance_1028": {
+      "_comment": "IEEE Std 1028-2008. Clause 1.4 requires a conformance claim to name the review type used: 'conforming to IEEE Std 1028-2008 for inspections'.",
+      "review_type": "Inspections (Clause 6)",
+      "automated_tools_first": "6.4.3(b) sets as a minimum entry criterion that 'automated error-detecting tools have been used to identify and eliminate errors prior to the inspection'. The pending-criteria and score-range mechanism implements exactly that: nothing reaches a human until the automatable criteria have been decided.",
+      "independence": "6.2 forbids the author from acting as reader or recorder, and 6.2.5 requires inspectors to be chosen to represent different viewpoints. judge.py uses a model other than the one that generated the application, which satisfies that requirement.",
+      "exit_decision": "6.5.6.5 defines three dispositions (accept with no or with rework verification, accept with rework verification, reinspect), which map onto a closed range, a range closed by the judge, and a criterion pending human review.",
+      "anomaly_ranking": "6.8.3; see level_severity.",
+      "anomaly_classification": "6.8.1 refers anomaly classification to IEEE Std 1044-1993, which is not part of this study and is therefore not applied.",
+      "inspection_rate": "6.5.2(g) gives reference rates for source code, from 100 pages per hour to 200 lines per hour, usable to bound the cost of the manual review."
     }
   },
   "default_layers": {

@@ -515,9 +515,9 @@ def artifact_findings(m):
     out = []
     for a in m.get("artifacts") or []:
         if a["level"] == "complementary" and not a["present"]:
-            sev = "High" if a.get("absence") == "high_finding" else "Medium"
+            sev = "Critical" if a.get("absence") == "high_finding" else "Marginal"
             out.append({"artifact": a["id"], "name": a["name"], "severity": sev, "affected_points": a["feeds"],
-                        "note": "absence recorded as a finding" + ("; it is not treated as missing data" if sev == "High" else ("; lowers the confidence of the affected points" if a["feeds"] else "; context for step 1 only"))})
+                        "note": "absence recorded as a finding" + ("; it is not treated as missing data" if sev == "Critical" else ("; lowers the confidence of the affected points" if a["feeds"] else "; context for step 1 only"))})
     return out
 
 
@@ -667,7 +667,6 @@ def eval_cyclomatic(m, manual, opts):
            "median": median(ccs), "p90": ccs[int(0.9 * (len(ccs) - 1))] if ccs else None, "max": ccs[-1] if ccs else None}
     if X is None:
         return {}, met, [], "No implemented functions.", (None, None, None)
-    level = level_from_pct(X, lambda v: v >= T["meets_X_min"], lambda v: v >= T["partial_X_min"])
     ev = [f"{f['file']}:{f['line']} {f['name']} (CC={f['cc']})" for f in sorted(big, key=lambda f: -f["cc"])[:8]]
     crit = {"C1": C(X >= T["partial_X_min"], "X ≥ 0.95 (Partial)", round(X, 4)), "C2": C(X >= T["meets_X_min"], "X ≥ 0.98 (Meets)", round(X, 4))}
     finding = f"X = 1 − {len(big)}/{B} = {X:.3f}; median CC {met['median']}, p90 {met['p90']}, max {met['max']}."
@@ -677,13 +676,19 @@ def eval_cyclomatic(m, manual, opts):
     met.update({"cognitive_median": median(cogs), "cognitive_max": cogs[-1] if cogs else None, "functions_cog_above_threshold": len(high)})
     ev += [f"{f['file']}:{f['line']} {f['name']} (cognitive={f.get('cog')})" for f in sorted(high, key=lambda f: -f["cog"])[:3]]
     finding += f" Cognitive complexity: {len(high)} functions > {TC}, max {met['cognitive_max']} (informational)."
+    # C3: CWE-1041 (Use of Redundant Code). Scored: it lowers this point's level. Pending if jscpd did not run.
+    T2 = RUBRIC["thresholds"]["duplication"]
     dup = m.get("duplication") or {}
-    if dup.get("ok"):  # informational: does not change the level
-        T2 = RUBRIC["thresholds"]["duplication"]
+    dup_ok = None if not dup.get("ok") else dup["pct"] <= T2["pct_max"]
+    crit["C3"] = C(dup_ok, f"≤ {T2['pct_max']:g}% duplicated lines (CWE-1041)",
+                   f"{dup['pct']:.1f}%" if dup.get("ok") else None,
+                   source="auto" if dup.get("ok") else "pending (jscpd)")
+    if dup.get("ok"):
         met.update({"duplication_pct": dup["pct"], "clones": dup["clones"], "duplication_above_threshold": dup["pct"] > T2["pct_max"]})
         ev += [f"clone {c}" for c in dup["top"][:3]]
-        finding += f" Duplication (jscpd): {dup['pct']:.1f}% of lines, {dup['clones']} clones (informational; reference threshold {T2['pct_max']}%)."
-    return crit, met, ev, finding, (level, level, level)
+        finding += f" Duplication (jscpd): {dup['pct']:.1f}% of lines, {dup['clones']} clones (threshold {T2['pct_max']:g}%, CWE-1041)."
+    apply_manual("cyclomatic", crit, manual)
+    return crit, met, ev, finding, level_from(crit)
 
 
 def fan_in(m):
@@ -710,11 +715,16 @@ def eval_cohesion(m, manual, opts):
     c2 = C(None if dl is None else dl >= T["DL_min"], "DV8 DL ≥ 60%", dl, source="dv8" if dl is not None else "pending (DV8)")
     c3 = heur(C(None, "Checklist with no findings ('god' module, mixed responsibilities, fragmentation)",
                 {"suggested_god_modules": gods, "files_under_10_loc_pct": round(frag, 1)}, suggested=(not gods and frag < 40)), opts)
-    crit = {"C1": c1, "C2": c2, "C3": c3}
+    # C4: CWE-1080 (Source Code File with Excessive Number of Lines of Code), default threshold 1000.
+    oversized = sorted(((f["path"], f["loc"]) for f in prod if f["loc"] > T["file_loc_max"]), key=lambda x: -x[1])
+    c4 = C(len(oversized) == 0, f"0 production files with more than {T['file_loc_max']} LOC (CWE-1080)", len(oversized))
+    crit = {"C1": c1, "C2": c2, "C3": c3, "C4": c4}
     apply_manual("cohesion", crit, manual)
-    ev = [f"{f['file']}:{f['line']} {f['name']} (fan-out={f['fanout']})" for f in sorted(hi, key=lambda f: -f["fanout"])[:5]] + gods[:3]
+    ev = [f"{f['file']}:{f['line']} {f['name']} (fan-out={f['fanout']})" for f in sorted(hi, key=lambda f: -f["fanout"])[:5]] + gods[:3] \
+        + [f"{p_}: {l} LOC" for p_, l in oversized[:3]]
     il = (manual.get("dv8") or {}).get("IL")
-    return crit, {"pct_fanout": p, "suggested_god_modules": gods, "IL": il}, ev, f"{len(hi)} of {len(fns)} functions with fan-out > {T['fanout_max']}; {len(gods)} candidate 'god' module(s).", None
+    return crit, {"pct_fanout": p, "suggested_god_modules": gods, "oversized_files": len(oversized), "IL": il}, ev, \
+        f"{len(hi)} of {len(fns)} functions with fan-out > {T['fanout_max']}; {len(gods)} candidate 'god' module(s); {len(oversized)} file(s) over {T['file_loc_max']} LOC.", None
 
 
 def unhealthy_inheritance_graph(m):
@@ -809,24 +819,27 @@ def eval_technologies(m, manual, opts):
 def eval_coupling(m, manual, opts):
     T = RUBRIC["thresholds"]["coupling"]
     mods = m["graph"].get("modules", [])
-    in_cycle = {n for c in m["graph"].get("cycles", []) for n in c}
-    A = sum(1 for x in mods if x["source"] not in in_cycle and len({d["module"] for d in x["deps"]}) < T["outgoing_deps_max"])
+    # MMo-1-G numerator: modules whose outgoing coupling is bounded. The absence of dependency cycles is NOT counted here:
+    # it is criterion C1 of this same point (CWE-1047), and counting it twice let one defect lower two of the four criteria.
+    A = sum(1 for x in mods if len({d["module"] for d in x["deps"]}) < T["outgoing_deps_max"])
     X = A / len(mods) if mods else None
     pc = (manual.get("dv8") or {}).get("PC")
     unused = m["packages"]["unused"]; pu = pct(len(unused), m["packages"]["direct"]) if m["packages"]["direct"] else 0.0
+    orphans = orphan_files(m)
+    DC = RUBRIC["thresholds"]["dead_code"]
     crit = {"C1": C(len(m["graph"].get("cycles", [])) == 0, "0 dependency cycles (CWE-1047)", len(m["graph"].get("cycles", []))),
             "C2": C(None if X is None else X >= T["X_min"], "X (MMo-1-G) ≥ 0.90", None if X is None else round(X, 3)),
-            "C3": C(None if pc is None else pc <= T["PC_max"], "Package Cycle (DV8) ≤ 20%", pc, source="dv8" if pc is not None else "pending (DV8)"),
-            "C4": C(pu <= T["pct_unused_max"] if m["packages"]["depcheck_ok"] else None, "≤ 10% unused dependencies", f"{len(unused)}/{m['packages']['direct']} = {pu:.1f}%")}
+            "C3": C(None if pc is None else pc <= T["PC_max"], f"Propagation Cost (DV8) ≤ {T['PC_max'] * 100:g}%", pc, source="dv8" if pc is not None else "pending (DV8)"),
+            "C4": C(pu <= T["pct_unused_max"] if m["packages"]["depcheck_ok"] else None, "≤ 10% unused dependencies", f"{len(unused)}/{m['packages']['direct']} = {pu:.1f}%"),
+            "C5": C(len(orphans) <= DC["structural_max_files"], f"≤ {DC['structural_max_files']} structurally dead production file(s) (CWE-561)", len(orphans))}
     apply_manual("coupling", crit, manual)
     ev = [" ↔ ".join(c[:4]) for c in m["graph"].get("cycles", [])[:4]] + unused[:6]
-    orphans = orphan_files(m)
     cq = cliques(m)
     ev += [f"clique of {len(c)} files: {', '.join(c[:4])}" for c in cq[:3]]
-    ev += [f"orphan (probable dead code): {h}" for h in orphans[:4]]
+    ev += [f"structurally dead (nobody imports it): {h}" for h in orphans[:4]]
     return crit, {"modules": len(mods), "cycles": len(m["graph"].get("cycles", [])), "X": X, "orphan_files": orphans, "cliques": len(cq), "files_in_cliques": sum(len(c) for c in cq)}, ev, \
         f"{len(m['graph'].get('cycles', []))} cycles ({len(cq)} clique(s)); X={'n/a' if X is None else f'{X:.2f}'}; {len(unused)} unused dependencies; " \
-        f"{len(orphans)} file(s) that nobody imports (informational).", None
+        f"{len(orphans)} file(s) that nobody imports (CWE-561).", None
 
 
 def cliques(m):
@@ -857,7 +870,7 @@ def cliques(m):
 
 
 def orphan_files(m):
-    """Production files with fan-in 0 that are not entry points: dead-code candidates (informational)."""
+    """Production files with fan-in 0 that are not entry points: structurally dead code (CWE-561), scored in coupling.C5."""
     if not m["graph"].get("modules"):
         return []  # without a graph every file would look orphaned
     entries = set(RUBRIC["thresholds"]["dead_code"]["entry_points"])
@@ -1159,12 +1172,12 @@ def evaluate_points(m, manual, opts):
         if DECLARED_PATTERNS[pid]:  # only points whose decision is usually declared in the documentation
             if level == "Fails" and declared: gap = "declared but not supported by the structure"
             elif level == "Meets" and not declared: gap = "implemented but not declared"
-        art_findings = [{"artifact": a["id"], "name": a["name"], "severity": "High" if a.get("absence") == "high_finding" else "Medium"} for a in miss_comp]
+        art_findings = [{"artifact": a["id"], "name": a["name"], "severity": "Critical" if a.get("absence") == "high_finding" else "Marginal"} for a in miss_comp]
         severity = RUBRIC["level_severity"].get(level) if level else ("Undetermined" if lo != hi else None)
         if not evaluable:
             severity = "Not evaluable"
-        elif any(f["severity"] == "High" for f in art_findings):
-            severity = "High"  # a high-severity finding forces the top severity even if the level is better
+        elif any(f["severity"] == "Critical" for f in art_findings):
+            severity = "Critical"  # a Critical finding (IEEE 1028, 6.8.3) forces the top rank in use even if the level is better
         confidence = "n/a" if not evaluable else ("high" if not miss_comp else ("medium" if len(miss_comp) == 1 else "low"))
         pts.append({**pdict(pid), "level": level, "level_min": lo, "level_max": hi,
                     "evaluable": evaluable, "confidence": confidence, "missing_artifacts": [a["id"] for a in miss_core + miss_comp],
@@ -1320,12 +1333,12 @@ def risk_dashboard(points, prof, m):
                 state, esc = "not_evaluable", False  # distinct from "Meets"
             else:
                 state = LEVEL_STATE.get(p["level"], "undecided")
-                esc = p["severity"] == "High" and state != "red"  # a high-severity finding forces red
+                esc = p["severity"] == "Critical" and state != "red"  # a Critical finding forces red
                 state = "red" if esc else state
             cells.append({"point": p["id"], "subcharacteristic": s, "state": state, "escalated": esc})
     semaphore = {}
     for s, v in prof["subcharacteristics"].items():
-        high = [p["id"] for p in points if s in p["subcharacteristics"] and p["severity"] == "High"]
+        high = [p["id"] for p in points if s in p["subcharacteristics"] and p["severity"] == "Critical"]
         state = "not_evaluable" if v["min"] is None else semaphore_state(v["min"])  # worst case of the range
         esc = bool(high) and state not in ("red", "not_evaluable")
         semaphore[s] = {"min": v["min"], "max": v["max"], "state": "red" if esc else state, "escalated": esc, "high_severity_points": high,
