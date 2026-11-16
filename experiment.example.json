@@ -11,5 +11,6 @@
   "accept_heuristics": false,
   "postgres": false,
   "judge": null,
-  "judge_votes": 3
+  "judge_votes": 3,
+  "usage_dir": "token-usage"
 }

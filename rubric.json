@@ -237,6 +237,8 @@
     "_comment": "Relational schema extraction (relational_schema.py). source_preference: a table is decided entirely by the first source that defines it; lower sources only add tables the higher ones do not mention. type_families/sequelize_types are lookup tables, not a verified mapping of every PostgreSQL type.",
     "source_preference": ["sql", "sequelize_migration", "sequelize_model"],
     "er_model_path": "docs/entity-relationship-model.md",
+    "doc_versions": ["R2"],
+    "_doc_versions": "Labels of the versioned documentation sets (r2-additional-requirements.md, 'Documentation versioning'), latest first. The ER model and the README are read from docs/<label>/ (folder matched case-insensitively: docs/r2 too) before the original paths; inside the folder, entity-relationship-model.md, or else the first .md with a Mermaid erDiagram.",
     "ignore_tables": ["SequelizeMeta", "SequelizeData", "schema_migrations", "knex_migrations", "knex_migrations_lock", "_prisma_migrations", "pgmigrations"],
     "type_families": {
       "integer": ["int", "int2", "int4", "int8", "integer", "smallint", "bigint", "serial", "serial2", "serial4", "serial8", "bigserial", "smallserial", "tinyint", "mediumint"],

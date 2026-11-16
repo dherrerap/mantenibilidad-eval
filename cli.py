@@ -6,15 +6,23 @@ cli.py — single entry point of the maintainability evaluation framework.
   python cli.py evaluate [apps...]        evaluates each app (tests, DV8, manual templates) and aggregates
   python cli.py report                    generates results/report.md with the results and the pending items
 
-Convention: each app is a folder (by default inside apps/). If it is named <agent>-<level> (e.g. claude-n2)
-the agent and level are deduced from the name. Options can go in experiment.json (see experiment.example.json);
-the command line takes precedence over the file.
+Tokens: the tokens the agent used to create each app (phase initial) and to implement the additional requirements (phase r2)
+are recorded with token_usage.py in token-usage/<app>.json; evaluate copies them to results/<run>/token_usage.json and the report
+shows them next to the maintainability score (they are not part of it).
+
+Convention: each app is a folder (by default inside apps/). If it is named <agent>-<level> (e.g. claude-n2) or
+<agent>-<domain>-<level> (e.g. claude-cinema-n2, where <domain> has a specs/requirements-<domain>.md) the agent, the level and the
+domain are deduced from the name; the domain of the name takes precedence over --domain. Options can go in experiment.json (see
+experiment.example.json); the command line takes precedence over the file.
 
 Judge: with --judge MODEL (different from the generator) a model decides the design-judgment criteria and the evaluation ends
 without a range; see judge.py. The decisions are saved in results/<run>/judge.json and manual review always overrides them.
 
 Manual review: evaluate leaves results/<run>/manual_review.md and manual_review.draft.json. Copy the draft to
-manual_review.json, fill in ok=true/false and run evaluate again: it is read automatically.
+manual_review.json, fill in ok=true/false and run `evaluate --rescore`: it is read automatically and only the scoring is redone.
+
+Collection happens once per app: after DV8, the live database and the judge the run is re-scored from metrics.json
+(evaluate.py rescore), not evaluated again.
 """
 import argparse, datetime, json, os, platform, re, shutil, socket, subprocess, sys
 from pathlib import Path
@@ -26,13 +34,22 @@ sys.path.insert(0, str(HERE))
 from dv8_metrics import DV8_DEFAULT  # noqa: E402
 import pg_runtime  # noqa: E402
 import evaluate as ev  # noqa: E402
+import token_usage as tu  # noqa: E402
 
 OK, FAIL, WARN = "✔", "✘", "!"
 SYMBOL = {"Meets": "✔", "Partial": "◐", "Fails": "✘"}
 
 
+TIMEOUT_RC = 124
+
+
 def execute(cmd, cwd=None, timeout=1800):
-    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=UTF8, timeout=timeout)
+    """(returncode, stdout+stderr). A command that exceeds `timeout` returns 124 instead of aborting the whole batch."""
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=UTF8, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        partial = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        return TIMEOUT_RC, partial + f"\nTIMEOUT: the command did not finish within {timeout} s"
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
@@ -126,12 +143,24 @@ def options(a):
             "skip_tests": pick("skip_tests", False), "skip_dv8": pick("skip_dv8", False), "offline": pick("offline", False),
             "accept_heuristics": pick("accept_heuristics", False),
             "judge": pick("judge", None), "judge_votes": pick("judge_votes", 3), "judge_cmd": pick("judge_cmd", None),
-            "allow_same_model": pick("allow_same_model", False), "postgres": pick("postgres", False)}
+            "allow_same_model": pick("allow_same_model", False), "postgres": pick("postgres", False),
+            "usage_dir": pick("usage_dir", tu.DEFAULT_DIR),
+            "rescore_only": bool(getattr(a, "rescore", False))}  # command line only: never fixed in experiment.json
 
 
-def identity(name):
-    m = re.fullmatch(r"(?P<ag>[A-Za-z0-9]+)-(?P<lv>[Nn]\d+)", name)
-    return (m["ag"].lower(), m["lv"].upper()) if m else (name, "n/a")
+def known_domains():
+    """Domains that have a requirements file: specs/requirements-<domain>.md."""
+    return sorted(p.stem[len("requirements-"):] for p in (HERE / "specs").glob("requirements-*.md"))
+
+
+def identity(name, domains=None):
+    """(agent, level, domain) from an app folder named <agent>-<level> or <agent>-<domain>-<level>; domain is None when the name
+    does not carry one. A middle part that is not a known domain makes the name unrecognized: (name, "n/a", None)."""
+    domains = known_domains() if domains is None else domains
+    m = re.fullmatch(r"(?P<ag>[A-Za-z0-9]+)(?:-(?P<dom>[A-Za-z0-9]+))?-(?P<lv>[Nn]\d+)", name)
+    if not m or (m["dom"] and m["dom"].lower() not in domains):
+        return name, "n/a", None
+    return m["ag"].lower(), m["lv"].upper(), (m["dom"] or "").lower() or None
 
 
 def last_line(output, pattern):
@@ -139,23 +168,58 @@ def last_line(output, pattern):
 
 
 def evaluate_app(app, o, dv8):
-    agent, level = identity(app.name)
-    run_id = f"{app.name}-{o['domain']}-r{o['rep']}"
+    agent, level, named_domain = identity(app.name)
+    domain = named_domain or o["domain"]
+    # the domain is not repeated when the folder name already carries it: claude-cinema-n1 -> claude-cinema-n1-r1
+    run_id = f"{app.name}-r{o['rep']}" if named_domain else f"{app.name}-{domain}-r{o['rep']}"
     out = Path(o["results"]).resolve() / run_id
     cmd = [PY, str(HERE / "evaluate.py"), "run", str(app), "--out", str(out), "--agent", agent, "--model", o["model"] or "n/a",
-           "--level", level, "--domain", o["domain"], "--run-id", run_id]
+           "--level", level, "--domain", domain, "--run-id", run_id]
     if ev.model_missing(o["model"]): cmd.append("--allow-missing-model")  # cmd_evaluate already refused unless it was allowed
     if not o["skip_tests"]: cmd.append("--run-tests")
     if o["offline"]: cmd.append("--offline")
     if o["accept_heuristics"]: cmd.append("--accept-heuristics")
-    rc, output = execute(cmd)
+    warnings = [copy_token_usage(app, out, o["usage_dir"])]
+    if o.get("rescore_only"):  # --rescore: the evidence is already collected; only the scoring is redone
+        if not (out / "metrics.json").exists():
+            return run_id, f"ERROR\nno metrics.json in {out}: evaluate it once without --rescore"
+        rc, output = execute(rescore_cmd(out))
+        if rc != 0:
+            return run_id, f"ERROR\n{output[-800:]}"
+        return run_id, "; ".join([final_summary(out)] + [w for w in warnings if w])
+    rc, output = execute(cmd)  # the only collection of evidence (tests, npm, jscpd…): every later step just re-scores
     if rc != 0:
         return run_id, f"ERROR\n{output[-800:]}"
+    warnings += post_collection_steps(out, o, dv8)
+    return run_id, "; ".join([final_summary(out)] + [w for w in warnings if w])
+
+
+def rescore_cmd(out):
+    return [PY, str(HERE / "evaluate.py"), "rescore", str(out)]
+
+
+def final_summary(out):
+    """'Maintainability: a–b/100 · complete=…' of the last scoring of the run (profile.json), after DV8, the database and the judge."""
+    f = Path(out) / "profile.json"
+    if not f.exists():
+        return ""
+    p = json.loads(f.read_text(encoding="utf-8"))
+    return f"Maintainability: {ev.fmt_rng(p['maintainability_min'], p['maintainability_max'])}/100 · complete={p['complete']}"
+
+
+def post_collection_steps(out, o, dv8):
+    """DV8, manual-review templates, live database and judge on an evaluated run. Each step that changes the inputs of the scoring
+    is followed by a re-score from metrics.json (`evaluate.py rescore`), never by a new collection. Returns the warnings."""
     warnings = []
+
+    def rescore(after):
+        rc, s = execute(rescore_cmd(out))
+        if rc != 0:
+            warnings.append(f"re-scoring after {after} failed: " + (last_line(s, r"\S") or ""))
     if dv8:
         rc2, s2 = execute([PY, str(HERE / "dv8_metrics.py"), str(out)] + ([] if dv8 == DV8_DEFAULT else ["--dv8", dv8]))
         if rc2 == 0:
-            execute(cmd)  # second pass: brings DL/PC into the profile
+            rescore("DV8")  # brings DL/PC into the profile
         else:
             warnings.append("DV8 failed: " + (last_line(s2, r"\S") or ""))
     execute([PY, str(HERE / "manual_template.py"), str(out)])
@@ -165,20 +229,30 @@ def evaluate_app(app, o, dv8):
         else:
             rcp, sp = execute([PY, str(HERE / "pg_analysis.py"), str(out)])
             warnings.append("postgres: " + (last_line(sp, r"Acceptance|ERROR") or "no output") if rcp == 0 else "postgres failed: " + (last_line(sp, r"\S") or ""))
-            execute(cmd)  # brings the real database into the profile and the judge's evidence
-    if o["judge"]:  # the judge decides what is still pending on design judgment and the run is re-evaluated with its decisions
+            rescore("the live database")  # brings the real database into the profile and the scorecard the judge reads
+    if o["judge"]:  # the judge decides what is still pending on design judgment and the run is re-scored with its decisions
         jcmd = [PY, str(HERE / "judge.py"), str(out), "--model", o["judge"], "--votes", str(o["judge_votes"])]
         if o["judge_cmd"]: jcmd += ["--cmd", o["judge_cmd"]]
         if o["allow_same_model"]: jcmd.append("--allow-same-model")
         rcj, sj = execute(jcmd)
         if rcj == 0:
-            execute(cmd)
+            rescore("the judge")
             warnings.append("judge: " + (last_line(sj, r"Judge|No judgeable") or "no output"))
         else:
             warnings.append("the judge failed: " + (last_line(sj, r"\S") or ""))
-    summary = last_line(output, r"Maintainability:") or ""
-    summary = re.sub(r"\s*→.*$", "", summary.replace("[4/4] ", ""))
-    return run_id, "; ".join([summary] + warnings)
+    return warnings
+
+
+def copy_token_usage(app, out, usage_dir):
+    """token-usage/<app>.json → results/<run>/token_usage.json (a stale copy is removed when the record no longer exists)."""
+    src, dst = tu.usage_path(app, usage_dir), out / tu.RESULT_FILE
+    out.mkdir(parents=True, exist_ok=True)
+    if not src.exists():
+        dst.unlink(missing_ok=True)
+        return "tokens not recorded (see token_usage.py)"
+    shutil.copy(src, dst)
+    missing = [p for p in ("initial", "r2") if p not in (tu.load(src) or {}).get("phases", {})]
+    return f"tokens of phase {', '.join(missing)} not recorded" if missing else None
 
 
 def record_environment(o, dv8, apps):
@@ -207,10 +281,11 @@ def cmd_evaluate(a):
         print("No applications to evaluate." if not apps else "Does not exist: " + ", ".join(map(str, missing)))
         print("Create apps/<agent>-<level>/ or pass the folders: python cli.py evaluate path/app1 path/app2")
         return 1
-    dv8 = None if o["skip_dv8"] else find_dv8()
-    if not o["skip_dv8"] and not dv8:
+    dv8 = None if (o["skip_dv8"] or o["rescore_only"]) else find_dv8()
+    if not o["skip_dv8"] and not o["rescore_only"] and not dv8:
         print("Warning: DV8 not found; DL and PC will stay pending (use --skip-dv8 to silence this warning).")
-    record_environment(o, dv8, apps)
+    if not o["rescore_only"]:  # environment.json describes the collection; re-scoring keeps it
+        record_environment(o, dv8, apps)
     errors = 0
     for i, app in enumerate(apps, 1):
         print(f"[{i}/{len(apps)}] {app.name} …", flush=True)
@@ -289,6 +364,7 @@ def write_report(res):
         for i, a in enumerate(first):
             L.append(f"| {a['name']} | {a['level']} | {', '.join(a['feeds']) or '—'} | "
                      + " | ".join(("✔" if v[i]["present"] else "✘") for v in arts.values()) + " |")
+    L += token_section(runs)
     L += ["",
           "## Risk heat map", "",
           "🔴 Fails · 🟡 Partial · 🟢 Meets · ⚪ undecided (pending criteria). Rows are ordered by how much of the overall score each point "
@@ -330,6 +406,9 @@ def write_report(res):
             "Unless acceptance.json is present, the applications were not run against PostgreSQL (no acceptance gate): it is not known whether they work.",
             "Layer classification is a directory-name heuristic; review `detected_layers.json`.",
             "Test coverage: with `node --test`, files that no test loads count as 0%, but their branches do not enter the denominator (branches overestimated)."]
+    if any((d / tu.RESULT_FILE).exists() for d, _, _ in runs):
+        warn.append("Tokens come from the agents' own usage records (Claude Code transcripts or results, Codex rollouts) normalized so that input "
+                    "includes the cache; a cache read is much cheaper than a fresh input token, so compare totals between agents with care.")
     if any((d / "dv8" / "dv8_metrics.json").exists() for d, _, _ in runs):
         warn.append("DV8's DL and PC are computed on a matrix derived from dependency-cruiser (DV8 does not analyze JS/TS) and without isolated files.")
     if no_model:
@@ -341,6 +420,30 @@ def write_report(res):
     path = res / "report.md"
     path.write_text("\n".join(L) + "\n", encoding="utf-8")
     return path
+
+
+def token_section(runs):
+    """AI token consumption per application: creation (initial) and additional requirements (r2), from results/<run>/token_usage.json."""
+    data = {pf["meta"]["run_id"]: tu.load(d / tu.RESULT_FILE) for d, pf, _ in runs}
+    if not any(data.values()):
+        return ["", "## AI token consumption", "", "Not recorded. Record the tokens of each phase with `python token_usage.py scan` and `record` "
+                "(see docs/generating-apps.md) and run evaluate again."]
+    L = ["", "## AI token consumption", "",
+         "Tokens the generator agent used to create the application (**initial**) and to implement the additional requirements (**R2**). "
+         "Input includes the prompt-cache reads and writes; output includes reasoning. They are not part of the maintainability score. "
+         "Details per session in `<run>/token_usage.json`.", "",
+         "| Application | Initial input | Initial output | **Initial total** | R2 input | R2 output | **R2 total** | R2 / initial | Initial + R2 |",
+         "|---|---|---|---|---|---|---|---|---|"]
+    for rid, u in data.items():
+        sm = tu.summary(u) or {"phases": {}}
+        i, r = sm["phases"].get("initial"), sm["phases"].get("r2")
+        def g(t, k):
+            return tu.fmt(t[k]) if t else "—"
+        ratio = (sm.get("r2_vs_initial") or {}).get("total_tokens")
+        both = tu.fmt(i["total_tokens"] + r["total_tokens"]) if i and r else "—"
+        L.append(f"| {rid} | {g(i, 'input_tokens')} | {g(i, 'output_tokens')} | **{g(i, 'total_tokens')}** | {g(r, 'input_tokens')} | "
+                 f"{g(r, 'output_tokens')} | **{g(r, 'total_tokens')}** | {'—' if ratio is None else f'×{ratio:.2f}'} | {both} |")
+    return L
 
 
 def cmd_report(a):
@@ -367,6 +470,9 @@ def main():
     e.add_argument("--judge-votes", type=int, dest="judge_votes"); e.add_argument("--judge-cmd", dest="judge_cmd")
     e.add_argument("--allow-same-model", action="store_true", default=None)
     e.add_argument("--postgres", action="store_true", default=None, help="analyze the real database with pg_analysis.py (requires PG_ADMIN_URL)")
+    e.add_argument("--usage-dir", dest="usage_dir", help="folder of the token records written by token_usage.py (default token-usage)")
+    e.add_argument("--rescore", action="store_true", help="do not collect again: re-score the evaluated apps from results/<run>/metrics.json "
+                                                          "(after filling manual_review.json, editing dv8_manual.json or changing the rubric)")
     for f in ("skip-tests", "skip-dv8", "offline", "accept-heuristics"):
         e.add_argument("--" + f, action="store_true", default=None)
     i = sp.add_parser("report", help="generate the report"); i.set_defaults(fn=cmd_report); i.add_argument("--results")

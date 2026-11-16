@@ -63,8 +63,9 @@ between non-adjacent layers. Apply these patterns:
 - **Express middleware chain** for authentication, input validation and
   centralized error handling.
 - In the frontend, separate presentation components from logic (custom
-  hooks), centralize HTTP calls in a single API client and manage the
-  cart state with Context.
+  hooks), centralize HTTP calls in a single API client and manage with
+  Context the state that lives on the client until checkout (the shopping
+  cart, or the seat selection, depending on the requirements).
 
 ### 2. Dependencies and integration
 
@@ -74,18 +75,24 @@ between non-adjacent layers. Apply these patterns:
   repository interface and the data layer implements it. Wire the
   dependencies through constructor injection from a single composition
   root.
-- **Unit of Work**: the checkout (validate stock, deduct it and create
-  the order) runs in a single transaction, managed through an abstraction
-  of your own.
+- **Unit of Work**: the checkout runs in a single transaction, managed
+  through an abstraction of your own: every check and every change it
+  makes (for example, validating and deducting stock and creating the
+  order; or checking the availability of the seats, confirming them,
+  releasing the locks and creating the purchase) is committed or rolled
+  back together.
 - The business logic must not depend directly on Express, on the ORM or
   on `pg`.
 
 ### 3. Domain rules
 
-- **State**: model the order statuses as an explicit state machine, with
-  the valid transitions defined in a single place.
-- **Strategy**: encapsulate the volume discount as an interchangeable
-  pricing policy.
+- **State**: model the lifecycle that the requirements define (for
+  example, the statuses of an order, or the states of a seat: available,
+  locked, sold) as an explicit state machine, with the valid transitions
+  defined in a single place.
+- **Strategy**: encapsulate the pricing rule of the requirements (for
+  example, the volume discount, or the price per screening time) as an
+  interchangeable pricing policy.
 
 ### 4. Use of design patterns that facilitate code maintainability
 

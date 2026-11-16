@@ -502,13 +502,45 @@ def apply_sql(b, text, file, R):
 
 DOWN_MARK = re.compile(r"^\s*--\s*(\+goose\s+down|migrate:down|\+migrate\s+down|\+micrate\s+down|@down)\b", re.I | re.M)
 
+# ───────────────────────── secondary databases (R2, Requirement 1) ─────────────────────────
+# The main schema is the application's PostgreSQL database. DDL for the read replicas (a second PostgreSQL, SQL Server) must not
+# replace or duplicate its tables: a table is decided by the first file that defines it, in path order.
+TSQL = re.compile(r"^\s*GO\s*;?\s*$|\bIDENTITY\s*\(\s*\d+\s*,\s*\d+\s*\)|\bNVARCHAR\b|\bDATETIME2\b|\bUNIQUEIDENTIFIER\b|\[dbo\]|\bdbo\.|"
+                  r"\bIF\s+(?:NOT\s+)?EXISTS\s*\(\s*SELECT\b[^)]*\bsys\.|\bOBJECT_ID\s*\(|\bBIT\s+NOT\s+NULL\s+DEFAULT\s*\(?\s*[01]", re.I | re.M)
+SECONDARY_TOKENS = {"mssql", "sqlserver", "tsql", "replica", "replicas", "replication", "mirror", "secondary"}
 
-def sql_builder(files, R):
-    """`files` = [(relative_path, text)] in application order (sorted by path)."""
+
+def path_tokens(path):
+    """Lower-case words of a path, splitting camelCase too: backend/src/db/sqlServerReplica.js -> [..., sql, server, replica, js]."""
+    return [t for t in re.split(r"[^a-z0-9]+", re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(path)).lower()) if t]
+
+
+def secondary_store(path, text):
+    """Why a SQL text belongs to a secondary database rather than the main PostgreSQL schema, or None."""
+    toks = path_tokens(path)
+    if SECONDARY_TOKENS & set(toks) or any(a == "sql" and b == "server" for a, b in zip(toks, toks[1:])):
+        return "the path names a replica or SQL Server"
+    if TSQL.search(text):
+        return "SQL Server (T-SQL) syntax"
+    return None
+
+
+def natural_key(path):
+    """Sort key that orders numbered migrations by number: 2_create.sql before 10_alter.sql."""
+    return [int(x) if x.isdigit() else x.lower() for x in re.split(r"(\d+)", str(path))]
+
+
+def sql_builder(files, R, skipped=None):
+    """`files` = [(relative_path, text)]; applied in natural path order. SQL of secondary databases goes to `skipped`."""
     b = Builder("sql")
-    for path, text in sorted(files):
+    for path, text in sorted(files, key=lambda f: natural_key(f[0])):
         if re.search(r"[._-]down\.sql$", path, re.I):
             continue  # golang-migrate style: the down half undoes the schema
+        why = secondary_store(path, text)
+        if why:
+            if skipped is not None:
+                skipped.append({"file": path, "reason": why})
+            continue
         m = DOWN_MARK.search(text)
         apply_sql(b, text[:m.start()] if m else text, path, R)
     return b
@@ -657,12 +689,23 @@ def migrations_builder(migs, R):
     return b
 
 
-def ddl_strings(sql_strings, migration):
+def ddl_strings(sql_strings, migration, skipped=None):
     """DDL found in string/template literals of the production code, as [(file:line, text)], in file order.
     migration=True: those inside a migrations folder (labelled sequelize_migration); False: the rest, typically an `init.js` that runs
-    `CREATE TABLE IF NOT EXISTS …` when the backend starts (labelled sql, like a .sql file)."""
-    return sorted((f"{s['file']}:{s['line']}", s["text"]) for s in sql_strings
-                  if bool(s.get("migration")) == migration and re.match(r"\s*(create|alter|drop)\b", s["text"], re.I))
+    `CREATE TABLE IF NOT EXISTS …` when the backend starts (labelled sql, like a .sql file). DDL of secondary databases (replicas,
+    SQL Server) goes to `skipped`."""
+    out = []
+    for s in sql_strings:
+        if bool(s.get("migration")) != migration or not re.match(r"\s*(create|alter|drop)\b", s["text"], re.I):
+            continue
+        where = f"{s['file']}:{s['line']}"
+        why = secondary_store(s["file"], s["text"])
+        if why:
+            if skipped is not None:
+                skipped.append({"file": where, "reason": why})
+            continue
+        out.append((where, s["text"]))
+    return sorted(out, key=lambda x: natural_key(x[0]))
 
 
 # ───────────────────────── 3. Sequelize models ─────────────────────────
@@ -822,14 +865,15 @@ def table_for_model(model, schema):
 def extract(sql_files, ast, R):
     """sql_files = [(relative path, text)]; ast = the ast_metrics.js output. Returns the normalized schema."""
     seq = ast.get("sequelize") or {"models": [], "associations": [], "migrations": []}
-    sqlb = sql_builder(sql_files, R)
+    skipped = []  # SQL of secondary databases (R2 replicas, SQL Server): kept out of the main schema, reported
+    sqlb = sql_builder(sql_files, R, skipped)
     migs = migrations_builder(seq.get("migrations", []), R)
-    for path, text in ddl_strings(ast.get("sqlStrings", []), True):  # DDL in JS migrations: same parser, labelled as a migration
+    for path, text in ddl_strings(ast.get("sqlStrings", []), True, skipped):  # DDL in JS migrations: same parser, labelled as a migration
         tmp = Builder("sequelize_migration")
         tmp.tables = migs.tables
         apply_sql(tmp, text, path, R)
         migs.unparsed += tmp.unparsed
-    for path, text in ddl_strings(ast.get("sqlStrings", []), False):  # DDL executed by the backend at start-up
+    for path, text in ddl_strings(ast.get("sqlStrings", []), False, skipped):  # DDL executed by the backend at start-up
         apply_sql(sqlb, text, path, R)
     modb, model_tables = models_builder(seq, R)
     order = {"sql": sqlb, "sequelize_migration": migs, "sequelize_model": modb}
@@ -838,7 +882,7 @@ def extract(sql_files, ast, R):
     for t in tables.values():
         count[t["source"]] = count.get(t["source"], 0) + 1
     return {"tables": tables, "sources": count, "model_tables": model_tables,
-            "unparsed": (sqlb.unparsed + migs.unparsed + modb.unparsed)[:40]}
+            "unparsed": (sqlb.unparsed + migs.unparsed + modb.unparsed)[:40], "secondary_sql": skipped[:40]}
 
 
 def summary(schema):

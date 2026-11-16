@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-acceptance_check.py — Functional gate: verifies, against the running API, the behaviors of
-requirements-ecommerce.md (discount, stock, statuses, auth) and the contract of its minimum HTTP interface:
-  - monetary values (price, unitPrice, lineTotal, total) are JSON numbers, not strings;
-  - identifiers (id, productId) are integers or UUIDs and are treated as opaque values (never assumed to be an ObjectId).
+acceptance_check.py — Functional gate: verifies, against the running API, the behaviors of the domain requirements and the
+contract of their minimum HTTP interface:
+  ecommerce  requirements-ecommerce.md: volume discount, stock, order statuses, auth
+  cinema     requirements-cinema.md: seat locking, dynamic price per screening, availability, auth
+In both, monetary values are JSON numbers (not strings) and identifiers are integers or UUIDs treated as opaque values.
+The suites cover the ORIGINAL requirements only: an app that already implements r2-additional-requirements.md changes some of
+these rules (prices, shipping, roles), so the gate must run on the state after phase initial (run_experiment.py does that).
 Equivalent to the "pass rate" of Yuen et al. (2025): before comparing maintainability
 we need to know whether the apps do the same thing.
 
-Usage: python3 acceptance_check.py --base http://localhost:4000 --out acceptance.json
+Usage: python3 acceptance_check.py --base http://localhost:4000 [--domain cinema] --out acceptance.json
 Requires a FRESHLY created database (the cases depend on the initial stock).
 run_experiment.py starts PostgreSQL from the app's own docker-compose.yml and the backend before calling this script.
 Standard library only.
 """
-import argparse, json, re, time, urllib.request, urllib.error
+import argparse, datetime, json, re, time, urllib.request, urllib.error
 
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
@@ -23,8 +26,7 @@ def call(base, method, path, body=None, token=None):
                                  headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {token}"} if token else {})})
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
-            raw = r.read().decode() or "null"
-            return r.status, json.loads(raw) if raw.strip()[:1] in "[{\"0123456789tfn-" else raw
+            status, raw = r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         try:
             return e.code, json.loads(e.read().decode() or "null")
@@ -32,6 +34,10 @@ def call(base, method, path, body=None, token=None):
             return e.code, None
     except Exception as e:  # connection refused, timeout, etc.
         return 0, str(e)
+    try:  # a body that is not JSON keeps its real status (it used to be reported as a connection error, status 0)
+        return status, json.loads(raw) if raw.strip() else None
+    except ValueError:
+        return status, raw
 
 
 def num(x):
@@ -51,10 +57,8 @@ def is_opaque_id(x):
     return (isinstance(x, int) and not isinstance(x, bool)) or (isinstance(x, str) and bool(UUID_RE.match(x)))
 
 
-def run(base):
-    results = []
-    ctx = {}
-
+def case_recorder(results):
+    """Decorator factory: `@case(name)` runs the function at once and records (ok, detail); an exception is a failed case."""
     def case(name):
         def deco(fn):
             try:
@@ -64,10 +68,61 @@ def run(base):
             results.append({"case": name, "ok": bool(ok), "detail": detail})
             return fn
         return deco
+    return case
 
+
+def test_users():
     stamp = str(int(time.time() * 1000))
-    A = {"name": "Ann", "email": f"ann{stamp}@test.com", "password": "Passw0rd!x"}
-    B = {"name": "Bob", "email": f"bob{stamp}@test.com", "password": "Passw0rd!x"}
+    return ({"name": "Ann", "email": f"ann{stamp}@test.com", "password": "Passw0rd!x"},
+            {"name": "Bob", "email": f"bob{stamp}@test.com", "password": "Passw0rd!x"})
+
+
+def auth_cases(base, case, user, ctx):
+    """Registration and login cases shared by every domain; leaves user's token in ctx['ta']."""
+    @case("register: 201")
+    def _():
+        s, _b = call(base, "POST", "/api/auth/register", user); return s == 201, s
+
+    @case("duplicate register: 409")
+    def _():
+        s, _b = call(base, "POST", "/api/auth/register", user); return s == 409, s
+
+    @case("login: 200 with token")
+    def _():
+        s, b = call(base, "POST", "/api/auth/login", {"email": user["email"], "password": user["password"]})
+        ctx["ta"] = b.get("token") if isinstance(b, dict) else None
+        return s == 200 and bool(ctx["ta"]), s
+
+    @case("login with wrong password: 401")
+    def _():
+        s, _b = call(base, "POST", "/api/auth/login", {"email": user["email"], "password": "x"}); return s == 401, s
+
+
+def login(base, user):
+    """Registers (if needed) and logs in `user`; returns the token or None."""
+    call(base, "POST", "/api/auth/register", user)
+    _s, b = call(base, "POST", "/api/auth/login", {"email": user["email"], "password": user["password"]})
+    return b.get("token") if isinstance(b, dict) else None
+
+
+def summary(base, results, domain):
+    passed = sum(r["ok"] for r in results)
+    return {"base": base, "domain": domain, "total": len(results), "passed": passed,
+            "acceptance_pct": round(100.0 * passed / len(results), 1) if results else 0.0, "cases": results}
+
+
+def run(base, domain="ecommerce"):
+    """Runs the suite of `domain` (ecommerce, cinema) against `base`."""
+    if domain not in SUITES:
+        raise ValueError(f"no acceptance suite for domain {domain!r} (available: {', '.join(sorted(SUITES))})")
+    return SUITES[domain](base)
+
+
+def run_ecommerce(base):
+    results = []
+    ctx = {}
+    case = case_recorder(results)
+    A, B = test_users()
 
     def products():
         s, b = call(base, "GET", "/api/products")
@@ -79,23 +134,7 @@ def run(base):
     def stock(name):
         return (products().get(name) or {}).get("stock")
 
-    @case("register: 201")
-    def _():
-        s, _b = call(base, "POST", "/api/auth/register", A); return s == 201, s
-
-    @case("duplicate register: 409")
-    def _():
-        s, _b = call(base, "POST", "/api/auth/register", A); return s == 409, s
-
-    @case("login: 200 with token")
-    def _():
-        s, b = call(base, "POST", "/api/auth/login", {"email": A["email"], "password": A["password"]})
-        ctx["ta"] = b.get("token") if isinstance(b, dict) else None
-        return s == 200 and bool(ctx["ta"]), s
-
-    @case("login with wrong password: 401")
-    def _():
-        s, _b = call(base, "POST", "/api/auth/login", {"email": A["email"], "password": "x"}); return s == 401, s
+    auth_cases(base, case, A, ctx)
 
     @case("catalog: fields id, name, price, description, imageUrl, stock")
     def _():
@@ -217,16 +256,184 @@ def run(base):
         s, orders = call(base, "GET", "/api/orders", token=tb)
         return s == 200 and orders == [], (s, orders)
 
-    passed = sum(r["ok"] for r in results)
-    return {"base": base, "total": len(results), "passed": passed,
-            "acceptance_pct": round(100.0 * passed / len(results), 1), "cases": results}
+    return summary(base, results, "ecommerce")
+
+
+# ───────────────────────── cinema (requirements-cinema.md) ─────────────────────────
+CINEMA_TIMES = {"14:00": 6.0, "16:30": 6.0, "20:00": 9.0, "21:00": 9.0}  # seed screenings and their price (before / from 17:00)
+CINEMA_SEATS = [f"{r}{n}" for r in "ABCD" for n in range(1, 6)]
+
+
+def local_hm(starts_at):
+    """'HH:MM' of an ISO 8601 date in the local time zone of this machine: the server's, since the gate runs next to the backend
+    (the seed fixes the time of day in the server's time zone). A date without offset is taken as local."""
+    dt = datetime.datetime.fromisoformat(str(starts_at).replace("Z", "+00:00"))
+    return dt.astimezone().strftime("%H:%M")
+
+
+def run_cinema(base):
+    results = []
+    ctx = {}
+    case = case_recorder(results)
+    A, B = test_users()
+
+    def showtimes():
+        s, b = call(base, "GET", "/api/showtimes")
+        return b if s == 200 and isinstance(b, list) else []
+
+    def by_time():
+        out = {}
+        for st in showtimes():
+            try:
+                out.setdefault(local_hm(st.get("startsAt")), st)
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    def seat_map(time_of_day):
+        st = by_time().get(time_of_day) or {}
+        s, b = call(base, "GET", f"/api/showtimes/{st.get('id')}/seats")
+        return {x.get("label"): x for x in b} if s == 200 and isinstance(b, list) else {}
+
+    def sid(time_of_day):
+        return (by_time().get(time_of_day) or {}).get("id")  # opaque: passed back exactly as received
+
+    def seat_ids(time_of_day, labels):
+        seats = seat_map(time_of_day)
+        return [(seats.get(lb) or {}).get("id") for lb in labels]
+
+    auth_cases(base, case, A, ctx)
+    ctx["tb"] = login(base, B)
+
+    @case("movies: fields id, title, description, imageUrl and the 2 seed movies")
+    def _():
+        s, b = call(base, "GET", "/api/movies")
+        want = {"id", "title", "description", "imageUrl"}
+        ok = s == 200 and isinstance(b, list) and all(want <= set(m) for m in b) and {"Movie One", "Movie Two"} <= {m.get("title") for m in b}
+        return ok, (s, [m.get("title") for m in b] if isinstance(b, list) else b)
+
+    @case("movies: ids are integers or UUIDs")
+    def _():
+        s, b = call(base, "GET", "/api/movies")
+        bad = [m.get("id") for m in b if not is_opaque_id(m.get("id"))] if isinstance(b, list) else None
+        return s == 200 and bad == [] and len(b) > 0, bad
+
+    @case("showtimes: fields id, movieId, startsAt, room, price and the 4 seed screenings (14:00, 16:30, 20:00, 21:00)")
+    def _():
+        sts = showtimes()
+        want = {"id", "movieId", "startsAt", "room", "price"}
+        return all(want <= set(x) for x in sts) and set(CINEMA_TIMES) <= set(by_time()), sorted(by_time())
+
+    @case("showtimes: price 6.00 before 17:00 and 9.00 from 17:00, as JSON numbers")
+    def _():
+        bt = by_time()
+        got = {t: (bt.get(t) or {}).get("price") for t in CINEMA_TIMES}
+        return all(is_number(v) and num(v) == CINEMA_TIMES[t] for t, v in got.items()), got
+
+    @case("seat map: 20 seats A1…D5, all available, with integer or UUID ids")
+    def _():
+        seats = seat_map("14:00")
+        ok = (sorted(seats) == sorted(CINEMA_SEATS) and all(x.get("status") == "available" for x in seats.values())
+              and all(is_opaque_id(x.get("id")) for x in seats.values()))
+        return ok, {"labels": len(seats), "statuses": sorted({str(x.get("status")) for x in seats.values()})}
+
+    for label, tod, n, exp_unit, exp_total in [("2 seats at 14:00 = 12.00", "14:00", 2, 6.0, 12.0),
+                                               ("2 seats at 20:00 = 18.00", "20:00", 2, 9.0, 18.0),
+                                               ("3 seats at 16:30 = 18.00", "16:30", 3, 6.0, 18.0)]:
+        @case("quote: " + label + " (numeric unitPrice and total)")
+        def _(tod=tod, n=n, exp_unit=exp_unit, exp_total=exp_total):
+            s, b = call(base, "POST", f"/api/showtimes/{sid(tod)}/quote", {"seatIds": seat_ids(tod, CINEMA_SEATS[-n:])})
+            ok = (s == 200 and isinstance(b, dict) and is_number(b.get("unitPrice")) and is_number(b.get("total"))
+                  and num(b.get("unitPrice")) == exp_unit and num(b.get("total")) == exp_total and b.get("seats") == n)
+            return ok, (s, b)
+
+    @case("lock without session: 401")
+    def _():
+        s, _b = call(base, "POST", f"/api/showtimes/{sid('20:00')}/lock", {"seatIds": seat_ids("20:00", ["A1"])})
+        return s == 401, s
+
+    @case("lock A1 and A2 (20:00): 200 with seatIds and expiresAt")
+    def _():
+        ids = seat_ids("20:00", ["A1", "A2"])
+        s, b = call(base, "POST", f"/api/showtimes/{sid('20:00')}/lock", {"seatIds": ids}, ctx.get("ta"))
+        ok = s == 200 and isinstance(b, dict) and bool(b.get("expiresAt")) and {str(x) for x in b.get("seatIds") or []} == {str(x) for x in ids}
+        return ok, (s, b)
+
+    @case("lock: another user cannot lock a seat that is locked (409)")
+    def _():
+        s, _b = call(base, "POST", f"/api/showtimes/{sid('20:00')}/lock", {"seatIds": seat_ids("20:00", ["A1"])}, ctx.get("tb"))
+        return s == 409, s
+
+    @case("seat map: a locked seat is shown as locked")
+    def _():
+        st = (seat_map("20:00").get("A1") or {}).get("status")
+        return st == "locked", st
+
+    @case("checkout without session: 401")
+    def _():
+        s, _b = call(base, "POST", "/api/checkout", {"showtimeId": sid("20:00"), "seatIds": seat_ids("20:00", ["A1"])})
+        return s == 401, s
+
+    @case("checkout A1 + A2 (20:00): 201 with id, showtimeId, seatIds and total 18.00")
+    def _():
+        ids = seat_ids("20:00", ["A1", "A2"])
+        s, b = call(base, "POST", "/api/checkout", {"showtimeId": sid("20:00"), "seatIds": ids}, ctx.get("ta"))
+        ctx["order1"] = b.get("id") if isinstance(b, dict) else None
+        ok = (s == 201 and isinstance(b, dict) and str(b.get("showtimeId")) == str(sid("20:00")) and num(b.get("total")) == 18.0
+              and {str(x) for x in b.get("seatIds") or []} == {str(x) for x in ids})
+        return ok, (s, b)
+
+    @case("checkout: id is an integer or UUID and total is a JSON number")
+    def _():
+        s, b = call(base, "GET", "/api/orders", token=ctx.get("ta"))
+        o = next((x for x in b if x.get("id") == ctx.get("order1")), None) if isinstance(b, list) else None
+        return bool(o) and is_opaque_id(ctx.get("order1")) and is_number(o.get("total")), (s, o)
+
+    @case("seat map: the purchased seats are sold")
+    def _():
+        seats = seat_map("20:00")
+        got = {lb: (seats.get(lb) or {}).get("status") for lb in ("A1", "A2")}
+        return all(v == "sold" for v in got.values()), got
+
+    @case("checkout with a sold seat: 409 and the other seat stays available")
+    def _():
+        s, _b = call(base, "POST", "/api/checkout", {"showtimeId": sid("20:00"), "seatIds": seat_ids("20:00", ["A2", "A3"])}, ctx.get("tb"))
+        a3 = (seat_map("20:00").get("A3") or {}).get("status")
+        return s == 409 and a3 == "available", (s, a3)
+
+    @case("seats sold in one screening do not affect another (A1 at 21:00 is available)")
+    def _():
+        st = (seat_map("21:00").get("A1") or {}).get("status")
+        return st == "available", st
+
+    @case("orders: the user sees their purchase with showtimeId, seatIds and a numeric total")
+    def _():
+        s, b = call(base, "GET", "/api/orders", token=ctx.get("ta"))
+        o = next((x for x in b if x.get("id") == ctx.get("order1")), None) if isinstance(b, list) else None
+        ok = s == 200 and bool(o) and {"id", "showtimeId", "seatIds", "total"} <= set(o) and is_number(o.get("total"))
+        return ok, (s, o)
+
+    @case("protected routes without a session: 401")
+    def _():
+        s, _b = call(base, "GET", "/api/orders"); return s == 401, s
+
+    @case("isolation: another user does not see other people's purchases")
+    def _():
+        s, orders = call(base, "GET", "/api/orders", token=ctx.get("tb"))
+        return s == 200 and orders == [], (s, orders)
+
+    return summary(base, results, "cinema")
+
+
+SUITES = {"ecommerce": run_ecommerce, "cinema": run_cinema}
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://localhost:4000"); ap.add_argument("--out", default="acceptance.json")
+    ap.add_argument("--domain", default="ecommerce", choices=sorted(SUITES))
     a = ap.parse_args()
-    res = run(a.base.rstrip("/"))
+    res = run(a.base.rstrip("/"), a.domain)
     with open(a.out, "w", encoding="utf-8") as f:
         f.write(json.dumps(res, indent=1, ensure_ascii=False))
     for r in res["cases"]:

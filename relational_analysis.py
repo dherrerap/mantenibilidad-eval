@@ -83,21 +83,51 @@ def parse_er(text):
     return {"entities": ents, "relationships": rels}
 
 
+def version_dir(app, label, docs="docs"):
+    """docs/<label> of the app, matched case-insensitively (docs/R2, docs/r2), or None."""
+    base = Path(app) / docs
+    if not base.is_dir():
+        return None
+    return next((d for d in sorted(base.iterdir()) if d.is_dir() and d.name.lower() == str(label).lower()), None)
+
+
+def find_file(folder, name):
+    """The file `name` directly inside `folder`, matched case-insensitively, or None."""
+    if not folder or not Path(folder).is_dir():
+        return None
+    return next((p for p in sorted(Path(folder).iterdir()) if p.is_file() and p.name.lower() == name.lower()), None)
+
+
+def er_searched(R):
+    """The places load_er looks in, for messages: 'docs/R2/entity-relationship-model.md, docs/entity-relationship-model.md'."""
+    want = Path(R["er_model_path"])
+    return ", ".join([(want.parent / label / want.name).as_posix() for label in R.get("doc_versions", [])] + [want.as_posix()])
+
+
 def load_er(app, R):
-    """Reads docs/entity-relationship-model.md (path in rubric.json; matched case-insensitively) and parses its erDiagram."""
+    """Reads the entity-relationship model and parses its erDiagram. The latest versioned set comes first (docs/<label>/ for each label
+    of rubric.json relational.doc_versions: entity-relationship-model.md, or else the first .md with an erDiagram), then the original
+    path (relational.er_model_path, docs/entity-relationship-model.md). Names are matched case-insensitively."""
     app = Path(app)
-    want = R["er_model_path"].lower()
-    docs = app / Path(want).parent
-    found = None
-    for cand in [app / R["er_model_path"]] + (list(docs.iterdir()) if docs.is_dir() else []):
-        if cand.is_file() and cand.relative_to(app).as_posix().lower() == want:
-            found = cand
+    want = Path(R["er_model_path"])
+    found, version = None, None
+    for label in R.get("doc_versions", []):
+        d = version_dir(app, label, want.parent.as_posix())
+        if not d:
+            continue
+        cand = find_file(d, want.name)
+        if cand is None:  # e.g. docs/R2/data-model.md: any document of the set that carries the diagram
+            cand = next((p for p in sorted(d.glob("*.md")) if parse_er(p.read_text(encoding="utf-8", errors="replace"))["entities"]), None)
+        if cand:
+            found, version = cand, label
             break
+    found = found or find_file(app / want.parent, want.name)
     if not found:
-        return {"file": None, "found": False, "diagram": False, "entities": {}, "relationships": [], "text": ""}
+        return {"file": None, "found": False, "diagram": False, "entities": {}, "relationships": [], "text": "", "version": None}
     text = found.read_text(encoding="utf-8", errors="replace")
     parsed = parse_er(text)
-    return {"file": found.relative_to(app).as_posix(), "found": True, "diagram": bool(parsed["entities"]), **parsed, "text": text}
+    return {"file": found.relative_to(app).as_posix(), "found": True, "diagram": bool(parsed["entities"]), **parsed, "text": text,
+            "version": version}
 
 
 def norm_entity(name):

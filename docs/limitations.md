@@ -10,6 +10,10 @@ What the framework does **not** guarantee. Cite them alongside any result.
 - **It does not evaluate whether the application works.** Without the acceptance gate (`run_experiment.py` runs `acceptance_check.py` against PostgreSQL
   started from the app's `docker-compose.yml`) a high score may correspond to a broken app. The gate needs Docker and Docker Compose v2; when they are
   missing it is skipped, says so, and nothing in the profile tells whether the app works. It is a maintainability measure, not a correctness one.
+- **The gate covers the original requirements only** (`requirements-ecommerce.md` or `requirements-cinema.md`, chosen by the domain).
+  The additional requirements of phase r2 change some of its rules (prices, shipping, roles), so `run_experiment.py` runs it right
+  after phase initial and skips it on a project that already implements r2. There is no acceptance suite for r2 yet. The 5-minute
+  expiry of the cinema seat locks is not checked (it would take 5 minutes).
 - **A single run per combination.** With one run per level there is no statistical basis to claim that one level beats
   another. Differences of a few points are within the margin left by the pending criteria.
 - **The result is a range** as long as there are pending criteria. The ends are bounds, not estimates.
@@ -67,6 +71,11 @@ What the framework does **not** guarantee. Cite them alongside any result.
 - **Sources.** SQL files, Sequelize migrations (`queryInterface.*`) and Sequelize models are read. Knex migrations, Prisma `schema.prisma`, TypeORM
   entities and `sequelize-typescript` decorators are not: such an app has no `data_schema` artifact (not evaluable) unless it also ships SQL migrations.
   Table and column names that are not string literals (variables, template strings) are skipped and reported as `unparsed`.
+- **Secondary databases (r2, Requirement 1).** SQL meant for the read replicas is kept out of the main schema and listed in
+  `schema.secondary_sql`: SQL Server (T-SQL) syntax (`GO`, `IDENTITY(1,1)`, `NVARCHAR`, `dbo.`…) or a file path naming a replica or SQL
+  Server (`replica`, `replication`, `mssql`, `sqlServer…`). It is a heuristic: a main schema kept under such a path would be skipped, and
+  replica DDL with plain PostgreSQL syntax in an unremarkable path would still count (when its tables have the same names, the first
+  file in path order decides them).
 - **Preference per table.** A table is decided entirely by the first source that defines it (SQL, then Sequelize migrations, then Sequelize models);
   a model's `belongsTo` does not add a foreign key to a table whose migration lacks it, because in the database it would not exist. Table names are
   matched ignoring case and `_`.
@@ -107,8 +116,10 @@ What the framework does **not** guarantee. Cite them alongside any result.
 
 - **It is an opinion, not a measurement.** Its decisions (`source: judge (model)`) must be cited as such and weigh more the more
   criteria it decides. Always report the "without judge" range that `profile.md` writes.
-- **Model bias.** A judge from the same family as the generator may favor its own style. A different model is required, but
-  the family is not controlled: choose with that criterion in mind.
+- **Model bias.** A judge from the same family as the generator may favor its own style. A different model is required: names are
+  compared after removing provider prefixes and date or bracket suffixes, and a family alias (`sonnet`) counts as the same model
+  as any version of it; the judge also refuses to run when the generator model was not recorded. Different models of the same family
+  (Opus judging Sonnet) are allowed: choose with that criterion in mind.
 - **Non-deterministic.** Two runs may differ. The 3 votes with a majority reduce this, they do not eliminate it. Keep `judge.json` with the
   results: it is what allows the decision to be reproduced without querying again.
 - **It sees an excerpt.** It receives the evidence that `judge.py` builds (first lines of the relevant files), not the whole application.
@@ -123,8 +134,26 @@ What the framework does **not** guarantee. Cite them alongside any result.
   `experimentos/*/meta.json` files have `"modelo": null`: the model was not recorded and cannot be reconstructed from this repository.
 - **The specifications differ in more than one aspect** between levels (architectural style, quality attributes,
   guidelines). A difference between levels cannot be attributed to just one of those variables.
-- **Single domain.** The requirements are those of a small e-commerce (≈ 750–960 production lines per app). It is not known whether
-  the results hold in larger applications or in another domain.
+- **Tokens depend on the agent, not only on the code.** The same model with another CLI version, other system instructions, other tools or
+  another effort level consumes different tokens for the same task. Compare tokens only between runs with the same agent, version and
+  configuration, and record them (`agent_version` in `meta.json` with `run_experiment.py`).
+- **Tokens are not cost.** `total_tokens` adds cache reads, which are billed at a fraction of a fresh input token, to everything else. Two
+  agents with similar totals can have very different costs; look at `cache_read_tokens` and `output_tokens`, and at `cost_usd` when the
+  source reports it (Claude `-p --output-format json`).
+- **Attribution of sessions.** `token_usage.py scan` guesses the app and the phase of each session from its prompt (or, for Codex subagents,
+  from the whole transcript) and must be checked before recording. Work done in a session that orchestrated several apps is not
+  attributed to any of them, so the recorded figure is a lower bound of the real effort when the orchestrator did part of the work.
+  The Claude Code transcripts de-duplicate messages by id; a transcript cut off by a crash or rotated by the client undercounts.
+- **One run per phase.** Token consumption varies a lot between repetitions of the same prompt; with a single run per app and phase the
+  R2 / initial ratio is an observation, not an estimate.
+- **Two small domains.** The requirements are those of a small e-commerce and a small cinema ticket sale (≈ 750–960 production lines
+  per app in the pilot). It is not known whether the results hold in larger applications or in other domains.
+- **The specifications changed after the first generation.** `technical-n3.md` and `combiner-prompt.md` were made domain-neutral
+  (their patterns and examples used to name only the e-commerce: cart, stock, order statuses, volume discount), and
+  `r2-additional-requirements.md` gained a fixed HTTP interface for Requirements 1 to 5, the `docs/R2/` layout, the `SEED_DATE`
+  variable and the replica configuration. Applications generated with the previous texts (the first 12 apps, both phases) are not
+  strictly comparable with applications generated with the current ones; record which version of `specs/` each run used (its git
+  commit).
 
 ## Security
 

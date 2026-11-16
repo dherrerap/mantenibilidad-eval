@@ -158,11 +158,57 @@ const ENV_FALLBACK = (n) => {
     [SyntaxKind.BarBarToken, SyntaxKind.QuestionQuestionToken].includes(p.getOperatorToken().getKind()) &&
     /process\.env|import\.meta\.env/.test(p.getLeft().getText());
 };
-/** Does the route validate its input? Validation middleware between the path and the handler, or validation inside the handler. */
+/** Does the route validate its input? Validation middleware between the path and the handler, or validation inside the handler.
+ *  express-validator's body()/param()/query()/check() only count as free calls: `pool.query(` or `req.body(` are not validation, and
+ *  neither is `JSON.parse(`. */
 const VALIDATED = (call) => {
   const txt = call.getText();
-  return /\b(validate\w*|celebrate|checkSchema|body\s*\(|param\s*\(|query\s*\(|schema\w*|zod|joi|yup|ajv)\b|\.(safeParse|parse|validateAsync|validateSync)\s*\(|validationResult/i.test(txt);
+  return /\b(validate\w*|celebrate|checkSchema|schema\w*|zod|joi|yup|ajv)\b|(?<![.\w$])(body|param|query|check)\s*\(|(?<!JSON)\.(safeParse|parse|validateAsync|validateSync)\s*\(|validationResult/i.test(txt);
 };
+
+const RESOLVE_EXTS = ["", ".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx", "/index.js", "/index.ts", "/index.mjs"];
+/** App-relative file that a relative module specifier of `fromFile` points to, or null (packages, unresolvable paths). */
+function resolveSpec(fromFile, spec) {
+  if (!/^\.\.?\//.test(spec)) return null;
+  const base = path.resolve(path.dirname(path.join(root, fromFile)), spec);
+  for (const e of RESOLVE_EXTS) {
+    const f = base + e;
+    if (fs.existsSync(f) && fs.statSync(f).isFile()) return rel(f);
+  }
+  return null;
+}
+
+/** File that defines the router passed to `app.use(path, X)`: X may be an imported identifier, `require('./x')`, or a factory
+ *  call `createRouter(deps)` / `require('./x')(deps)`. Returns the app-relative path or null. */
+function routerTarget(sf, file, expr) {
+  if (!expr) return null;
+  if (Node.isCallExpression(expr)) {
+    const callee = expr.getExpression();
+    if (callee.getText() === "require") {
+      const a0 = expr.getArguments()[0];
+      return a0 && Node.isStringLiteral(a0) ? resolveSpec(file, a0.getLiteralValue()) : null;
+    }
+    return routerTarget(sf, file, callee);
+  }
+  if (Node.isPropertyAccessExpression(expr)) return routerTarget(sf, file, expr.getExpression());
+  if (!Node.isIdentifier(expr)) return null;
+  const name = expr.getText();
+  for (const d of sf.getImportDeclarations()) {
+    const names = [d.getDefaultImport() && d.getDefaultImport().getText(), d.getNamespaceImport() && d.getNamespaceImport().getText(),
+      ...d.getNamedImports().map((n) => (n.getAliasNode() || n.getNameNode()).getText())];
+    if (names.includes(name)) return resolveSpec(file, d.getModuleSpecifierValue());
+  }
+  for (const v of sf.getDescendantsOfKind(SyntaxKind.VariableDeclaration)) {
+    const nameNode = v.getNameNode();
+    const bound = Node.isIdentifier(nameNode) ? [nameNode.getText()] : nameNode.getDescendantsOfKind(SyntaxKind.Identifier).map((i) => i.getText());
+    if (!bound.includes(name)) continue;
+    let init = v.getInitializer();
+    while (init && (Node.isAwaitExpression(init) || Node.isParenthesizedExpression(init))) init = init.getExpression();
+    if (init && Node.isCallExpression(init)) return routerTarget(sf, file, init);
+    if (init && Node.isPropertyAccessExpression(init)) return routerTarget(sf, file, init);
+  }
+  return null;
+}
 const NET_RE = /^(https?|postgres(ql)?|mysql|redis|amqps?|ftp|wss?):\/\/|(^|[^\w.])localhost\b|\b(\d{1,3}\.){3}\d{1,3}\b/i;
 
 
@@ -499,18 +545,22 @@ for (const sf of project.getSourceFiles()) {
       if (Node.isPropertyAccessExpression(n.getExpression())) {
         const m = n.getExpression().getName();
         const a0 = n.getArguments()[0];
+        const obj = n.getExpression().getExpression().getText().slice(0, 60);  // `app`, `router`, `this.router`…
         if (["get", "post", "put", "patch", "delete", "all"].includes(m) && a0 &&
             Node.isStringLiteral(a0) && a0.getLiteralValue().startsWith("/") && !front)
-          out.routes.push({ file, line, method: m.toUpperCase(), path: a0.getLiteralValue(), validated: VALIDATED(n) });
-        if (m === "use" && a0 && Node.isStringLiteral(a0) && !front)
-          out.mounts.push({ file, line, path: a0.getLiteralValue() });
+          out.routes.push({ file, line, method: m.toUpperCase(), path: a0.getLiteralValue(), validated: VALIDATED(n), obj });
+        if (m === "use" && a0 && Node.isStringLiteral(a0) && !front) {
+          // the router may be any later argument (middleware first): the last one that resolves to a file of the app
+          const targets = n.getArguments().slice(1).map((x) => routerTarget(sf, file, x)).filter(Boolean);
+          out.mounts.push({ file, line, path: a0.getLiteralValue(), obj, target: targets.length ? targets[targets.length - 1] : null });
+        }
         if (m === "route" && a0 && Node.isStringLiteral(a0) && !front) {
           // router.route('/x').get(...).post(...)
           let cur = n.getParent(); const p0 = a0.getLiteralValue();
           while (cur && Node.isPropertyAccessExpression(cur)) {
             const mm = cur.getName(); const call = cur.getParent();
             if (["get", "post", "put", "patch", "delete"].includes(mm))
-              out.routes.push({ file, line, method: mm.toUpperCase(), path: p0, validated: VALIDATED(n.getParent().getParent() || n) });
+              out.routes.push({ file, line, method: mm.toUpperCase(), path: p0, validated: VALIDATED(n.getParent().getParent() || n), obj });
             cur = call && call.getParent();
           }
         }

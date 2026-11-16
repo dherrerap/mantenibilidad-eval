@@ -90,6 +90,19 @@ def mask(text, *urls):
     return text
 
 
+R2_MARKERS = ("r2-additional-requirements.md", "PROMPT-R2.md")
+
+
+def has_r2(project):
+    """True when the additional requirements (phase r2) were handed to the agent in this project: the acceptance suites cover the
+    original requirements only, and r2 changes some of their rules (prices, shipping, roles)."""
+    return any((Path(project) / f).is_file() for f in R2_MARKERS)
+
+
+R2_GATE_SKIP = ("the project already implements r2-additional-requirements.md and the acceptance suite covers the original "
+                "requirements only (r2 changes prices, shipping and roles); run the gate after phase initial")
+
+
 # ───────────────────────── Docker Compose (acceptance gate) ─────────────────────────
 COMPOSE_NAMES = ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
 PG_IMAGE = re.compile(r"(^|/)(postgres|postgis/postgis|bitnami/postgresql|timescale/timescaledb)(:|@|$)", re.I)

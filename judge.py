@@ -44,6 +44,33 @@ GUIDE = {
 }
 
 
+MISSING_MODEL = {"", "n/a", "na", "none", "null", "unknown", "?"}
+
+
+def norm_model(name):
+    """Comparable form of a model name: lower case, without provider prefix (anthropic/, us.anthropic.), bracket suffix ([1m]),
+    date suffix (-20250514) or version suffix (-v1:0)."""
+    s = str(name or "").strip().lower()
+    s = s.rsplit("/", 1)[-1]
+    s = re.sub(r"^(?:[a-z]{2}\.)?(?:anthropic|openai)\.", "", s)
+    s = re.sub(r"\[.*?\]$", "", s)
+    s = re.sub(r"-v\d+(?::\d+)?$", "", s)
+    s = re.sub(r"-\d{8}$", "", s)
+    return s
+
+
+def same_model(generator, judge):
+    """True when the judge is (or may be) the generator: equal after normalization, or one is a family alias without a version
+    (sonnet, opus, gpt-5…) contained in the other."""
+    g, j = norm_model(generator), norm_model(judge)
+    if not g or not j:
+        return False
+    if g == j:
+        return True
+    short, long_ = sorted((g, j), key=len)
+    return not re.search(r"\d", short) and re.search(rf"(^|[-.]){re.escape(short)}($|[-.])", long_) is not None
+
+
 def read(app, path, n=80):
     p = Path(app) / path
     if not p.exists():
@@ -188,10 +215,14 @@ def main():
         sys.exit("--votes must be odd (1, 3, 5…).")
     res = Path(a.res).resolve()
     meta = json.loads((res / "meta.json").read_text(encoding="utf-8"))
-    generator = str(meta.get("model", "n/a"))
-    same = generator.strip().lower() == a.model.strip().lower()
+    generator = str(meta.get("model") or "n/a")
+    unknown = generator.strip().lower() in MISSING_MODEL
+    if unknown and not a.allow_same_model:
+        sys.exit("The model that generated the app is not recorded (meta.json): it cannot be checked that the judge is a different "
+                 "model. Evaluate with --model, or pass --allow-same-model to take that risk (it is recorded in judge.json).")
+    same = (not unknown) and same_model(generator, a.model)
     if same and not a.allow_same_model:
-        sys.exit(f"The judge ({a.model}) is the same model that generated the app: there is a bias in favor of its own style. "
+        sys.exit(f"The judge ({a.model}) is the same model that generated the app ({generator}): there is a bias in favor of its own style. "
                  "Use another model, or --allow-same-model (it is recorded in judge.json).")
     m = json.loads((res / "metrics.json").read_text(encoding="utf-8"))
     manual_f = res / "manual_review.json"
@@ -226,7 +257,7 @@ def main():
     # inconclusive decisions are always audited: not unanimous, or low confidence
     forced = [(pid, cid) for pid, cid in decided if not decisions[pid][cid]["unanimous"] or decisions[pid][cid]["confidence"] == "low"]
     sample = list(dict.fromkeys(forced + decided[:n_audit]))
-    output = {"meta": {"judge_model": a.model, "generator_model": generator, "same_model": same, "command": a.cmd, "votes": a.votes,
+    output = {"meta": {"judge_model": a.model, "generator_model": generator, "same_model": same, "generator_unknown": unknown, "command": a.cmd, "votes": a.votes,
                        "date": datetime.datetime.now().isoformat(timespec="seconds"), "prompts_sha256": prompt_hash.hexdigest()},
               "decisions": decisions, "audit": [f"{pid}.{cid}" for pid, cid in sample]}
     (res / "judge.json").write_text(json.dumps(output, indent=1, ensure_ascii=False), encoding="utf-8")

@@ -20,7 +20,7 @@ changes them, this page may become outdated and the file takes precedence.
 |---|---|---|---|
 | Source code | Core | Layers, complexity, cohesion, hierarchies | Structural |
 | Data model schema (SQL files, Sequelize migrations or models) | Core | Data model design | Structural |
-| Entity-relationship model (`docs/entity-relationship-model.md`) | Complementary | Data model design (C6) | Declarative |
+| Entity-relationship model (`docs/R2/entity-relationship-model.md` after r2, else `docs/entity-relationship-model.md`) | Complementary | Data model design (C6) | Declarative |
 | Manifests and lockfiles | Core | Technology selection, external coupling | Structural |
 | Test suite, scripts and coverage report | Complementary* | Test coverage and design | Structural |
 | Contract specification (OpenAPI, JSON Schema, DTOs) | Complementary | Communication contracts | Structural |
@@ -105,8 +105,8 @@ or completes) or **manual**.
 | **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (`depcheck`) · C5 0 structurally dead production files (CWE-561). | auto |
 | **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 and C5 are suggestions |
 | **Contracts** | Modularity, Testability | C1 machine-readable contract (OpenAPI…) · C2 0 Spectral errors · C3 contract covers ≥ 90% of routes · C4 input validation consistent with the contract. | mixed |
-| **Observability** | Analyzability | C1 ≥ 80% of critical events logged (approximated with `catch` blocks that log or delegate to a handler that logs) · C2 structured logger and no `console.*` · C3 centralized error handling · C4 health check, metrics or traces. | mixed |
-| **Tests** | Testability | C1 0 CWE-478/484/1075 violations · C2 tests exist and pass · C3 line coverage ≥ 70% · C4 branch coverage ≥ 50%. | auto (requires running the tests) |
+| **Observability** | Analyzability | C1 ≥ 80% of critical events logged (approximated with `catch` blocks that log or delegate to a handler that logs) · C2 structured logger and no `console.*` · C3 centralized error handling · C4 health check, metrics or traces (a parameterless route whose last segment is `health`, `ready`, `live`, `ping`, `status`, `metrics`…, so that `PATCH /orders/:id/status` does not count). | mixed |
+| **Tests** | Testability | C1 0 CWE-478/484/1075 violations · C2 tests exist and pass · C3 line coverage ≥ 70% · C4 branch coverage ≥ 50% (not applicable, and left out, when the coverage report has no branches). | auto (requires running the tests) |
 | **Configuration** | Modifiability | C1 0 network literals (URL, IP, port) · C2 no duplicated literals per S1192 · C3 external configuration (`.env.example` or configuration module). | auto |
 
 ### Notes per point
@@ -143,9 +143,18 @@ or completes) or **manual**.
 - **Cognitive complexity** (SonarSource, approximate): +1 per control structure, plus the nesting level, and +1 per
   sequence of logical operators. Nested functions are measured separately. Informational; reference of 15 per function.
 - **Structurally dead code (CWE-561).** Production files that no other file imports and that are not entry points (`index`, `server`,
-  `app`…). **Scored** as criterion C5 of Coupling, with the threshold of 0 that ISO/IEC 5055 sets for structurally dead code. The 5%
+  `app`…, configuration files, and the files `package.json` launches: its `main` and those named in its scripts, such as
+  `"migrate": "node src/data/migrateCli.js"`). **Scored** as criterion C5 of Coupling, with the threshold of 0 that ISO/IEC 5055 sets for structurally dead code. The 5%
   allowance the same weakness gives to *logically* dead code is not applied, because unreachable statements inside a function are not
   detected.
+- **Contract coverage (Contracts C3).** Each route gets its full path from the `app.use(prefix, router)` calls whose router resolves
+  to a file of the app (imports, `require`, factories such as `createRouter(deps)`, nested routers). It matches a contract operation
+  only with the same method and the same path, with parameter names ignored, alone or under the contract's base path (`servers[].url`,
+  `basePath`). When a router's prefix cannot be resolved, a match of whole trailing segments is accepted for its routes, and the count
+  of such routes is recorded (`routes_with_unresolved_prefix`). A route validates its input (C4) when its call contains a validation
+  middleware or schema; `pool.query(`, `req.body(` and `JSON.parse(` do not count.
+- **Hierarchies C2** counts the direct children of the project's own classes: twelve subclasses of `Error` or `React.Component` are
+  not a wide hierarchy of the app.
 - **Supplementary indicators** (`supplementary.json` and section of `profile.md`; informational, not scored): test
   quality (cases without assertions, test LOC / production LOC, integration tests), documentation (% of functions with
   JSDoc, README topics), frontend (large components, components with many props, hooks without a dependency array,
@@ -175,7 +184,9 @@ or completes) or **manual**.
     table cannot be resolved, or that is built dynamically, is not counted (`queries_unresolved`, `dynamic_queries` in the metrics).
   - **C5** (suggestion). The same column name (ignoring case and `_`) never has different type families in different tables, there are no tables with
     identical columns and the naming convention is not mixed (snake_case with camelCase).
-  - **C6** (automatic). The Mermaid `erDiagram` in `docs/entity-relationship-model.md` matches the schema: the same entities (names compared ignoring case,
+  - **C6** (automatic). The Mermaid `erDiagram` of the ER model matches the schema. The model is the one of the latest documentation set
+    (`docs/R2/entity-relationship-model.md`, or another `.md` of `docs/R2/` with an `erDiagram`; labels in `relational.doc_versions`), else
+    `docs/entity-relationship-model.md`; the README is chosen the same way (`docs/R2/README.md` before the root one). It must match: the same entities (names compared ignoring case,
     `_` and plurals), the same attributes in each entity, the same primary-key and foreign-key markers, and a relationship for each foreign key with the
     "one" side on the referenced table. Differences in attribute types and in optionality (zero vs. one) are reported but are not mismatches. If the file is
     missing or has no `erDiagram`, C6 fails and the *Entity-relationship model* artifact is recorded as absent.
@@ -188,7 +199,8 @@ or completes) or **manual**.
 
 With `--postgres` (environment variable `PG_ADMIN_URL`, the connection string of a role that can create databases) `pg_analysis.py` creates a
 database `eval_<run>`, starts the backend against it (`DATABASE_URL`, `PORT`), exercises it with the acceptance gate and with `pg_seed.py` (the same 25
-users and their orders in all apps), reads its catalog with `pg_schema.js` through the `pg` package (`information_schema` for tables and columns;
+users and their orders or seat purchases in all the apps of a domain; the gate is skipped on an app that already implements
+`r2-additional-requirements.md`, because its suites cover the original requirements), reads its catalog with `pg_schema.js` through the `pg` package (`information_schema` for tables and columns;
 `pg_catalog` for constraints, foreign keys, indexes and `pg_stat_user_indexes` for index usage) and drops the database. `pg_schema.js` refuses to
 create, read or drop any database whose name does not match `eval_[a-z0-9_]+`, and `PG_ADMIN_URL` itself is not passed to the evaluated backend. The
 catalog is saved in `results/<run>/pg_schema.json` and replaces the static schema for these criteria:
@@ -240,9 +252,37 @@ Automated Source Code Maintainability Measure (`_coverage_ascmm`), the conforman
 (`_conformance_25023`, including the exclusions and their rationale) and the one for IEEE Std 1028 (`_conformance_1028`). The
 evaluator's tests fail if a threshold has no backing entry or if a `normative_exact` value drifts from the standard's default.
 
+## AI token consumption
+
+Besides the static profile, each application has an **effort indicator**: the tokens the generator agent consumed in two phases of its
+life, measured with `token_usage.py` from the agents' own usage records (procedure in [generating-apps.md](generating-apps.md)).
+
+| Phase | What it measures |
+|---|---|
+| **initial** | Tokens to create the application from `technical-<level>.md` + `requirements-<domain>.md` (`combiner-prompt.md`). |
+| **r2** | Tokens to implement `r2-additional-requirements.md` on top of that same application, in a new session (`r2-prompt.md`). |
+| **R2 / initial** | `total_tokens(r2) / total_tokens(initial)`: how much the change costs relative to building the application. |
+
+Each phase adds every agent session devoted to that app and phase (subagents included; an orchestrating session is not attributed to any
+app). The counts are normalized so that agents are comparable:
+
+| Field | Definition |
+|---|---|
+| `input_tokens` | All input tokens processed, **including** the cache reads and writes (Claude: `input + cache_creation + cache_read`; Codex: `input_tokens`, which already includes `cached_input_tokens`). |
+| `cache_read_tokens`, `cache_write_tokens` | Part of `input_tokens` read from or written to the prompt cache. |
+| `output_tokens` | Generated tokens, **including** reasoning/thinking; `reasoning_tokens` is that part when the source reports it. |
+| `total_tokens` | `input_tokens + output_tokens`. This is the figure of the report and of the R2 / initial ratio. |
+| `requests` | Model calls (Claude: distinct assistant messages; Codex: `token_count` events). |
+
+The tokens are **not part of the maintainability score** and do not change any decision point: they are reported next to it
+(`report.md`, section *AI token consumption*; `_comparison/comparison.csv`, columns `tokens_*`) so that the score can be read against the
+effort. The working hypothesis is that a more maintainable application at the end of phase initial needs fewer tokens in phase r2, in
+absolute terms and relative to its creation; the framework provides the data to test it, not the conclusion.
+
 ## Traceability
 
 Each run leaves in `results/<app>/`: `profile.md` and `profile.json` (result), `scorecard.json` and `scorecard.csv` (the 11 points
 with their criteria and evidence), `traceability.csv`, `metrics.json` (raw evidence), `detected_layers.json` (each
-file's layer and which directory decided it) and the `dv8/` folder with the matrix and the metrics. `results/environment.json` records
+file's layer and which directory decided it), `token_usage.json` (tokens per phase and per session, with the source file of each) and
+the `dv8/` folder with the matrix and the metrics. `results/environment.json` records
 the versions used.

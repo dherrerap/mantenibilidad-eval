@@ -36,8 +36,8 @@ def node_pg(args, admin_url, timeout=300):
     return p.returncode, rt.mask((p.stdout + p.stderr).strip(), admin_url)
 
 
-def exercise_backend(be, env, port, res, wait, skip_seed, log):
-    """npm install + npm start, acceptance gate and seed. Returns an error text or None."""
+def exercise_backend(be, env, port, res, wait, skip_seed, log, domain="ecommerce", gate=True):
+    """npm install + npm start, acceptance gate (unless `gate` is False) and seed of `domain`. Returns an error text or None."""
     if not (be / "node_modules").exists():
         subprocess.run([rt.npm(), "install", "--no-audit", "--no-fund"], cwd=be, stdout=log, stderr=subprocess.STDOUT, timeout=900)
     proc = rt.start_process([rt.npm(), "start"], be, env, log)
@@ -46,15 +46,26 @@ def exercise_backend(be, env, port, res, wait, skip_seed, log):
             return f"the backend did not open the port within {wait} s (see backend.log)"
         time.sleep(2)  # margin for the schema creation and the initial data
         base = f"http://127.0.0.1:{port}"
-        subprocess.run([sys.executable, str(HERE / "acceptance_check.py"), "--base", base, "--out", str(res / "acceptance.json")],
-                       stdout=log, stderr=subprocess.STDOUT, timeout=600)
-        if not skip_seed:  # same users and orders in every app: the data left in the database is comparable
-            subprocess.run([sys.executable, str(HERE / "pg_seed.py"), "--base", base, "--output", str(res / "seed.json")],
+        if gate:
+            subprocess.run([sys.executable, str(HERE / "acceptance_check.py"), "--base", base, "--domain", domain, "--out", str(res / "acceptance.json")],
+                           stdout=log, stderr=subprocess.STDOUT, timeout=600)
+        if not skip_seed:  # same users and orders in every app of the domain: the data left in the database is comparable
+            subprocess.run([sys.executable, str(HERE / "pg_seed.py"), "--base", base, "--domain", domain, "--output", str(res / "seed.json")],
                            stdout=log, stderr=subprocess.STDOUT, timeout=600)
         time.sleep(2)  # let PostgreSQL report index usage before the catalog is read
         return None
     finally:
         rt.kill_tree(proc)
+
+
+def gate_allowed(app, res):
+    """The acceptance suites cover the original requirements: on an app that already implements r2 the gate is skipped and a
+    stale acceptance.json is removed (its result would be misleading)."""
+    if not rt.has_r2(app):
+        return True
+    (res / "acceptance.json").unlink(missing_ok=True)
+    print(f"Acceptance gate skipped: {rt.R2_GATE_SKIP}.")
+    return False
 
 
 def analyze(res, admin_url, app=None, skip_seed=False, keep=False, wait=90):
@@ -77,9 +88,11 @@ def analyze(res, admin_url, app=None, skip_seed=False, keep=False, wait=90):
     if rc != 0:
         return "could not create the database (see above)", db
     error = None
+    domain = meta.get("domain") or "ecommerce"
+    gate = gate_allowed(app, res)
     try:
         with open(res / "backend.log", "w", encoding="utf-8") as log:
-            error = exercise_backend(be, env, port, res, wait, skip_seed, log)
+            error = exercise_backend(be, env, port, res, wait, skip_seed, log, domain, gate)
         if error is None:
             rc, out = node_pg(["dump", db, str(res / "pg_schema.json")], admin_url)
             print(out)

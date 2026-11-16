@@ -9,17 +9,58 @@ Where "main catalog entity" is mentioned, it refers to the central
 entity of this application's domain (for example, products or
 movies/screenings, as applicable).
 
+## Documentation versioning (R2)
+
+All the documentation, models and diagrams of the project (for example,
+the README, the entity-relationship/data model, architecture and
+component diagrams, sequence diagrams and any other design artifact)
+must be generated again from scratch to reflect the application after
+these requirements, and delivered under the version label **R2**. The
+previous versions must not be edited in place or reused as-is: the R2
+set must be a new, complete and consistent set that covers Requirements
+1 to 9.
+
+The R2 set lives in the folder `docs/R2/` and must contain at least:
+
+- `docs/R2/README.md`: installation, configuration (including the
+  environment variables of these requirements) and run instructions,
+  the project structure and the functional assumptions, updated for R2;
+- `docs/R2/entity-relationship-model.md`: the entity-relationship model
+  of the main PostgreSQL database after these requirements, with the
+  same rules as the original one (a Mermaid `erDiagram` plus a brief
+  description of each entity, matching exactly the implemented schema).
+  The replicas of Requirement 1 are described in a separate section or
+  file, not mixed into this diagram.
+
+The original documents (`README.md` at the root and
+`docs/entity-relationship-model.md`) stay as they were; the only change
+allowed in the root `README.md` is a line at the top that links to
+`docs/R2/README.md`.
+
 ## Requirement 1 — Connectivity to additional databases
 
 The application must extend its persistence layer to connect, in
-addition to MongoDB, to a PostgreSQL instance and a SQL Server
-instance. The main catalog entity of the domain must be replicated on
-these two relational databases, in read-only mode and synchronized on
-every write.
+addition to its main PostgreSQL database, to a second, independent
+PostgreSQL instance (replica) and a SQL Server instance. The main
+catalog entity of the domain must be replicated on these two
+additional databases, in read-only mode and synchronized on every
+write to the main database.
 
-The application must expose a mechanism (for example, a query
-parameter) that allows reading that same information interchangeably
-from MongoDB, PostgreSQL or SQL Server.
+The application must expose a mechanism that allows reading that same
+information interchangeably from the main PostgreSQL database, the
+PostgreSQL replica or SQL Server: the query parameter `source` of the
+catalog listing (`primary`, `replica` or `sqlserver`; `primary` when it
+is absent), with the same response format whatever the source.
+
+- The connection strings are read from the environment variables
+  `REPLICA_DATABASE_URL` (PostgreSQL replica) and `SQLSERVER_URL` (SQL
+  Server), next to the original `DATABASE_URL`.
+- The `docker-compose.yml` at the root starts the three databases.
+- The application must start and work with only `DATABASE_URL`: a
+  replica that is not configured or not reachable does not stop the
+  backend nor the writes on the main database; reading from it returns
+  `503` with `error: "SOURCE_UNAVAILABLE"`. An unknown `source` returns
+  `422` with `error: "SOURCE_INVALID"`.
 
 ## Requirement 2 — Auditing of database objects
 
@@ -58,11 +99,22 @@ This requires:
 
 ## Requirement 4 — Role-based access control
 
+This requirement **replaces** the rule of the original specification
+that all users have the same role.
+
 The application must incorporate at least two user roles:
 administrator and regular user. The management operations on the main
 catalog entities (create, edit or delete) must be restricted
 exclusively to the administrator role; the remaining operations
 (browsing the catalog, purchasing) remain available to both roles.
+
+- `POST /api/auth/register` always creates a regular user; a role cannot
+  be chosen at registration.
+- At startup the backend ensures that an administrator exists with the
+  credentials of the environment variables `ADMIN_EMAIL` and
+  `ADMIN_PASSWORD` (when both are set), and an auditor (Requirement 5)
+  with `AUDITOR_EMAIL` and `AUDITOR_PASSWORD`. No other mechanism to
+  grant roles is required.
 
 This requires:
 
@@ -100,6 +152,35 @@ This requires:
   that rejects every write operation for this role), rather than
   repeated operation by operation.
 
+## HTTP interface of Requirements 1 to 5
+
+These routes complete the minimum HTTP interface and are used to verify
+the delivery automatically. Rejections use the error body of the
+conventions below (`{ "error": "<CODE>", "message": "<text>" }`):
+`401` without a valid session, `403` with `error: "FORBIDDEN"` when the
+role is not allowed, `404` when the record does not exist or is
+logically deleted.
+
+The catalog of each domain is: **ecommerce** `/api/products` (the
+product); **cinema** `/api/movies` (the movie; screenings keep their
+original routes).
+
+| Route | Description | Who | Response |
+| ----- | ----------- | --- | -------- |
+| `GET /api/auth/me` | The user of the session | any user | `200` with `{id, name, email, role}`, `role` in `user`, `admin`, `auditor` |
+| `GET <catalog>?source=primary\|replica\|sqlserver` | Listing from the chosen database (Req. 1) | anyone | `200`, same format as the original listing |
+| `POST <catalog>` | Creates a record of the catalog | admin | `201` with the record |
+| `PUT <catalog>/:id` | Edits it | admin | `200` with the record |
+| `DELETE <catalog>/:id` | Logical deletion (Req. 3) | admin | `204`; it disappears from every listing |
+| `GET <catalog>?includeDeleted=true` | Listing including the deleted ones, with `deletedAt` and `deletedBy` | admin, auditor | `200`; `403` for a regular user |
+| `GET /api/audit?entity=<name>&id=<id>` | Audit history of a record (Req. 2), oldest first | admin, auditor | `200`, array of `{action, entity, entityId, userId, at, before, after}`; `action` in `create`, `update`, `delete` |
+| `GET /api/orders` | For the auditor, the orders or purchases of **all** users | auditor | `200`; regular users keep seeing only their own |
+
+The names of `entity` are those of the catalog (`product` or `movie`),
+`coupon` (Requirement 6) and `order` (cancellations, Requirement 7).
+`before` is `null` for a creation and `after` keeps the record as it was
+left by a deletion.
+
 ---
 
 # Additional business-logic requirements
@@ -120,6 +201,12 @@ Requirements 1 to 5.
   delivery automatically. Use `422` when the request itself is invalid
   and `409` when it conflicts with the current state of the data.
 - **Amounts** are returned as JSON numbers and rounded to 2 decimals.
+- **Date of the cinema screenings.** The weekend surcharge of
+  Requirement 8 depends on the day, and the seed screenings are dated
+  "tomorrow". The environment variable `SEED_DATE` (`YYYY-MM-DD`) fixes
+  the date of the seed screenings when the database is seeded (default:
+  tomorrow), so that the examples can be verified on any day. Examples
+  without a day are on a weekday.
 - **Calculation order.** Whenever more than one rule affects the total,
   the order is: base price → price rules of Requirement 8 → coupon of
   Requirement 6 → (ecommerce only) shipping of Requirement 8.
@@ -211,9 +298,9 @@ The quote and checkout responses add the fields `subtotal` and
   response is `{id, showtimeId, seatIds, subtotal, discount, total}`.
 - The coupon is applied on the total of the seats.
 - Examples:
-  - 2 seats at 20:00 (subtotal 18.00) with a 10% coupon → discount
+  - 2 seats at 20:00 on a weekday (subtotal 18.00) with a 10% coupon → discount
     1.80, total 16.20.
-  - 3 seats at 16:30 (subtotal 18.00) with a fixed coupon of 12.00 →
+  - 3 seats at 16:30 on a weekday (subtotal 18.00) with a fixed coupon of 12.00 →
     discount capped at 9.00, total 9.00.
 
 ## Requirement 7 — Order cancellation with inventory restitution
@@ -346,7 +433,7 @@ the same error codes.
 - The sales cutoff must be configurable through the environment variable
   `SALES_CUTOFF_MINUTES` (default `15`), so that it can be verified
   without waiting for the real time. With `SALES_CUTOFF_MINUTES` large
-  enough to cover tomorrow's screenings, lock and checkout return
+  enough to cover the seed screenings, lock and checkout return
   `SALES_CLOSED` while the seat map and the quote keep working.
 - An expired lock, a lock released by a checkout, and the seats of a
   cancelled purchase (Requirement 7) do not count toward the lock limit.

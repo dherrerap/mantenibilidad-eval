@@ -2,7 +2,7 @@
 
 They cover the rules that weigh most on the results: level from criteria, rule S1192, layers (with doubtful classification and with no
 inter-layer dependencies), reading node:test coverage, the DV8 matrix and Unhealthy Inheritance, and the extraction of the relational
-schema (SQL, Sequelize migrations and models).
+schema (SQL, Sequelize migrations and models) and the token records of the generator agent (token_usage.py).
 """
 import argparse, contextlib, io, json, os, subprocess, sys, tempfile, threading, unittest, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +21,7 @@ import pg_analysis  # noqa: E402
 import pg_runtime  # noqa: E402
 import acceptance_check  # noqa: E402
 import run_experiment  # noqa: E402
+import token_usage as tu  # noqa: E402
 
 
 class Opts:
@@ -654,8 +655,8 @@ class TestPgAnalysisFlow(unittest.TestCase):
 
     def run_flow(self, node, backend_error=None, **kw):
         seen = {}
-        def exercise(be, env, port, res, wait, skip_seed, log):
-            seen["env"] = env
+        def exercise(be, env, port, res, wait, skip_seed, log, domain="ecommerce", gate=True):
+            seen["env"], seen["domain"], seen["gate"] = env, domain, gate
             return backend_error
         with mock.patch.object(pg_analysis, "node_pg", node), mock.patch.object(pg_analysis, "exercise_backend", exercise), \
                 mock.patch.dict(os.environ, {"PG_ADMIN_URL": "postgres://admin:topsecret@h:5432/postgres"}), contextlib.redirect_stdout(io.StringIO()):
@@ -885,7 +886,7 @@ class TestRunExperimentGate(unittest.TestCase):
         self.tmp.cleanup()
 
     def gate(self, backend=None):
-        backend = backend or (lambda be, env, port, expdir, wait=90: {"passed": 25, "total": 25, "acceptance_pct": 100.0, "env": env})
+        backend = backend or (lambda be, env, port, expdir, wait=90, domain="ecommerce": {"passed": 25, "total": 25, "acceptance_pct": 100.0, "env": env})
         with mock.patch.object(pg_runtime, "docker_status", return_value=(["docker", "compose"], None)), mock.patch.object(pg_runtime, "Compose", FakeCompose), \
                 mock.patch.object(run_experiment, "run_backend_gate", backend), mock.patch.object(pg_runtime, "wait_for_port", return_value=True):
             return run_experiment.acceptance(self.project, self.exp, "claude-n1-ecommerce-r1")
@@ -1088,7 +1089,7 @@ class TestGeneratorModel(unittest.TestCase):
     def cli_args(self, **over):
         base = dict(apps=[str(FIX / "sequelize_app")], config=str(Path(self.tmp.name) / "none.json"), apps_dir=None, results=str(Path(self.tmp.name) / "cli-results"),
                     domain=None, model=None, rep=None, judge=None, judge_votes=None, judge_cmd=None, allow_same_model=None, postgres=None,
-                    skip_tests=True, skip_dv8=True, offline=True, accept_heuristics=None, allow_missing_model=None)
+                    skip_tests=True, skip_dv8=True, offline=True, accept_heuristics=None, allow_missing_model=None, usage_dir=None)
         return argparse.Namespace(**{**base, **over})
 
     def test_cli_evaluate_stops_before_doing_anything_without_a_model(self):
@@ -1340,8 +1341,18 @@ class TestDV8(unittest.TestCase):
 
 class TestCLI(unittest.TestCase):
     def test_identity(self):
-        self.assertEqual(cli.identity("claude-n2"), ("claude", "N2"))
-        self.assertEqual(cli.identity("my_app"), ("my_app", "n/a"))
+        self.assertEqual(cli.identity("claude-n2"), ("claude", "N2", None))
+        self.assertEqual(cli.identity("my_app"), ("my_app", "n/a", None))
+
+    def test_identity_reads_the_domain_from_the_name(self):
+        self.assertEqual(cli.identity("claude-cinema-n1"), ("claude", "N1", "cinema"))
+        self.assertEqual(cli.identity("Codex-Ecommerce-N3"), ("codex", "N3", "ecommerce"))
+        self.assertEqual(cli.identity("my-app-n1"), ("my-app-n1", "n/a", None))  # "app" is not a domain with requirements
+        self.assertIn("cinema", cli.known_domains()); self.assertIn("ecommerce", cli.known_domains())
+
+    def test_execute_turns_a_timeout_into_a_return_code(self):
+        rc, out = cli.execute([sys.executable, "-c", "import time; time.sleep(5)"], timeout=1)
+        self.assertEqual(rc, cli.TIMEOUT_RC); self.assertIn("TIMEOUT", out)
 
 
 if __name__ == "__main__":
@@ -1456,3 +1467,533 @@ class TestBackingTraceability(unittest.TestCase):
         c = ev.RUBRIC["backing"]["_coverage_ascmm"]
         self.assertEqual(c["total_weaknesses"] - len(c["not_applicable_to_js_ts"]), c["applicable"])
         self.assertEqual(len(c["scored"]) + len(c["informational"]) + len(c["not_detected"]), c["applicable"])
+
+
+class TestTokenUsage(unittest.TestCase):
+    """token_usage.py: parsing of each agent's usage records, normalization, recording per phase and its place in the report."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.d = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, name, objs):
+        p = self.d / name
+        p.write_text("".join(json.dumps(o) + "\n" for o in objs), encoding="utf-8")
+        return p
+
+    @staticmethod
+    def claude_msg(mid, inp, cw, cr, out, think=0):
+        return {"type": "assistant", "sessionId": "s1", "timestamp": "2026-11-07T17:00:00Z",
+                "message": {"id": mid, "model": "claude-sonnet-5-5", "role": "assistant",
+                            "usage": {"input_tokens": inp, "cache_creation_input_tokens": cw, "cache_read_input_tokens": cr,
+                                      "output_tokens": out, "output_tokens_details": {"thinking_tokens": think}}}}
+
+    @staticmethod
+    def manual(i, o):
+        return {**tu.finish({**tu.empty(), "input_tokens": i, "output_tokens": o, "requests": 1}), "format": "manual", "file": None, "session_id": None}
+
+    def test_claude_transcript_is_deduplicated_by_message_id_and_input_includes_the_cache(self):
+        user = {"type": "user", "message": {"role": "user", "content": "Your working folder is apps/claude-cinema-n1. Read PROMPT.md"}}
+        p = self.write("s.jsonl", [user, self.claude_msg("m1", 2, 100, 1000, 50, 10), self.claude_msg("m1", 2, 100, 1000, 50, 10),
+                                   self.claude_msg("m2", 3, 0, 1100, 20)])
+        s = tu.parse_file(p)
+        self.assertEqual(s["format"], "claude-transcript")
+        self.assertEqual((s["input_tokens"], s["cache_read_tokens"], s["cache_write_tokens"]), (2205, 2100, 100))
+        self.assertEqual((s["output_tokens"], s["reasoning_tokens"], s["total_tokens"], s["requests"]), (70, 10, 2275, 2))
+        self.assertEqual(s["models"], ["claude-sonnet-5-5"])
+        self.assertEqual(tu.guess(s, ["claude-cinema-n1", "claude-cinema-n2"])[:2], ("claude-cinema-n1", "initial"))
+
+    def test_claude_result_json_adds_every_model(self):
+        p = self.d / "agent.log"
+        p.write_text(json.dumps({"type": "result", "session_id": "x", "num_turns": 7, "total_cost_usd": 1.5, "modelUsage": {
+            "claude-sonnet-5-5": {"inputTokens": 10, "outputTokens": 100, "cacheReadInputTokens": 1000, "cacheCreationInputTokens": 50},
+            "claude-haiku-5-5": {"inputTokens": 5, "outputTokens": 10, "cacheReadInputTokens": 0, "cacheCreationInputTokens": 0}}}), encoding="utf-8")
+        s = tu.parse_file(p)
+        self.assertEqual((s["format"], s["input_tokens"], s["output_tokens"], s["total_tokens"], s["cost_usd"]), ("claude-result", 1065, 110, 1175, 1.5))
+
+    def test_codex_rollout_uses_the_last_cumulative_count_and_exec_json_adds_the_turns(self):
+        def tc(i, c, o):
+            return {"type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {
+                "input_tokens": i, "cached_input_tokens": c, "output_tokens": o, "reasoning_output_tokens": 3, "total_tokens": i + o}}}}
+        r = self.write("rollout-x.jsonl", [{"type": "session_meta", "payload": {"id": "t1", "parent_thread_id": "p"}},
+                                           tc(100, 80, 10), {"type": "event_msg", "payload": {"type": "token_count", "info": None}}, tc(300, 250, 40)])
+        s = tu.parse_file(r)
+        self.assertEqual((s["format"], s["input_tokens"], s["cache_read_tokens"], s["output_tokens"], s["total_tokens"], s["subagent"]),
+                         ("codex-rollout", 300, 250, 40, 340, True))
+        e = self.write("exec.jsonl", [{"type": "thread.started", "thread_id": "t2"},
+                                      {"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 50, "output_tokens": 5}},
+                                      {"type": "turn.completed", "usage": {"input_tokens": 200, "cached_input_tokens": 150, "output_tokens": 7}}])
+        s = tu.parse_file(e)
+        self.assertEqual((s["format"], s["input_tokens"], s["cache_read_tokens"], s["total_tokens"], s["requests"]), ("codex-exec", 300, 200, 312, 2))
+
+    def test_a_file_without_usage_is_rejected(self):
+        with self.assertRaises(ValueError):
+            tu.parse_file(self.write("x.jsonl", [{"type": "user", "message": {"content": "hi"}}]))
+
+    def test_an_orchestrator_that_names_the_app_only_inside_the_transcript_is_not_attributed(self):
+        s = {"file": str(self.write("o.jsonl", [{"x": "apps/claude-n1 apps/claude-n1 apps/claude-n1"}])), "prompt": "evaluate everything", "subagent": False}
+        self.assertIsNone(tu.guess(s, ["claude-n1", "claude-n2"])[0])
+        self.assertEqual(tu.guess({**s, "subagent": True}, ["claude-n1", "claude-n2"])[0], "claude-n1")
+        self.assertEqual(tu.guess({"prompt": "Apply r2-additional-requirements.md in apps/claude-n1"}, ["claude-n1"])[:2], ("claude-n1", "r2"))
+
+    def test_phases_are_recorded_separately_and_the_ratio_compares_r2_with_initial(self):
+        path = self.d / "usage" / "claude-n1.json"
+        tu.record_phase(path, "claude-n1", "initial", [self.manual(1000, 100)])
+        tu.record_phase(path, "claude-n1", "r2", [self.manual(400, 40)])
+        tu.record_phase(path, "claude-n1", "r2", [self.manual(100, 10)], append=True)
+        data = tu.load(path)
+        self.assertEqual(list(data["phases"]), ["initial", "r2"])
+        self.assertEqual(data["phases"]["r2"]["totals"]["total_tokens"], 550)
+        self.assertEqual(tu.summary(data)["r2_vs_initial"]["total_tokens"], 0.5)
+        with self.assertRaises(ValueError):
+            tu.record_phase(path, "claude-n1", "second", [self.manual(1, 1)])
+
+    def test_the_report_and_the_comparison_read_the_copy_in_results(self):
+        usage = self.d / "usage"
+        tu.record_phase(usage / "claude-n1.json", "claude-n1", "initial", [self.manual(1000, 100)])
+        tu.record_phase(usage / "claude-n1.json", "claude-n1", "r2", [self.manual(500, 50)])
+        run = self.d / "results" / "claude-n1-ecommerce-r1"
+        self.assertIsNone(cli.copy_token_usage(Path("apps/claude-n1"), run, str(usage)))
+        cols = ev.token_columns(run)
+        self.assertEqual((cols["tokens_initial_total"], cols["tokens_r2_total"], cols["tokens_r2_vs_initial"]), (1100, 550, 0.5))
+        section = "\n".join(cli.token_section([(run, {"meta": {"run_id": run.name}}, [])]))
+        self.assertIn("| claude-n1-ecommerce-r1 | 1.0 k | 100 | **1.1 k** | 500 | 50 | **550** | ×0.50 | 1.6 k |", section)
+        self.assertIn("not recorded", cli.copy_token_usage(Path("apps/claude-n2"), run, str(usage)))
+        self.assertFalse((run / tu.RESULT_FILE).exists())  # a stale copy does not survive once the record is gone
+        self.assertIn("Not recorded", "\n".join(cli.token_section([(run, {"meta": {"run_id": run.name}}, [])])))
+        self.assertIsNone(ev.token_columns(run)["tokens_initial_total"])
+
+    def test_run_experiment_prompts_name_the_domain_and_the_r2_inputs(self):
+        prompt = run_experiment.build_prompt("N2", "cinema")
+        self.assertIn("technical-n2.md", prompt); self.assertIn("requirements-cinema.md", prompt); self.assertNotIn("{", prompt)
+        project = self.d / "p"
+        run_experiment.prepare_phase("initial", "N1", "cinema", project)
+        self.assertTrue((project / "PROMPT.md").exists() and (project / "requirements-cinema.md").exists())
+        with self.assertRaises(SystemExit):
+            run_experiment.prepare_phase("r2", "N1", "cinema", project)  # no backend/ yet
+        (project / "backend").mkdir()
+        r2 = run_experiment.prepare_phase("r2", "N1", "cinema", project)
+        self.assertIn("r2-additional-requirements.md", r2); self.assertTrue((project / "r2-additional-requirements.md").exists())
+        self.assertEqual((project / "PROMPT-R2.md").read_text(encoding="utf-8"), r2)
+
+
+import datetime as _dt, re, shutil  # noqa: E402
+import pg_seed  # noqa: E402
+
+
+class ReferenceCinema:
+    """In-memory implementation of the minimum HTTP interface of requirements-cinema.md, used to test the cinema gate.
+    Screenings are tomorrow at the seed times (local time) and are returned in UTC with a Z, as JavaScript's toISOString does.
+    `money_as_string` returns prices as strings; `no_locks` ignores other users' locks."""
+    def __init__(self, money_as_string=False, no_locks=False):
+        self.money_as_string, self.no_locks = money_as_string, no_locks
+        self.users, self.tokens, self.orders, self.locks, self.sold = {}, {}, [], {}, set()
+        self.movies = [{"id": 1, "title": "Movie One", "description": "d", "imageUrl": "u"},
+                       {"id": 2, "title": "Movie Two", "description": "d", "imageUrl": "u"}]
+        tomorrow = _dt.date.today() + _dt.timedelta(days=1)
+        self.showtimes = []
+        for i, (movie, room, hm) in enumerate(((1, 1, "14:00"), (1, 1, "20:00"), (2, 2, "16:30"), (2, 2, "21:00")), start=1):
+            local = _dt.datetime.combine(tomorrow, _dt.time(*map(int, hm.split(":")))).astimezone()
+            self.showtimes.append({"id": i, "movieId": movie, "room": room, "hm": hm,
+                                   "startsAt": local.astimezone(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")})
+        self.seats = {st["id"]: [{"id": st["id"] * 100 + k, "label": f"{r}{n}"} for k, (r, n) in enumerate(((r, n) for r in "ABCD" for n in range(1, 6)))]
+                      for st in self.showtimes}
+
+    def price(self, st):
+        return 9.0 if st["hm"] >= "17:00" else 6.0
+
+    def money(self, x):
+        return f"{x:.2f}" if self.money_as_string else x
+
+    def status(self, st_id, seat_id, user=None):
+        if (st_id, seat_id) in self.sold:
+            return "sold"
+        lk = self.locks.get((st_id, seat_id))
+        return "locked" if lk and lk != user else ("locked" if lk else "available")
+
+    def handle(self, method, path, body, token):
+        user = self.tokens.get(token)
+        if (method, path) == ("POST", "/api/auth/register"):
+            if body["email"] in self.users:
+                return 409, None
+            self.users[body["email"]] = body
+            return 201, {"id": len(self.users)}
+        if (method, path) == ("POST", "/api/auth/login"):
+            u = self.users.get(body["email"])
+            if not u or u["password"] != body["password"]:
+                return 401, None
+            self.tokens[f"tok-{body['email']}"] = body["email"]
+            return 200, {"token": f"tok-{body['email']}"}
+        if (method, path) == ("GET", "/api/movies"):
+            return 200, self.movies
+        if (method, path) == ("GET", "/api/showtimes"):
+            return 200, [{k: st[k] for k in ("id", "movieId", "startsAt", "room")} | {"price": self.money(self.price(st))} for st in self.showtimes]
+        parts = path.strip("/").split("/")
+        st = next((s for s in self.showtimes if len(parts) > 2 and str(s["id"]) == parts[2]), None)
+        if method == "GET" and len(parts) == 4 and parts[3] == "seats" and st:
+            return 200, [{"id": s["id"], "label": s["label"], "status": self.status(st["id"], s["id"])} for s in self.seats[st["id"]]]
+        if method == "POST" and len(parts) == 4 and parts[3] == "quote" and st:
+            n = len(body["seatIds"])
+            return 200, {"unitPrice": self.money(self.price(st)), "seats": n, "total": self.money(round(self.price(st) * n, 2))}
+        if not user:
+            return 401, None
+        if method == "POST" and len(parts) == 4 and parts[3] == "lock" and st:
+            if any((st["id"], s) in self.sold or (self.locks.get((st["id"], s)) not in (None, user) and not self.no_locks) for s in body["seatIds"]):
+                return 409, None
+            for s in body["seatIds"]:
+                self.locks[(st["id"], s)] = user
+            return 200, {"seatIds": body["seatIds"], "expiresAt": "2099-01-01T00:00:00.000Z"}
+        if (method, path) == ("POST", "/api/checkout"):
+            st = next(s for s in self.showtimes if s["id"] == body["showtimeId"])
+            if any((st["id"], s) in self.sold or self.locks.get((st["id"], s)) not in (None, user) for s in body["seatIds"]):
+                return 409, None
+            for s in body["seatIds"]:
+                self.sold.add((st["id"], s)); self.locks.pop((st["id"], s), None)
+            o = {"id": len(self.orders) + 1, "showtimeId": st["id"], "seatIds": body["seatIds"],
+                 "total": round(self.price(st) * len(body["seatIds"]), 2), "user": user}
+            self.orders.append(o)
+            return 201, {k: o[k] for k in ("id", "showtimeId", "seatIds")} | {"total": self.money(o["total"])}
+        if (method, path) == ("GET", "/api/orders"):
+            return 200, [{k: o[k] for k in ("id", "showtimeId", "seatIds")} | {"total": self.money(o["total"])} for o in self.orders if o["user"] == user]
+        return 404, None
+
+
+class TestCinemaGate(unittest.TestCase):
+    def gate(self, **kw):
+        srv = serve(ReferenceCinema(**kw))
+        try:
+            res = acceptance_check.run(f"http://127.0.0.1:{srv.server_port}", "cinema")
+        finally:
+            srv.shutdown(); srv.server_close()
+        return res, {c["case"]: c["ok"] for c in res["cases"]}
+
+    def test_a_correct_cinema_passes_every_case(self):
+        res, _ = self.gate()
+        self.assertEqual(res["acceptance_pct"], 100.0, [c for c in res["cases"] if not c["ok"]])
+        self.assertEqual(res["domain"], "cinema"); self.assertGreaterEqual(res["total"], 20)
+
+    def test_prices_as_strings_fail_the_json_number_cases_only(self):
+        _, cases = self.gate(money_as_string=True)
+        failed = sorted(k for k, v in cases.items() if not v)
+        self.assertTrue(failed and all("numeric" in k or "JSON number" in k for k in failed), failed)
+
+    def test_ignoring_other_users_locks_is_caught(self):
+        _, cases = self.gate(no_locks=True)
+        self.assertFalse(cases["lock: another user cannot lock a seat that is locked (409)"])
+
+    def test_unknown_domain_and_iso_dates(self):
+        with self.assertRaises(ValueError):
+            acceptance_check.run("http://127.0.0.1:1", "library")
+        local = _dt.datetime(2030, 1, 2, 20, 0).astimezone()
+        self.assertEqual(acceptance_check.local_hm(local.astimezone(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")), "20:00")
+
+    def test_a_non_json_success_body_keeps_its_status(self):
+        class H(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200); self.send_header("Content-Type", "text/plain"); self.end_headers(); self.wfile.write(b"OK")
+            def log_message(self, *a):
+                pass
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            self.assertEqual(acceptance_check.call(f"http://127.0.0.1:{srv.server_port}", "GET", "/health"), (200, "OK"))
+        finally:
+            srv.shutdown(); srv.server_close()
+
+    def test_the_cinema_seed_buys_seats_through_the_api(self):
+        srv = serve(ReferenceCinema())
+        try:
+            res = pg_seed.seed_cinema(f"http://127.0.0.1:{srv.server_port}", 6, "x")
+        finally:
+            srv.shutdown(); srv.server_close()
+        self.assertEqual((res["users"], res["errors"], res["order_queries"]), (6, 0, 6)); self.assertGreater(res["orders"], 6)
+
+
+class TestBatchAEvaluatorFixes(unittest.TestCase):
+    R = ev.RUBRIC["relational"]
+
+    def test_replica_and_sql_server_ddl_stay_out_of_the_main_schema(self):
+        files = [("db/mssql/products.sql", "CREATE TABLE products (id INT IDENTITY(1,1) PRIMARY KEY, name NVARCHAR(100));\nGO\n"),
+                 ("db/replica/schema.sql", "CREATE TABLE products (id int PRIMARY KEY);"),
+                 ("db/schema.sql", "CREATE TABLE products (id serial PRIMARY KEY, name text NOT NULL, price numeric(10,2));"),
+                 ("db/sync.sql", "IF OBJECT_ID('dbo.orders') IS NULL CREATE TABLE dbo.orders (id INT PRIMARY KEY);")]
+        s = rs.extract(files, {"sqlStrings": [{"file": "backend/src/db/sqlServerReplica.js", "line": 3, "migration": False,
+                                               "text": "CREATE TABLE products (id INT PRIMARY KEY)"}]}, self.R)
+        self.assertEqual(sorted(s["tables"]), ["products"])
+        self.assertEqual(sorted(s["tables"]["products"]["columns"]), ["id", "name", "price"])  # the main PostgreSQL definition
+        self.assertEqual(sorted(x["file"].split(":")[0] for x in s["secondary_sql"]),
+                         ["backend/src/db/sqlServerReplica.js", "db/mssql/products.sql", "db/replica/schema.sql", "db/sync.sql"])
+
+    def test_numbered_migrations_are_applied_in_numeric_order(self):
+        files = [("migrations/10_add_price.sql", "ALTER TABLE products ADD COLUMN price numeric(10,2);"),
+                 ("migrations/2_create.sql", "CREATE TABLE products (id serial PRIMARY KEY);")]
+        s = rs.extract(files, {"sqlStrings": []}, self.R)
+        self.assertEqual(sorted(s["tables"]["products"]["columns"]), ["id", "price"]); self.assertEqual(s["unparsed"], [])
+
+    def test_health_routes_exclude_resource_sub_routes(self):
+        yes = ["/health", "/api/health", "/api/v1/healthz", "/status", "/metrics", "/api/ready"]
+        no = ["/api/orders/:id/status", "/orders/{id}/status", "/api/deliveries", "/api/showtimes/:id/seats", "/"]
+        self.assertEqual([ev.is_health_route(p) for p in yes], [True] * len(yes))
+        self.assertEqual([ev.is_health_route(p) for p in no], [False] * len(no))
+
+    def test_files_launched_by_package_json_are_entry_points(self):
+        pk = [{"dir": "backend", "main": "src/server.js", "scripts": {"start": "node src/server.js", "migrate": "node ./src/data/migrateCli.js --up",
+                                                                     "seed": "cross-env X=1 node scripts/seed.mjs && echo ok", "test": "node --test"}},
+              {"dir": ".", "scripts": {"dev": "concurrently \"npm:start\" tools/watch.js"}}]
+        self.assertEqual(ev.script_entry_files(pk), {"backend/src/server.js", "backend/src/data/migrateCli.js", "backend/scripts/seed.mjs", "tools/watch.js"})
+        m = {"graph": {"modules": [{"source": "backend/src/server.js", "deps": []}]}, "packages": {"packages": pk},
+             "ast": {"files": [{"path": p, "test": False} for p in ("backend/src/server.js", "backend/src/data/migrateCli.js", "backend/src/dead.js")]}}
+        self.assertEqual(ev.orphan_files(m), ["backend/src/dead.js"])
+
+    def test_routes_get_their_mount_prefix_and_contract_matching_is_exact(self):
+        ast = {"mounts": [{"file": "src/app.js", "path": "/api", "target": "src/routes/index.js"},
+                          {"file": "src/routes/index.js", "path": "/orders", "target": "src/routes/orders.js"},
+                          {"file": "src/app.js", "path": "/x", "target": None}],
+               "routes": [{"file": "src/routes/orders.js", "method": "PATCH", "path": "/:id/status", "obj": "router"},
+                          {"file": "src/app.js", "method": "GET", "path": "/health", "obj": "app"},
+                          {"file": "src/routes/mystery.js", "method": "GET", "path": "/:id", "obj": "router"}]}
+        fr = ev.full_routes(ast)
+        self.assertEqual([(r["full_path"], r["resolved"]) for r in fr],
+                         [("/api/orders/:id/status", True), ("/health", True), ("/:id", False)])
+        contract = [("PATCH", "/orders/{orderId}/status"), ("GET", "/products/{id}")]
+        self.assertTrue(ev.route_match(contract, fr[0], ["/api"]))   # under servers[].url
+        self.assertFalse(ev.route_match(contract, fr[0], []))        # without the base path it is a different path
+        self.assertFalse(ev.route_match(contract, fr[1], ["/api"]))
+        self.assertTrue(ev.route_match(contract, fr[2], []))         # unknown prefix: whole trailing segments
+        self.assertFalse(ev.route_match([("GET", "/products/{id}")], {**fr[2], "path": "/ducts/{id}", "full_path": "/ducts/:id"}, []))
+
+    def test_mounts_and_validation_from_real_code(self):
+        with tempfile.TemporaryDirectory() as t:
+            app = Path(t) / "app"; (app / "backend" / "src" / "routes").mkdir(parents=True)
+            (app / "backend" / "src" / "app.js").write_text(
+                "const express = require('express');\nconst orders = require('./routes/orders');\nconst app = express();\n"
+                "app.use('/api/orders', auth, orders);\napp.get('/api/health', (req, res) => res.json({ ok: true }));\nmodule.exports = app;\n", encoding="utf-8")
+            (app / "backend" / "src" / "routes" / "orders.js").write_text(
+                "const router = require('express').Router();\nconst { body } = require('express-validator');\n"
+                "router.post('/', async (req, res) => { const r = await pool.query('SELECT 1'); res.json(JSON.parse(r)); });\n"
+                "router.patch('/:id/status', body('status').isString(), async (req, res) => res.json({}));\nmodule.exports = router;\n", encoding="utf-8")
+            ast = ev.run_ast(app, Path(t))
+        self.assertEqual([m["target"] for m in ast["mounts"]], ["backend/src/routes/orders.js"])
+        got = {(r["method"], r["full_path"]): r["validated"] for r in ev.full_routes(ast)}
+        self.assertEqual(got, {("POST", "/api/orders"): False, ("PATCH", "/api/orders/:id/status"): True, ("GET", "/api/health"): False})
+
+    def test_readme_declarations_need_whole_words(self):
+        readme = "Log in with your account, browse the catalog and the API under /api. Run npm install, then latest versions."
+        hits = {k for k, rx in ev.DECLARED_PATTERNS.items() if rx and re.search(rx, readme, re.I)}
+        self.assertEqual(hits, {"technologies"})
+        self.assertTrue(re.search(ev.DECLARED_PATTERNS["observability"], "Structured logging with pino", re.I))
+        self.assertTrue(re.search(ev.DECLARED_PATTERNS["contracts"], "The OpenAPI document is in docs/", re.I))
+
+    def test_children_of_external_base_classes_are_not_a_wide_hierarchy(self):
+        cls = [{"name": f"E{i}", "file": "errors.js", "extends": "Error"} for i in range(12)] + \
+              [{"name": f"C{i}", "file": "c.jsx", "extends": "React.Component"} for i in range(12)]
+        m = {"ast": {"classes": cls}, "graph": {"modules": [{"source": "errors.js", "deps": []}]}}
+        crit = ev.eval_hierarchies(m, {}, Opts)[0]
+        self.assertTrue(crit["C2"]["ok"])
+        own = cls + [{"name": "Base", "file": "base.js", "extends": None}] + [{"name": f"K{i}", "file": f"k{i}.js", "extends": "Base"} for i in range(11)]
+        self.assertFalse(ev.eval_hierarchies({**m, "ast": {"classes": own}}, {}, Opts)[0]["C2"]["ok"])
+
+    def test_a_coverage_report_without_branches_does_not_fail_branch_coverage(self):
+        a = {"switchesMissingDefault": [], "fallthrough": [], "labeledJumps": []}
+        m = {"ast": a, "tests_static": {"test_cases": 3, "test_files": ["t.test.js"]},
+             "tests_run": {"executed": True, "ran_any": True, "all_passed": True, "lines_total": 100, "lines_cov": 80, "br_total": 0, "br_cov": 0}}
+        crit, met, _, finding, _ = ev.eval_tests(m, {}, Opts)
+        self.assertNotIn("C4", crit); self.assertIsNone(met["branch_coverage"]); self.assertIn("not applicable", finding)
+        self.assertEqual(ev.level_from(crit)[0], "Meets")
+
+    def test_judge_model_identity(self):
+        self.assertEqual(judge.norm_model("us.anthropic.claude-sonnet-5-5-20260101-v1:0"), "claude-sonnet-5-5")
+        self.assertEqual(judge.norm_model("anthropic/claude-opus-5-5[1m]"), "claude-opus-5-5")
+        self.assertTrue(judge.same_model("claude-sonnet-5-5", "Claude-Sonnet-5-5[1m]"))
+        self.assertTrue(judge.same_model("claude-sonnet-5-5", "sonnet"))        # an alias of the same family
+        self.assertFalse(judge.same_model("claude-sonnet-5-5", "claude-opus-5-5"))
+        self.assertFalse(judge.same_model("gpt-6.1-sol", "claude-opus-5-5"))
+
+    def test_judge_refuses_when_the_generator_model_is_unknown(self):
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "meta.json").write_text(json.dumps({"model": "n/a"}), encoding="utf-8")
+            with mock.patch.object(sys, "argv", ["judge.py", t, "--model", "claude-opus-5-5"]), self.assertRaises(SystemExit) as cm:
+                judge.main()
+        self.assertIn("not recorded", str(cm.exception))
+
+
+class TestBatchARunExperiment(unittest.TestCase):
+    def args(self, **kw):
+        return argparse.Namespace(**{"agent_cmd": None, "model": "m1", "domain": "cinema", "skip_acceptance": False, **kw})
+
+    def test_the_prompt_goes_on_stdin_unless_the_template_asks_for_it(self):
+        cmd, stdin = run_experiment.agent_command("claude", self.args(), "line 1\nline 2")
+        self.assertEqual((cmd[:2], cmd[-2:], stdin), (["claude", "-p"], ["--model", "m1"], "line 1\nline 2"))
+        self.assertNotIn("line 1\nline 2", " ".join(cmd))
+        cmd, stdin = run_experiment.agent_command("codex", self.args(), "p")
+        self.assertEqual((cmd[-3], stdin), ("-", "p"))
+        cmd, stdin = run_experiment.agent_command("claude", self.args(agent_cmd="my-agent --run {prompt}"), "p")
+        self.assertEqual((cmd, stdin), (["my-agent", "--run", "p"], None))
+
+    def test_sh_resolves_the_executable_and_feeds_stdin(self):
+        with tempfile.TemporaryDirectory() as t:
+            log = Path(t) / "log.txt"
+            with open(log, "w", encoding="utf-8") as f:
+                # the child decodes UTF-8 explicitly, as the agents' CLIs (Node) do; Python would use the Windows code page
+                rc = run_experiment.sh(["python", "-c", "import sys; print(sys.stdin.buffer.read().decode('utf-8').upper().encode('ascii', 'backslashreplace').decode())"],
+                                       log=f, stdin_text="héllo\nworld")
+            out = log.read_text(encoding="utf-8").split()  # Windows text mode may turn \n into \r\n: compare the words
+            self.assertEqual(rc, 0); self.assertEqual(out, ["H\\xc9LLO", "WORLD"])
+        self.assertEqual(run_experiment.resolve(["python", "-V"])[0], shutil.which("python"))
+        self.assertEqual(run_experiment.sh(["surely-not-an-installed-agent-xyz"]), 127)
+
+    def test_the_gate_is_not_run_on_a_project_that_implements_r2(self):
+        with tempfile.TemporaryDirectory() as t:
+            project, exp = Path(t) / "p", Path(t) / "e"; project.mkdir(); exp.mkdir()
+            (project / "r2-additional-requirements.md").write_text("x", encoding="utf-8")
+            with mock.patch.object(run_experiment, "acceptance") as acc, contextlib.redirect_stdout(io.StringIO()):
+                meta = {"acceptance": {"passed": 20, "total": 20}}
+                run_experiment.gate_after_phases(["r2"], project, exp, "r", self.args(), meta)
+                self.assertEqual(meta["acceptance"], {"passed": 20, "total": 20})        # the result after phase initial is kept
+                meta = {}
+                run_experiment.gate_after_phases(["r2"], project, exp, "r", self.args(), meta)
+                self.assertTrue(meta["acceptance"]["skipped"]); self.assertIn("original", meta["acceptance"]["reason"])
+                acc.assert_not_called()
+                (project / "r2-additional-requirements.md").unlink()
+                acc.return_value = {"passed": 1, "total": 1, "acceptance_pct": 100.0}
+                run_experiment.gate_after_phases([], project, exp, "r", self.args(), meta)
+                acc.assert_called_once(); self.assertEqual(acc.call_args.kwargs["domain"], "cinema")
+                self.assertEqual(json.loads((exp / "acceptance.json").read_text(encoding="utf-8"))["state"], "project as found")
+
+
+import importlib  # noqa: E402
+from evaluator.collectors import documents as _documents  # noqa: E402
+
+
+class TestVersionedDocuments(unittest.TestCase):
+    ER_OLD = "```mermaid\nerDiagram\n  USERS {\n    int id PK\n  }\n```\n"
+    ER_NEW = "```mermaid\nerDiagram\n  USERS {\n    int id PK\n    string role\n  }\n  AUDIT_LOG {\n    int id PK\n  }\n```\n"
+
+    def app(self, t, files):
+        for rel_path, text in files.items():
+            p = Path(t) / rel_path; p.parent.mkdir(parents=True, exist_ok=True); p.write_text(text, encoding="utf-8")
+        return Path(t)
+
+    def test_the_er_model_of_the_latest_version_comes_first(self):
+        with tempfile.TemporaryDirectory() as t:
+            app = self.app(t, {"docs/entity-relationship-model.md": self.ER_OLD, "docs/R2/entity-relationship-model.md": self.ER_NEW})
+            er = ra.load_er(app, RUBRIC_REL)
+            self.assertEqual((er["file"], er["version"], sorted(er["entities"])), ("docs/R2/entity-relationship-model.md", "R2", ["AUDIT_LOG", "USERS"]))
+
+    def test_another_name_in_the_version_folder_counts_if_it_has_the_diagram(self):
+        with tempfile.TemporaryDirectory() as t:  # what the codex apps delivered: docs/r2/data-model.md
+            app = self.app(t, {"docs/entity-relationship-model.md": self.ER_OLD, "docs/r2/api.md": "# API",
+                               "docs/r2/data-model.md": self.ER_NEW})
+            self.assertEqual(ra.load_er(app, RUBRIC_REL)["file"], "docs/r2/data-model.md")
+
+    def test_without_a_version_folder_the_original_path_is_used(self):
+        with tempfile.TemporaryDirectory() as t:
+            app = self.app(t, {"docs/Entity-Relationship-Model.md": self.ER_OLD, "docs/R1/x.md": self.ER_NEW})
+            er = ra.load_er(app, RUBRIC_REL)
+            self.assertEqual((er["file"], er["version"]), ("docs/Entity-Relationship-Model.md", None))
+        self.assertIn("docs/R2/entity-relationship-model.md", ra.er_searched(RUBRIC_REL))
+
+    def test_the_readme_of_the_latest_version_comes_first(self):
+        with tempfile.TemporaryDirectory() as t:
+            app = self.app(t, {"README.md": "old", "backend/README.md": "backend"})
+            self.assertEqual(_documents.readme_text(app), "old")
+            self.app(t, {"docs/R2/README.md": "new"})
+            self.assertEqual(_documents.readme_text(app), "new")
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(_documents.readme_text(self.app(t, {"backend/README.md": "backend"})), "backend")
+
+
+class TestModularLayout(unittest.TestCase):
+    """One module per decision point, the facade keeps the public names."""
+
+    def test_every_decision_point_has_its_own_module(self):
+        from evaluator import points
+        self.assertEqual(set(points.EVALUATORS), set(ev.RUBRIC["points"]))
+        for pid, fn in points.EVALUATORS.items():
+            self.assertEqual(fn.__module__, f"evaluator.points.{pid}")
+            self.assertTrue(importlib.import_module(f"evaluator.points.{pid}").__doc__.startswith("Decision point"))
+
+    def test_the_facade_re_exports_what_other_scripts_use(self):
+        for name in ("RUBRIC", "model_missing", "MODEL_ERROR", "record_generator_model", "run_ast", "level_from", "evaluate_profile",
+                     "write_outputs", "route_match", "orphan_files", "token_columns", "cmd_run", "cmd_aggregate"):
+            self.assertTrue(hasattr(ev, name), name)
+        self.assertIs(ev.RUBRIC, importlib.import_module("evaluator.common").RUBRIC)  # one shared rubric object
+
+
+class TestRescore(unittest.TestCase):
+    """Re-scoring from metrics.json: the same result as `run`, and the inputs added after the collection are read fresh."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(); cls.root = Path(cls.tmp.name)
+        cls.out = cls.root / "claude-n1-r1"
+        ns = argparse.Namespace(app=str(FIX / "sequelize_app"), out=str(cls.out), agent="claude", model="claude-sonnet-5-5", level="N1",
+                                domain="ecommerce", run_id="claude-n1-r1", manual=None, layers=None, test_cmd=None, run_tests=False,
+                                offline=True, accept_heuristics=False, allow_missing_model=False)
+        with contextlib.redirect_stdout(io.StringIO()):
+            ev.cmd_run(ns)
+        cls.after_run = {f: (cls.out / f).read_text(encoding="utf-8") for f in ("profile.json", "scorecard.json", "profile.md")}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def point(self, pid):
+        return next(p for p in json.loads((self.out / "scorecard.json").read_text(encoding="utf-8"))["points"] if p["id"] == pid)
+
+    def test_1_rescore_reproduces_the_outputs_of_run(self):
+        meta, pts, prof = ev.rescore(self.out)
+        self.assertEqual(meta["run_id"], "claude-n1-r1")
+        for f, text in self.after_run.items():
+            self.assertEqual((self.out / f).read_text(encoding="utf-8"), text, f)
+
+    def test_2_dv8_values_and_a_manual_review_added_later_are_read(self):
+        self.assertIsNone(self.point("cohesion")["criteria"]["C2"]["ok"])  # DV8 DL pending after run
+        (self.out / "dv8").mkdir(exist_ok=True)
+        (self.out / "dv8" / "dv8_metrics.json").write_text(json.dumps({"DL": 0.9, "PC": 0.1, "_origin": {}}), encoding="utf-8")
+        (self.out / "manual_review.json").write_text(json.dumps({"cohesion": {"C3": {"ok": True, "note": "checked"}}}), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            ev.cmd_aggregate(argparse.Namespace(dir=str(self.root), out=None))  # aggregate used to keep the manual.json of the run
+        c = self.point("cohesion")["criteria"]
+        self.assertEqual((c["C2"]["ok"], c["C2"]["value"], c["C3"]["ok"], c["C3"]["source"]), (True, 0.9, True, "manual"))
+        used = json.loads((self.out / "manual.json").read_text(encoding="utf-8"))  # what the scoring used, kept for traceability
+        self.assertEqual((used["dv8"]["DL"], used["dv8"]["PC"]), (0.9, 0.1))
+
+    def test_3_the_rescore_command(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            ev.cmd_rescore(argparse.Namespace(res=[str(self.out)]))
+        self.assertIn("Re-scored claude-n1-r1: Maintainability:", out.getvalue())
+        r = subprocess.run([sys.executable, str(ROOT / "evaluate.py"), "rescore", str(self.out)], capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(r.returncode, 0, r.stderr); self.assertIn("Re-scored", r.stdout)
+
+
+class TestCliCollectsOnce(unittest.TestCase):
+    def run_app(self, tmp, **over):
+        o = {"domain": "ecommerce", "rep": 1, "results": str(Path(tmp) / "res"), "model": "m", "skip_tests": True, "offline": True,
+             "accept_heuristics": False, "usage_dir": str(Path(tmp) / "usage"), "postgres": False, "judge": "j", "judge_votes": 3,
+             "judge_cmd": None, "allow_same_model": False, "rescore_only": False, **over}
+        calls = []
+        def fake(cmd, cwd=None, timeout=1800):
+            calls.append(Path(cmd[1]).name + (":" + cmd[2] if Path(cmd[1]).name == "evaluate.py" else ""))
+            return 0, "Judge j: 1 decision(s)"
+        app = Path(tmp) / "claude-n1"; app.mkdir(exist_ok=True)
+        with mock.patch.object(cli, "execute", side_effect=fake):
+            run_id, summary = cli.evaluate_app(app, o, "dv8.exe")
+        return calls, summary
+
+    def test_dv8_and_the_judge_re_score_instead_of_evaluating_again(self):
+        with tempfile.TemporaryDirectory() as t:
+            calls, _ = self.run_app(t)
+        self.assertEqual(calls, ["evaluate.py:run", "dv8_metrics.py", "evaluate.py:rescore", "manual_template.py", "judge.py", "evaluate.py:rescore"])
+
+    def test_rescore_only_does_not_collect(self):
+        with tempfile.TemporaryDirectory() as t:
+            calls, summary = self.run_app(t, rescore_only=True)
+            self.assertEqual(calls, []); self.assertIn("evaluate it once without --rescore", summary)
+            (Path(t) / "res" / "claude-n1-ecommerce-r1").mkdir(parents=True, exist_ok=True)
+            (Path(t) / "res" / "claude-n1-ecommerce-r1" / "metrics.json").write_text("{}", encoding="utf-8")
+            calls, summary = self.run_app(t, rescore_only=True)
+        self.assertEqual(calls, ["evaluate.py:rescore"]); self.assertFalse(summary.startswith("ERROR"))

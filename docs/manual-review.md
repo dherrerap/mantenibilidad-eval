@@ -23,7 +23,8 @@ resolves them. This page explains how to do it and how the sources are combined.
    subdocument).
 3. Copy the draft to `manual_review.json` in the same folder and replace `ok` with `true` or `false`. The `note` field
    is recorded as the criterion's value: use it to justify.
-4. Run `python cli.py evaluate` again. The range narrows or closes, and the report lists what remains.
+4. Run `python cli.py evaluate --rescore` (or `python evaluate.py rescore results/<run>`). It does not collect again: it re-scores
+   from `metrics.json` with the review, and the range narrows or closes. The report lists what remains.
 
 Example `manual_review.json`:
 
@@ -47,8 +48,9 @@ python cli.py evaluate --judge claude-opus-5-5          # inside the flow
 python judge.py results/<run> --model claude-opus-5-5   # separately, on an already evaluated run
 ```
 
-- **A model different from the generator.** `judge.py` refuses to run if the judge is the same model that generated the app (`meta.json`).
-  `--allow-same-model` overrides this and it is recorded in `judge.json`.
+- **A model different from the generator.** `judge.py` refuses to run if the judge is the same model that generated the app (`meta.json`;
+  names compared without provider prefix, date or bracket suffixes, and an alias such as `sonnet` matches any Sonnet), and also when the
+  generator model was not recorded, because then it cannot be checked. `--allow-same-model` overrides both and it is recorded in `judge.json`.
 - **Votes.** Each criterion is asked `--votes` times (3 by default) and the majority wins. An "I don't know" does not count; with no majority the
   criterion stays pending.
 - **Priority.** manual review > automatic measurement > judge. The judge only fills what was still `null`.
