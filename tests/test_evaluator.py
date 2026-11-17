@@ -1,10 +1,17 @@
-"""Tests of the evaluator itself (no external dependencies):  python -m unittest discover -s tests -v
+"""Tests of the evaluator itself:  python -m unittest discover -s tests -v
 
-They cover the rules that weigh most on the results: level from criteria, rule S1192, layers (with doubtful classification and with no
-inter-layer dependencies), reading node:test coverage, the DV8 matrix and Unhealthy Inheritance, and the extraction of the relational
-schema (SQL, Sequelize migrations and models) and the token records of the generator agent (token_usage.py).
+They need Python and Node.js with this folder's node_modules (`npm install`); the tests that drive ESLint, Knip, Prism or StrykerJS
+are skipped when the tool is not installed. None needs Docker, DV8 or PostgreSQL; one queries endoflife.date and also passes
+without a network (it then checks the empty offline answer).
+
+They cover the rules that weigh most on the results: level from criteria, layers (with doubtful classification and with no
+inter-layer dependencies), coverage, duplication, the DV8 matrix and Unhealthy Inheritance, the relational schema (SQL, Sequelize
+migrations and models, the ER comparison, the live catalog), the ESLint/SonarJS measures (S1192, S3776, ASCMM weaknesses), Knip and
+the guard that keeps it from executing the app, the resolved versions, libyear and OSV advisories as of a reference date, the
+ISO/IEC 5055 density, the weight sensitivity, the runtime contract conformance (Prism), mutation testing (StrykerJS), the acceptance
+suites, the judge, the pipeline (run, rescore, aggregate) and the token records of the generator agent (token_usage.py).
 """
-import argparse, contextlib, io, json, os, subprocess, sys, tempfile, threading, unittest, uuid
+import argparse, contextlib, io, json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, unittest, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 from pathlib import Path
@@ -49,18 +56,42 @@ class TestLevel(unittest.TestCase):
 
 
 class TestConfigurationS1192(unittest.TestCase):
-    def evaluate(self, occ):
-        m = {"ast": {"networkLiterals": [], "files": [{"path": "a.js", "loc": 1000, "test": False}], "literalOccurrences": occ,
-                     "envFiles": {"backend/src/config.js": 1}}, "env_example": True}
-        return ev.eval_configuration(m, {}, Opts)[0]["C2"]
+    """C2 comes from SonarJS S1192 itself (no-duplicate-string): a repeated literal fails it for sure; a count of 0 only passes when
+    ESLint ran and parsed every file."""
 
-    def test_flags_long_literal_repeated_three_times(self):
-        c = self.evaluate({"Server route not found here": ["a:1", "a:2", "a:3"]})
-        self.assertFalse(c["ok"]); self.assertEqual(c["value"], {"Server route not found here": 3})
+    def evaluate(self, lint):
+        m = {"ast": {"networkLiterals": [], "files": [{"path": "a.js", "loc": 1000, "test": False}], "envFiles": {"backend/src/config.js": 1}},
+             "env_example": True}
+        if lint is not None:
+            m["lint"] = lint
+        return ev.eval_configuration(m, {}, Opts)
 
-    def test_does_not_flag_single_words_ignored_literals_or_two_repetitions(self):
-        c = self.evaluate({"shipped": ["a:1"] * 5, "application/json": ["a:1"] * 4, "Some long sample text": ["a:1", "a:2"]})
-        self.assertTrue(c["ok"])
+    @staticmethod
+    def lint(dups=(), parse_errors=()):
+        return {"ok": True, "versions": {"eslint-plugin-sonarjs": "4.2.2"}, "parse_errors": list(parse_errors),
+                "dup_strings": [{"file": "a.js", "line": 1, "literal": '"Server route not found"', "times": n} for n in dups]}
+
+    def test_a_reported_literal_fails_c2(self):
+        crit, met, _, finding, _ = self.evaluate(self.lint(dups=[3]))
+        c = crit["C2"]
+        self.assertFalse(c["ok"]); self.assertEqual(c["value"], {"Server route not found (a.js)": 3})
+        self.assertEqual(c["source"], "auto (eslint-plugin-sonarjs 4.2.2)"); self.assertEqual(met["dup_per_kloc"], 2.0)
+
+    def test_no_report_meets_c2(self):
+        c = self.evaluate(self.lint())[0]["C2"]
+        self.assertTrue(c["ok"]); self.assertEqual(c["value"], 0)
+
+    def test_without_eslint_c2_is_pending(self):
+        for lint in (None, {"ok": False, "error": "ESLint is not installed"}):
+            crit, _, _, finding, _ = self.evaluate(lint)
+            self.assertIsNone(crit["C2"]["ok"]); self.assertTrue(crit["C2"]["source"].startswith("pending (ESLint did not run"))
+            self.assertIn("S1192 not measured", finding)
+
+    def test_a_file_eslint_could_not_parse_leaves_a_zero_unproven(self):
+        err = [{"file": "b.js", "line": 1, "message": "Parsing error"}]
+        c = self.evaluate(self.lint(parse_errors=err))[0]["C2"]
+        self.assertIsNone(c["ok"]); self.assertIn("could not parse 1 file(s): b.js", c["source"])
+        self.assertFalse(self.evaluate(self.lint(dups=[4], parse_errors=err))[0]["C2"]["ok"])  # a reported literal is still certain
 
 
 def module(src, targets):
@@ -115,15 +146,23 @@ class TestCoverage(unittest.TestCase):
 
 
 class TestDuplication(unittest.TestCase):
-    def test_detects_clones_and_reports_paths_relative_to_the_app(self):
+    def clones(self, base):
         with tempfile.TemporaryDirectory() as t:
-            app = Path(t) / "app"; (app / "src").mkdir(parents=True); out = Path(t) / "out"; out.mkdir()
+            app = Path(t) / base / "app"; (app / "src").mkdir(parents=True); out = Path(t) / "out"; out.mkdir()
             body = "\n".join(f"  const v{i} = input.items.map((x) => x * {i}).filter(Boolean).reduce((a, b) => a + b, 0);" for i in range(12))
             for n in (1, 2):
                 (app / "src" / f"dup{n}.js").write_text("function calc(input) {\n" + body + "\n  return v0;\n}\n")
-            r = ev.run_duplication(app, out)
+            return ev.run_duplication(app, out)
+
+    def test_detects_clones_and_reports_paths_relative_to_the_app(self):
+        r = self.clones(".")
         self.assertTrue(r["ok"]); self.assertEqual(r["clones"], 1); self.assertGreater(r["pct"], 0)
         self.assertTrue(r["top"][0].startswith("src/dup"), r["top"])
+
+    def test_an_app_stored_under_a_folder_the_ignore_globs_name_is_still_analyzed(self):
+        # --ignore **/build/** used to match the absolute path of every file of an app stored in build/ (or tests/, dist/…)
+        r = self.clones("build")
+        self.assertTrue(r["ok"], r); self.assertEqual(r["clones"], 1); self.assertTrue(r["top"][0].startswith("src/dup"), r["top"])
 
 
 class TestNewMeasures(unittest.TestCase):
@@ -132,12 +171,6 @@ class TestNewMeasures(unittest.TestCase):
         r = ev.fetch_eol(False)
         for k, v in r.items():
             self.assertTrue(v and all(isinstance(x, int) for x in v), (k, v))
-
-    def test_orphan_files_ignores_entry_points_and_tests(self):
-        m = {"graph": {"modules": [{"source": "a.js", "deps": [{"to": "b.js", "local": True}]}]},
-             "ast": {"files": [{"path": p, "test": t} for p, t in
-                               [("a.js", False), ("b.js", False), ("c.js", False), ("server.js", False), ("c.test.js", True)]]}}
-        self.assertEqual(ev.orphan_files(m), ["a.js", "c.js"])
 
     def test_supplementary_indicators(self):
         m = {"readme": "Install with npm install. Run with npm start.", "contract": {"properties": ["name"]},
@@ -1377,21 +1410,34 @@ class TestIso5055ScoredCriteria(unittest.TestCase):
     def test_cwe1080_ignores_test_files(self):
         self.assertTrue(self.cohesion([{"path": "big.test.js", "loc": 5000, "test": True}])["C4"]["ok"])
 
-    def coupling(self, files, modules):
+    @staticmethod
+    def knip(**over):
+        return {"ok": True, "version": "6.44.1", "files": [], "dependencies": [], "devDependencies": [], "binaries": [], "unlisted": [],
+                "unresolved": [], "exports": [], "config_load_errors": [], **over}
+
+    def coupling(self, files, knip=None, dev=False):
         m = {"ast": {"files": files, "functions": [], "classes": []},
-             "graph": {"modules": modules, "cycles": []},
-             "packages": {"unused": [], "direct": 4, "depcheck_ok": True}}
-        return ev.eval_coupling(m, {"dv8": {"PC": 0.1}}, Opts)[0]
+             "graph": {"modules": [{"source": "index.js", "deps": []}], "cycles": []}, "packages": {"direct": 4}}
+        if knip is not None:
+            m["knip"] = knip
+        with mock.patch.dict(ev.RUBRIC["thresholds"]["coupling"], {"include_devdependencies": dev}):
+            return ev.eval_coupling(m, {"dv8": {"PC": 0.1}}, Opts)[0]
 
-    def test_cwe561_orphan_production_file_fails_c5(self):
-        c = self.coupling([{"path": "index.js", "test": False}, {"path": "used.js", "test": False}, {"path": "orphan.js", "test": False}],
-                          [{"source": "index.js", "deps": [{"to": "used.js", "module": "used.js", "local": True}]}])
-        self.assertFalse(c["C5"]["ok"]); self.assertEqual(c["C5"]["value"], 1)
+    def test_cwe561_a_file_knip_cannot_reach_fails_c5(self):
+        files = [{"path": "index.js", "test": False}, {"path": "orphan.js", "test": False}, {"path": "old.test.js", "test": True}]
+        c = self.coupling(files, self.knip(files=["orphan.js", "old.test.js", "dist/bundle.js"]))  # only production files analyzed count
+        self.assertFalse(c["C5"]["ok"]); self.assertEqual(c["C5"]["value"], 1); self.assertEqual(c["C5"]["source"], "auto (Knip 6.44.1)")
+        self.assertTrue(self.coupling(files, self.knip())["C5"]["ok"])
 
-    def test_cwe561_entry_points_and_imported_files_are_not_dead(self):
-        c = self.coupling([{"path": "index.js", "test": False}, {"path": "used.js", "test": False}],
-                          [{"source": "index.js", "deps": [{"to": "used.js", "module": "used.js", "local": True}]}])
-        self.assertTrue(c["C5"]["ok"])
+    def test_unused_dependencies_and_the_binaries_of_dev_dependencies(self):
+        k = self.knip(dependencies=["backend:lodash"], devDependencies=["backend:jest", "backend:nodemon"], binaries=["backend:jest"])
+        self.assertEqual(self.coupling([], k)["C4"]["value"], "1/4 = 25.0%")
+        self.assertEqual(self.coupling([], k, dev=True)["C4"]["value"], "2/4 = 50.0%")  # jest runs as a binary: used
+
+    def test_without_knip_c4_and_c5_are_pending(self):
+        for k in (None, {"ok": False, "error": "Knip is not installed"}):
+            c = self.coupling([{"path": "orphan.js", "test": False}], k)
+            self.assertEqual((c["C4"]["ok"], c["C5"]["ok"]), (None, None)); self.assertTrue(c["C5"]["source"].startswith("pending (Knip did not run"))
 
     def test_mmo_1_g_no_longer_counts_cycles_twice(self):
         """A cycle must lower C1 only: counting it in the C2 numerator let one defect lower two criteria."""
@@ -1399,14 +1445,14 @@ class TestIso5055ScoredCriteria(unittest.TestCase):
                 {"source": "b.js", "deps": [{"to": "a.js", "module": "a.js", "local": True}]}]
         m = {"ast": {"files": [{"path": "a.js", "test": False}, {"path": "b.js", "test": False}], "functions": [], "classes": []},
              "graph": {"modules": mods, "cycles": [["a.js", "b.js"]]},
-             "packages": {"unused": [], "direct": 4, "depcheck_ok": True}}
+             "packages": {"direct": 4}}
         c = ev.eval_coupling(m, {"dv8": {"PC": 0.1}}, Opts)[0]
         self.assertFalse(c["C1"]["ok"])   # the cycle is reported here
         self.assertTrue(c["C2"]["ok"])    # and no longer penalised again here
         self.assertEqual(c["C2"]["value"], 1.0)
 
     def cyclomatic(self, dup=None, cc=1):
-        fns = [{"file": "a.js", "line": 1, "name": "f", "cc": cc, "cog": 1, "test": False}]
+        fns = [{"file": "a.js", "line": 1, "name": "f", "cc": cc, "test": False}]
         m = {"ast": {"functions": fns}}
         if dup is not None:
             m["duplication"] = {"ok": True, "pct": dup, "clones": 1, "top": ["src/a.js"]}
@@ -1738,15 +1784,6 @@ class TestBatchAEvaluatorFixes(unittest.TestCase):
         self.assertEqual([ev.is_health_route(p) for p in yes], [True] * len(yes))
         self.assertEqual([ev.is_health_route(p) for p in no], [False] * len(no))
 
-    def test_files_launched_by_package_json_are_entry_points(self):
-        pk = [{"dir": "backend", "main": "src/server.js", "scripts": {"start": "node src/server.js", "migrate": "node ./src/data/migrateCli.js --up",
-                                                                     "seed": "cross-env X=1 node scripts/seed.mjs && echo ok", "test": "node --test"}},
-              {"dir": ".", "scripts": {"dev": "concurrently \"npm:start\" tools/watch.js"}}]
-        self.assertEqual(ev.script_entry_files(pk), {"backend/src/server.js", "backend/src/data/migrateCli.js", "backend/scripts/seed.mjs", "tools/watch.js"})
-        m = {"graph": {"modules": [{"source": "backend/src/server.js", "deps": []}]}, "packages": {"packages": pk},
-             "ast": {"files": [{"path": p, "test": False} for p in ("backend/src/server.js", "backend/src/data/migrateCli.js", "backend/src/dead.js")]}}
-        self.assertEqual(ev.orphan_files(m), ["backend/src/dead.js"])
-
     def test_routes_get_their_mount_prefix_and_contract_matching_is_exact(self):
         ast = {"mounts": [{"file": "src/app.js", "path": "/api", "target": "src/routes/index.js"},
                           {"file": "src/routes/index.js", "path": "/orders", "target": "src/routes/orders.js"},
@@ -1917,7 +1954,7 @@ class TestModularLayout(unittest.TestCase):
 
     def test_the_facade_re_exports_what_other_scripts_use(self):
         for name in ("RUBRIC", "model_missing", "MODEL_ERROR", "record_generator_model", "run_ast", "level_from", "evaluate_profile",
-                     "write_outputs", "route_match", "orphan_files", "token_columns", "cmd_run", "cmd_aggregate"):
+                     "write_outputs", "route_match", "dead_files", "token_columns", "cmd_run", "cmd_aggregate"):
             self.assertTrue(hasattr(ev, name), name)
         self.assertIs(ev.RUBRIC, importlib.import_module("evaluator.common").RUBRIC)  # one shared rubric object
 
@@ -1997,3 +2034,506 @@ class TestCliCollectsOnce(unittest.TestCase):
             (Path(t) / "res" / "claude-n1-ecommerce-r1" / "metrics.json").write_text("{}", encoding="utf-8")
             calls, summary = self.run_app(t, rescore_only=True)
         self.assertEqual(calls, ["evaluate.py:rescore"]); self.assertFalse(summary.startswith("ERROR"))
+
+
+class TestWeightSensitivity(unittest.TestCase):
+    """The overall score and the ranking of the runs under other weights (the panel's Kendall W is not significant)."""
+
+    @staticmethod
+    def pts(good, pending=()):
+        out = []
+        for pid, d in ev.RUBRIC["points"].items():
+            v = 1.0 if pid in good else 0.0
+            out.append({"id": pid, "subcharacteristics": d["subcharacteristics"], "complete": pid not in pending,
+                        "score_min": 0.0 if pid in pending else v, "score_max": 1.0 if pid in pending else v})
+        return out
+
+    def runs(self):
+        # A is good only at tests (Testability, the heaviest weight); B at observability + configuration
+        return [({"run_id": "claude-n1-r1", "agent": "claude", "level": "N1"}, self.pts({"tests"})),
+                ({"run_id": "codex-n2-r1", "agent": "codex", "level": "N2"}, self.pts({"observability", "configuration"}))]
+
+    def scenario(self, s, name):
+        return next(x for x in s["scenarios"] if x["name"] == name)
+
+    def test_panel_scenario_reproduces_the_profile(self):
+        from evaluator import sensitivity as S
+        for good, pend in (({"tests", "layers"}, ()), ({"contracts"}, ("cohesion",))):
+            p = self.pts(good, pend); prof = ev.profile(p)
+            panel = next(spec for name, _, spec in S.scenarios() if name == "panel")
+            self.assertEqual(S.overall(p, panel),
+                             (prof["maintainability_min"], prof["maintainability_max"]))
+
+    def test_a_ranking_that_depends_on_the_weights_is_flagged(self):
+        s = ev.sensitivity(self.runs())
+        self.assertEqual(self.scenario(s, "panel")["ranks"], {"claude-n1-r1": 1, "codex-n2-r1": 2})
+        self.assertEqual(self.scenario(s, "panel")["scores"]["claude-n1-r1"], [15.0, 15.0])
+        uni = self.scenario(s, "uniform")
+        self.assertEqual((uni["ranks"]["codex-n2-r1"], uni["tau_b"], uni["same_top"], uni["max_rank_shift"]), (1, -1.0, False, 1))
+        self.assertEqual(self.scenario(s, "without_tests")["scores"]["claude-n1-r1"], [0.0, 0.0])
+        self.assertTrue(self.scenario(s, "without_layers")["same_top"])
+        self.assertFalse(s["stable"]["top"]); self.assertFalse(s["stable"]["level"]); self.assertFalse(s["stable"]["agent"])
+        self.assertIn("uniform", s["changes"]["top"]); self.assertIn("equal_points", s["changes"]["level"])
+        self.assertEqual(s["runs"]["claude-n1-r1"], {"panel_rank": 1, "best_rank": 1, "worst_rank": 2, "score_low": 0.0, "score_high": 30.0})  # 30: without contracts, Testability is tests alone
+        md = "\n".join(ev.sensitivity_md(s))
+        self.assertIn("**Best run**: changes under `uniform`", md); self.assertIn("| uniform | ", md)
+
+    def test_a_robust_ranking_holds_in_every_scenario(self):
+        s = ev.sensitivity([({"run_id": "a", "agent": "x", "level": "N3"}, self.pts(set(ev.RUBRIC["points"]) - {"tests"})),
+                            ({"run_id": "b", "agent": "y", "level": "N1"}, self.pts({"layers"}))])
+        self.assertTrue(all(s["stable"].values())); self.assertEqual(s["stable"]["min_tau_b"], 1.0)
+        self.assertIn("**Best run**: holds in every scenario", "\n".join(ev.sensitivity_md(s)))
+
+    def test_ties_ranks_and_tau(self):
+        from evaluator import sensitivity as S
+        self.assertEqual(S.ranks({"a": 3, "b": 3, "c": 1}), {"a": 1.5, "b": 1.5, "c": 3})
+        self.assertEqual(S.kendall_tau_b({"a": 1, "b": 2, "c": 3}, {"a": 1, "b": 2, "c": 3}), 1.0)
+        self.assertIsNone(S.kendall_tau_b({"a": 1}, {"a": 1}))
+
+    def test_weight_sets_of_the_rubric_are_normalized_scenarios(self):
+        extra = {"weight_sets": {"E1": {"Testability": 1, "Analyzability": 1, "Modularity": 1, "Modifiability": 1}, "_note": "x"}}
+        with mock.patch.dict(ev.RUBRIC, {"sensitivity": extra}):
+            s = ev.sensitivity(self.runs())
+        self.assertEqual(self.scenario(s, "E1")["scores"], self.scenario(s, "uniform")["scores"])
+        self.assertNotIn("_note", [x["name"] for x in s["scenarios"]])
+
+    def test_a_single_run_has_no_ranking_to_compare(self):
+        s = ev.sensitivity(self.runs()[:1])
+        self.assertIn("A single run", "\n".join(ev.sensitivity_md(s)))
+
+
+class TestLint(unittest.TestCase):
+    """ESLint + eslint-plugin-sonarjs (lint_metrics.js): ISO/IEC 5055 weaknesses that no point scores, S1192 and S3776 from the rules
+    themselves, and the cross-check of the McCabe count."""
+
+    APP = FIX / "lint_app"
+
+    @classmethod
+    def setUpClass(cls):
+        from evaluator.collectors import lint
+        cls.lint = lint
+        cls.res = None
+        if lint.available():
+            with tempfile.TemporaryDirectory() as t:
+                cls.res = lint.run_lint(cls.APP, Path(t), ["backend/src/bad.js", "backend/src/typed.ts", "frontend/src/App.jsx"])
+
+    def setUp(self):
+        if self.res is None:
+            self.skipTest("ESLint is not installed (npm install)")
+
+    def test_every_mapped_weakness_is_detected_once_per_line(self):
+        r = self.res
+        self.assertTrue(r["ok"], r); self.assertEqual(r["parse_errors"], [])  # .ts with <T>x and .jsx both parse
+        self.assertEqual(r["versions"]["eslint-plugin-sonarjs"], "4.2.2")
+        self.assertEqual({k: len(v) for k, v in r["ascmm"].items()},
+                         {"CWE-480": 3, "CWE-570/571": 2, "CWE-783": 3, "CWE-1095": 1, "CWE-1085": 1})
+        # no-mixed-operators reports each operator of `a && b || c`: one occurrence; the eslint-disable comment of App.jsx is ignored
+        self.assertEqual(sorted((x["file"], x["line"]) for x in r["ascmm"]["CWE-783"]),
+                         [("backend/src/bad.js", 22), ("backend/src/bad.js", 23), ("frontend/src/App.jsx", 4)])
+        self.assertEqual((r["ascmm"]["CWE-1085"][0]["line"], r["ascmm"]["CWE-1085"][0]["end_line"]), (37, 38))
+
+    def test_s1192_s3776_and_complexity_come_from_the_rules(self):
+        r = self.res
+        self.assertEqual(r["dup_strings"], [{"file": "backend/src/bad.js", "line": 2, "literal": '"a long literal value"', "times": 3}])  # application/json ignored
+        self.assertIn({"file": "backend/src/bad.js", "line": 13, "value": 4}, r["cognitive"])
+        self.assertIn({"file": "backend/src/bad.js", "line": 13, "value": 5}, r["mccabe"])
+
+    def test_the_points_and_indicators_use_the_lint_result(self):
+        with tempfile.TemporaryDirectory() as t:
+            ast = ev.run_ast(self.APP, Path(t))
+        m = {"ast": ast, "lint": self.res, "env_example": False, "contract": {}, "schema": {"tables": {}}, "readme": ""}
+        crit, met, _, _, _ = ev.eval_configuration(m, {}, Opts())
+        self.assertEqual(crit["C2"]["value"], {"a long literal value (backend/src/bad.js)": 3})
+        self.assertTrue(crit["C2"]["source"].startswith("auto (eslint-plugin-sonarjs 4.2.2"))
+        _, met, _, finding, _ = ev.eval_cyclomatic({**m, "duplication": {}}, {}, Opts())
+        self.assertEqual((met["cognitive_source"], met["mccabe_eslint"]["equal_pct"]), ("SonarJS S3776", 100.0))
+        rows = {r[0]: r for r in __import__("evaluator.supplementary", fromlist=["x"]).ascmm_indicators(m)}
+        self.assertEqual({k: v[3] for k, v in rows.items()},
+                         {"ascmm_cwe1064": 1, "ascmm_cwe480": 3, "ascmm_cwe570_571": 2, "ascmm_cwe783": 3, "ascmm_cwe1095": 1, "ascmm_cwe1085": 1})
+        self.assertEqual(rows["ascmm_cwe1085"][7], ["backend/src/bad.js:36 commentedOut (2 of 5 lines)"])
+
+
+class TestLintFallback(unittest.TestCase):
+    """Without a lint result (ESLint missing or an old metrics.json) S1192 is pending and the lint-only measures are not taken."""
+
+    def model(self, lint=None):
+        fns = [{"file": "a.js", "line": 1, "name": "f", "test": False, "cc": 3, "loc": 10, "params": list("abcdefgh")},
+               {"file": "a.js", "line": 20, "name": "g", "test": False, "cc": 25, "loc": 100, "params": []}]
+        m = {"ast": {"functions": fns, "files": [{"path": "a.js", "loc": 200, "test": False}], "networkLiterals": [], "envFiles": {}},
+             "env_example": True, "duplication": {}}
+        if lint is not None:
+            m["lint"] = lint
+        return m
+
+    def test_without_eslint_nothing_falls_back_to_an_approximation(self):
+        from evaluator.supplementary import ascmm_indicators
+        for lint in (None, {"ok": False, "error": "ESLint is not installed"}):
+            m = self.model(lint)
+            self.assertIsNone(ev.eval_configuration(m, {}, Opts())[0]["C2"]["ok"])  # pending, not approximated
+            _, met, _, finding, _ = ev.eval_cyclomatic(m, {}, Opts())
+            self.assertEqual((met["cognitive_source"], met["functions_cog_above_threshold"]), (None, None))
+            self.assertNotIn("mccabe_eslint", met); self.assertIn("Cognitive complexity not measured (ESLint did not run", finding)
+            rows = {r[0]: r for r in ascmm_indicators(m)}
+            self.assertEqual((rows["ascmm_cwe1064"][3], rows["ascmm_cwe1064"][5]), (1, False))  # from the AST, no ESLint needed
+            self.assertEqual((rows["ascmm_cwe480"][3], rows["ascmm_cwe480"][5]), (None, None))
+            self.assertIn("ESLint did not run", rows["ascmm_cwe480"][6])
+
+    def test_parse_errors_leave_the_zero_counts_unproven(self):
+        from evaluator.supplementary import ascmm_indicators
+        lint = {"ok": True, "versions": {}, "files": 2, "parse_errors": [{"file": "b.js", "line": 3, "message": "Parsing error"}],
+                "mccabe": [], "cognitive": [], "dup_strings": [],
+                "ascmm": {"CWE-480": [{"file": "a.js", "line": 2, "end_line": 2, "rule": "use-isnan", "message": "x"}], "CWE-783": []}}
+        rows = {r[0]: r for r in ascmm_indicators(self.model(lint))}
+        self.assertFalse(rows["ascmm_cwe480"][5]); self.assertIsNone(rows["ascmm_cwe783"][5])
+        self.assertIn("could not parse 1 file(s): b.js", rows["ascmm_cwe783"][6])
+
+    def test_summarize_dedupes_only_the_weakness_rules(self):
+        from evaluator.collectors import lint
+        msg = lambda rule, line, text: {"rule": rule, "file": "a.js", "line": line, "endLine": line, "message": text}  # noqa: E731
+        r = lint.summarize({"versions": {}, "files": 1, "parse_errors": [], "messages": [
+            msg("no-mixed-operators", 3, "mix"), msg("no-mixed-operators", 3, "mix"),
+            msg("complexity", 5, "Arrow function has a complexity of 2. Maximum allowed is 0."),
+            msg("complexity", 5, "Function 'x' has a complexity of 4. Maximum allowed is 0."),
+            msg("sonarjs/cognitive-complexity", 5, "Refactor this function to reduce its Cognitive Complexity from 7 to the 0 allowed."),
+            msg("sonarjs/no-duplicate-string", 6, "Define a constant instead of duplicating this literal 4 times.")]},
+            {"no-mixed-operators": "CWE-783"})
+        self.assertEqual(len(r["ascmm"]["CWE-783"]), 1)
+        self.assertEqual([x["value"] for x in r["mccabe"]], [2, 4])  # two functions on one line are both kept
+        self.assertEqual((r["cognitive"][0]["value"], r["dup_strings"][0]["times"]), (7, 4))
+
+    def test_commented_out_code_is_measured_per_function(self):
+        from evaluator.supplementary import commented_out_functions
+        fns = self.model()["ast"]["functions"]
+        reps = [{"file": "a.js", "line": 3, "end_line": 3}, {"file": "a.js", "line": 50, "end_line": 51}]
+        # f: 1 of 10 lines (10%) > 2%; g: 2 of 100 lines (2%) is not above 2%
+        self.assertEqual([(f["name"], n) for f, n in commented_out_functions(fns, reps, 2.0)], [("f", 1)])
+
+    def test_cross_check_matches_by_file_and_line(self):
+        from evaluator.points.cyclomatic import cross_check
+        fns = self.model()["ast"]["functions"]
+        x = cross_check(fns, [{"file": "a.js", "line": 1, "value": 3}, {"file": "a.js", "line": 20, "value": 27}, {"file": "b.js", "line": 1, "value": 1}], 20)
+        self.assertEqual((x["matched"], x["equal_pct"], x["max_abs_diff"], x["above_threshold"], x["X"]), (2, 50.0, 2, 1, round(1 - 1 / 3, 4)))
+
+
+class TestKnip(unittest.TestCase):
+    """Knip (knip_metrics.js) over tests/fixtures/knip_app: a root package with scripts, an Express backend with Jest and a Vite frontend.
+    Its jest.config.js and vite.config.js write EXECUTED*.txt if they are run: they must not be."""
+
+    APP = FIX / "knip_app"
+
+    @classmethod
+    def setUpClass(cls):
+        from evaluator.collectors import knip
+        cls.res = None
+        if knip.available():
+            with tempfile.TemporaryDirectory() as t:
+                cls.res = knip.run_knip(cls.APP.resolve(), Path(t))
+            cls.executed = sorted(p.name for p in cls.APP.rglob("EXECUTED*"))
+            for p in cls.APP.rglob("EXECUTED*"):
+                p.unlink()
+
+    def setUp(self):
+        if self.res is None:
+            self.skipTest("Knip is not installed (npm install)")
+
+    def test_no_file_of_the_app_is_executed(self):
+        self.assertEqual(self.executed, [])
+        self.assertEqual(self.res["config_load_errors"], [])  # the configs are parsed as entries, not loaded
+        self.assertEqual(self.res["overridden_plugins"], {"backend": ["jest"], "frontend": ["vite"]})
+
+    def test_dead_files_by_reachability(self):
+        self.assertTrue(self.res["ok"], self.res)
+        # deadA and deadB import each other: a fan-in count would miss them. migrate.js (a script), the migration (entry_globs),
+        # the test (Jest) and main.jsx (Vite) are reachable
+        self.assertEqual(sorted(self.res["files"]), ["backend/src/deadA.js", "backend/src/deadAlone.js", "backend/src/deadB.js",
+                                                     "frontend/src/components/Unused.jsx", "scripts/old.js"])
+
+    def test_dependencies(self):
+        self.assertEqual(sorted(self.res["dependencies"]), ["backend:lodash", "frontend:axios"])
+        self.assertNotIn("frontend:@vitejs/plugin-react", self.res["devDependencies"])  # imported by vite.config.js, read statically
+        self.assertNotIn("backend:supertest", self.res["devDependencies"])  # used by the Jest test
+        self.assertEqual(self.res["unlisted"], [])  # a nested package's imports are not charged to the root package.json
+
+
+class TestNoExecGuard(unittest.TestCase):
+    """no_exec_guard.mjs: with NO_EXEC_ROOT set, importing or requiring a file under it fails before the file runs."""
+
+    def test_import_and_require_are_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t) / "app"; root.mkdir()
+            (root / "a.mjs").write_text("import fs from 'node:fs'; fs.writeFileSync(new URL('./RAN_A', import.meta.url), 'x');", encoding="utf-8")
+            (root / "b.cjs").write_text("require('fs').writeFileSync(__dirname + '/RAN_B', 'x');", encoding="utf-8")
+            probe = Path(t) / "probe.mjs"
+            probe.write_text("\n".join([
+                "import { createRequire } from 'node:module'; const out = [];",
+                f"try {{ await import({json.dumps((root / 'a.mjs').as_uri())}); out.push('a ran'); }} catch (e) {{ out.push(e.code); }}",
+                f"try {{ createRequire(import.meta.url)({json.dumps(str(root / 'b.cjs'))}); out.push('b ran'); }} catch (e) {{ out.push(e.code); }}",
+                "console.log(out.join(','));"]), encoding="utf-8")
+            p = subprocess.run(["node", "--import", (ROOT / "no_exec_guard.mjs").as_uri(), str(probe)], capture_output=True, text=True,
+                               env={**os.environ, "NO_EXEC_ROOT": str(root)}, timeout=60)
+            self.assertEqual(p.stdout.strip(), "NO_EXEC_GUARD,NO_EXEC_GUARD", p.stderr)
+            self.assertEqual(sorted(x.name for x in root.iterdir()), ["a.mjs", "b.cjs"])  # nothing was written
+
+
+class TestDependencyFreshness(unittest.TestCase):
+    """Technologies on the resolved versions and as of a reference date: lockfiles, latest version and libyear from the npm `time`
+    data, OSV advisories in force at as_of, and the older metrics.json format."""
+
+    LOCK = {"lockfileVersion": 3, "packages": {"": {"name": "app"}, "node_modules/express": {"version": "4.18.2"},
+                                              "node_modules/jest": {"version": "29.7.0", "dev": True},
+                                              "node_modules/express/node_modules/qs": {"version": "6.11.0"},
+                                              "node_modules/local": {"link": True, "resolved": "../local"}}}
+
+    def test_lockfile_versions(self):
+        from evaluator.collectors import packages as pk
+        self.assertEqual((pk.direct_version(self.LOCK, "express"), pk.direct_version(self.LOCK, "react")), ("4.18.2", None))
+        self.assertEqual(pk.direct_version({"lockfileVersion": 1, "dependencies": {"express": {"version": "4.17.1"}}}, "express"), "4.17.1")
+        self.assertEqual(sorted((p["name"], p["version"], p["dev"]) for p in pk.lock_packages(self.LOCK)),
+                         [("express", "4.18.2", False), ("jest", "29.7.0", True), ("qs", "6.11.0", False)])
+
+    def test_the_apps_lockfile_is_used_only_when_it_pins_every_direct_dependency(self):
+        from evaluator.collectors import packages as pk
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t)
+            (d / "package.json").write_text(json.dumps({"dependencies": {"express": "^4"}, "devDependencies": {"jest": "^29"}}), encoding="utf-8")
+            (d / "package-lock.json").write_text(json.dumps(self.LOCK), encoding="utf-8")
+            with mock.patch.object(pk, "sh") as sh:
+                self.assertEqual(pk.resolve_lock(d, "2025-01-15")[1], "lockfile"); sh.assert_not_called()
+            (d / "package.json").write_text(json.dumps({"dependencies": {"express": "^4", "pg": "^8"}}), encoding="utf-8")
+            with mock.patch.object(pk, "sh", return_value=(1, "", "no network")) as sh:
+                self.assertEqual(pk.resolve_lock(d, "2025-01-15"), (None, None))  # stale lockfile: npm resolves again, as of the date
+            self.assertIn("--before=2025-01-15T23:59:59Z", sh.call_args[0][0])
+
+    def times(self):
+        return {"created": "2014-01-01T00:00:00Z", "4.18.2": "2022-10-08T00:00:00Z", "4.21.0": "2024-09-11T00:00:00Z",
+                "5.0.0": "2024-09-10T00:00:00Z", "5.0.1": "2024-10-08T00:00:00Z", "5.1.0": "2025-03-31T00:00:00Z", "6.0.0-beta.1": "2025-01-01T00:00:00Z"}
+
+    def dependency(self, as_of, resolved="4.18.2"):
+        from evaluator.collectors import packages as pk
+        npm = lambda args: self.times() if args[1] == "time" else ("Use 5" if args[0] == "express@4.18.2" else None)  # noqa: E731
+        with mock.patch.object(pk, "npm_json", side_effect=npm):
+            return pk.dependency({"pkg": "express", "spec": "^4", "dir": ".", "dev": False, "resolved": resolved, "resolved_source": "lockfile"}, as_of)
+
+    def test_latest_version_and_libyear_as_of_the_reference_date(self):
+        i = self.dependency("2025-01-15")  # 5.1.0 is later and 6.0.0-beta.1 is not stable
+        self.assertEqual((i["latest"], i["libyear"], i["deprecated"], i["after_as_of"]), ("5.0.1", 2.0, "Use 5", False))
+        self.assertEqual(self.dependency("2026-01-01")["latest"], "5.1.0")
+        late = self.dependency("2022-01-01")  # the app uses a version published after the reference date
+        self.assertEqual((late["after_as_of"], late["libyear"]), (True, None))
+
+    def osv(self, as_of):
+        from evaluator.collectors import osv
+        recs = {"GHSA-old": {"id": "GHSA-old", "published": "2023-01-01T00:00:00Z", "database_specific": {"severity": "HIGH"}},
+                "GHSA-new": {"id": "GHSA-new", "published": "2025-06-01T00:00:00Z", "database_specific": {"severity": "CRITICAL"}},
+                "GHSA-gone": {"id": "GHSA-gone", "published": "2023-01-01T00:00:00Z", "withdrawn": "2024-01-01T00:00:00Z", "database_specific": {"severity": "HIGH"}},
+                "MAL-1": {"id": "MAL-1", "published": "2023-01-01T00:00:00Z"},
+                "GHSA-none": {"id": "GHSA-none", "published": "2023-01-01T00:00:00Z"}}
+        def post(url, body, timeout=60):
+            return {"results": [{"vulns": [{"id": i} for i in recs]} if q["package"]["name"] == "qs" else {} for q in body["queries"]]}
+        with mock.patch.object(osv, "post", side_effect=post), mock.patch.object(osv, "get", side_effect=lambda u: recs[u.rsplit("/", 1)[1]]):
+            return osv.vulnerabilities([{"name": "qs", "version": "6.11.0", "dev": True}, {"name": "qs", "version": "6.11.0", "dev": False},
+                                        {"name": "jest", "version": "29.7.0", "dev": True}], as_of)
+
+    def test_osv_counts_the_advisories_in_force_at_the_reference_date(self):
+        v = self.osv("2025-01-15")
+        self.assertEqual((v["ok"], v["queried"], v["high"], v["critical"], v["unknown_severity"], v["published_after_as_of"]), (True, 2, 1, 1, 1, 1))
+        self.assertEqual(sorted(x["id"] for x in v["items"]), ["GHSA-none", "GHSA-old", "MAL-1"])  # withdrawn and later ones left out
+        self.assertFalse(v["items"][0]["dev"])  # also installed outside devDependencies: production
+        self.assertEqual((self.osv("2025-12-31")["critical"]), 2)  # GHSA-new is in force by then
+
+    def test_osv_without_network(self):
+        from evaluator.collectors import osv
+        with mock.patch.object(osv, "post", side_effect=OSError("offline")):
+            v = osv.vulnerabilities([{"name": "qs", "version": "1.0.0", "dev": False}], "2025-01-15")
+        self.assertEqual((v["ok"], v["error"]), (False, "offline"))
+
+    def technologies(self, items, **pk):
+        m = {"packages": {"packages": [{"dir": ".", "dependencies": {}, "devDependencies": {}, "engines": {}}], "as_of": "2025-01-15",
+                          "npm": {"ok": True, "items": items}, **pk}, "eol": {}, "postgres_images": []}
+        return ev.eval_technologies(m, {}, Opts)
+
+    @staticmethod
+    def item(pkg, resolved, latest, libyear=0.0, **over):
+        return {"pkg": pkg, "spec": "^1", "dir": ".", "dev": False, "resolved": resolved, "resolved_source": "lockfile", "latest": latest,
+                "libyear": libyear, "deprecated": None, "after_as_of": False, **over}
+
+    def test_c3_uses_the_resolved_version_and_c4_osv(self):
+        items = [self.item("a", "2.1.0", "3.0.0", 1.5), self.item("b", "3.2.0", "3.4.0", 0.2), self.item("c", "1.0.0", "1.0.0", dev=True)]
+        vulns = {"ok": True, "high": 1, "critical": 0, "items": [{"pkg": "qs", "version": "6.11.0", "id": "GHSA-x", "severity": "HIGH", "dev": False}],
+                 "unknown_severity": 0, "published_after_as_of": 3, "queried": 40}
+        crit, met, evid, finding, _ = self.technologies(items, vulnerabilities=vulns)
+        self.assertEqual((crit["C3"]["value"], crit["C3"]["ok"]), ("1/3 = 33.3%", False))
+        self.assertEqual((crit["C4"]["ok"], crit["C4"]["value"], crit["C4"]["source"]), (False, 1, "auto (OSV)"))
+        self.assertEqual((met["libyear"]["dependencies"]["total"], met["libyear"]["dependencies"]["mean"]), (1.7, 0.85))
+        self.assertEqual(met["advisories_published_after_as_of"], 3); self.assertIn("1.7 libyears", finding)
+
+    def test_a_reference_date_earlier_than_the_app_leaves_c3_pending(self):
+        crit, met, _, finding, _ = self.technologies([self.item("a", "2.0.0", "1.0.0", None, after_as_of=True)])
+        self.assertIsNone(crit["C3"]["ok"]); self.assertEqual(met["newer_than_as_of"], ["a 2.0.0"]); self.assertIn("WARNING", finding)
+
+    def test_an_older_metrics_json_is_still_scored(self):
+        old = [{"pkg": "a", "spec": "^2.0.0", "base": "2.0.0", "latest": "3.1.0", "deprecated": None}]
+        crit, *_ = self.technologies(old, audit={"ok": True, "high": 0, "critical": 2})
+        self.assertEqual((crit["C3"]["ok"], crit["C4"]["value"]), (False, 2))
+        self.assertIn("npm audit, older evaluation", crit["C4"]["source"])
+
+
+class TestAscmmDensity(unittest.TestCase):
+    """ISO/IEC 5055 occurrences of every detected weakness with their density per KLOC (Annex C.1), taken from the points' own results."""
+
+    @staticmethod
+    def point(pid, criteria=None, metrics=None, evaluable=True):
+        return {"id": pid, "evaluable": evaluable, "metrics": metrics or {},
+                "criteria": {k: {"ok": None, "value": v} for k, v in (criteria or {}).items()}}
+
+    def model(self):
+        fns = [{"file": "a.js", "line": 1, "name": "f", "test": False, "cc": 3, "loc": 10, "params": list("abcdefgh")}]
+        return {"ast": {"files": [{"path": "a.js", "loc": 1500, "test": False}, {"path": "a.test.js", "loc": 900, "test": True}], "functions": fns}}
+
+    def points(self, **over):
+        pts = {"tests": self.point("tests", {"C1": {"switch_without_default": 2, "fallthrough": 0, "labeled_jumps": 1}}),
+               "coupling": self.point("coupling", {"C1": 1, "C5": 3}),
+               "cyclomatic": self.point("cyclomatic", metrics={"clones": 4, "functions_cc_above_threshold": 2}),
+               "cohesion": self.point("cohesion", {"C4": 0}, {"functions_fanout_above": 5}),
+               "configuration": self.point("configuration", {"C1": 2, "C2": {"a literal (a.js)": 3}}),
+               "layers": self.point("layers", metrics={"violations": 0}),
+               "hierarchies": self.point("hierarchies", {"C1": 0, "C2": 0, "C3": 0})}
+        pts.update(over)
+        return list(pts.values())
+
+    def weakness(self, a, cwe):
+        return next(w for w in a["weaknesses"] if w["cwe"] == cwe)
+
+    def test_counts_come_from_the_points_and_are_normalized_by_production_kloc(self):
+        from evaluator.ascmm import ascmm_profile
+        a = ascmm_profile(self.model(), self.points())
+        self.assertEqual(a["kloc"], 1.5)  # tests are not production code
+        self.assertEqual(len(a["weaknesses"]), 15 + 6)  # CWE-570/571 are one indicator
+        self.assertEqual((self.weakness(a, "CWE-478")["count"], self.weakness(a, "CWE-478")["per_kloc"]), (2, 1.333))
+        self.assertEqual(self.weakness(a, "CWE-1052")["count"], 1)  # distinct literals S1192 reported
+        self.assertEqual((a["scored"]["occurrences"], a["scored"]["per_kloc"], a["scored"]["complete"]), (21, 14.0, True))
+        self.assertEqual(self.weakness(a, "CWE-1064")["count"], 1)  # informational, from the AST
+        self.assertFalse(a["all"]["complete"]); self.assertIn("CWE-480", a["all"]["not_measured"])  # no ESLint result
+
+    def test_a_count_that_was_not_measured_makes_the_total_a_lower_bound(self):
+        from evaluator.ascmm import ascmm_comparison_md, ascmm_markdown, ascmm_profile
+        a = ascmm_profile(self.model(), self.points(coupling=self.point("coupling", {"C1": 1, "C5": None}),
+                                                     hierarchies=self.point("hierarchies", evaluable=False)))
+        self.assertIsNone(self.weakness(a, "CWE-561")["count"]); self.assertIsNone(self.weakness(a, "CWE-1074")["count"])
+        self.assertEqual(a["scored"]["not_measured"], ["CWE-561", "CWE-1062", "CWE-1074", "CWE-1086"])
+        md = "\n".join(ascmm_markdown(a))
+        self.assertIn("**ASCMM, scored weaknesses:** ≥ 18 (≥ 12.0/KLOC)", md)
+        cmp_md = "\n".join(ascmm_comparison_md([("claude-n1-r1", {"ascmm": a}), ("old-run", {})]))
+        self.assertIn("| claude-n1-r1 | 1.5 | ≥ 18 | ≥ 12.0 |", cmp_md); self.assertNotIn("old-run", cmp_md)
+
+    def test_comparison_columns(self):
+        from evaluator.ascmm import COLUMNS, ascmm_columns, ascmm_profile
+        prof = {"ascmm": ascmm_profile(self.model(), self.points())}
+        self.assertEqual(dict(zip(COLUMNS, ascmm_columns(prof)))["ascmm_scored_per_kloc"], 14.0)
+        self.assertEqual(ascmm_columns({}), [None] * len(COLUMNS))  # a profile written before this measure
+
+
+class TestContractConformance(unittest.TestCase):
+    """Runtime conformance to the OpenAPI contract with Prism as a validating proxy (contract_conformance.py, acceptance_check.py --app)."""
+
+    APP = FIX / "conformance_app"
+
+    def test_violations_are_classified_and_invalid_requests_do_not_count(self):
+        import contract_conformance as cc
+        calls = [{"method": "GET", "path": "/api/products", "status": 200, "violations": [{"location": ["response", "body", "0", "id"], "severity": "Error", "message": "must be integer"}]},
+                 {"method": "GET", "path": "/api/health", "status": 200, "violations": [{"location": ["request"], "severity": "Warning", "message": "Selected route not found"}]},
+                 {"method": "GET", "path": "/api/orders/1", "status": 418, "violations": [{"location": ["response"], "message": "Unable to match the returned status code with those defined in the document: 200, 404"}]},
+                 {"method": "POST", "path": "/api/orders", "status": 400, "violations": [{"location": ["request", "body", "qty"], "severity": "Error", "message": "must be integer"}]},
+                 {"method": "POST", "path": "/api/orders", "status": 201, "violations": []}]
+        r = cc.summarize(calls, "docs/openapi.yaml", "/api")
+        self.assertEqual((r["calls"], r["conforming"], r["conformance_pct"], r["invalid_requests"]), (5, 2, 40.0, 1))
+        self.assertEqual([len(r[k]) for k in ("undocumented_routes", "undocumented_status", "invalid_responses")], [1, 1, 1])
+
+    def test_the_suite_runs_direct_when_the_app_has_no_contract(self):
+        with mock.patch.object(acceptance_check, "run", return_value={"passed": 1, "total": 1}) as run:
+            r = acceptance_check.run_with_contract("http://127.0.0.1:1", "ecommerce", str(FIX / "lint_app"))
+        run.assert_called_once_with("http://127.0.0.1:1", "ecommerce")
+        self.assertEqual((r["_conformance"]["ok"], r["_conformance"]["error"]), (False, "the app has no OpenAPI contract"))
+
+    def test_through_prism_against_a_live_api(self):
+        import contract_conformance as cc
+        if not cc.available():
+            self.skipTest("Prism is not installed (npm install)")
+        port = cc.free_port()
+        srv = subprocess.Popen(["node", str(self.APP / "server.js"), str(port)])
+        try:
+            for _ in range(50):
+                try:
+                    socket.create_connection(("127.0.0.1", port), timeout=1).close(); break
+                except OSError:
+                    time.sleep(0.1)
+            def suite(base, domain):  # stands in for the domain suite: the calls the gate would make
+                for m, p, b in (("GET", "/api/products", None), ("GET", "/api/health", None), ("GET", "/api/orders/1", None),
+                                ("POST", "/api/orders", {"qty": "many"}), ("POST", "/api/orders", {"qty": 2})):
+                    acceptance_check.call(base, m, p, b)
+                return {"base": base, "total": 1, "passed": 1}
+            with mock.patch.object(acceptance_check, "run", side_effect=suite):
+                r = acceptance_check.run_with_contract(f"http://127.0.0.1:{port}", "ecommerce", str(self.APP))
+        finally:
+            srv.terminate(); srv.wait(timeout=10)
+        c = r["_conformance"]
+        self.assertTrue(c["ok"], c); self.assertEqual(c["base_path"], "/api")  # the relative servers[].url was applied for Prism
+        self.assertEqual(r["base"], f"http://127.0.0.1:{port}")  # acceptance.json keeps the real backend, not the proxy
+        self.assertEqual((c["calls"], c["conforming"], c["invalid_requests"]), (5, 2, 1))
+        self.assertTrue(c["invalid_responses"][0].startswith("GET /api/products → 200"), c["invalid_responses"])
+        self.assertIsNone(acceptance_check.CALLS)  # recording is switched off again
+
+    def test_the_contracts_point_reports_it_without_changing_the_level(self):
+        from evaluator.points.contracts import runtime_conformance
+        rc = {"ok": True, "conformance_pct": 40.0, "calls": 5, "undocumented_routes": ["GET /api/health → 200: x"], "undocumented_status": [],
+              "invalid_responses": ["GET /api/products → 200: y"]}
+        met, ev, txt = runtime_conformance({"conformance": rc})
+        self.assertEqual((met["runtime_conformance_pct"], met["invalid_responses"]), (40.0, 1)); self.assertIn("40.0% of the responses", txt)
+        self.assertEqual(runtime_conformance({}), ({}, [], ""))
+        self.assertIn("not measured", runtime_conformance({"conformance": {"ok": False, "error": "no contract"}})[2])
+
+    def test_the_latest_versioned_contract_is_evaluated(self):
+        from evaluator.collectors.contract import contract_rank
+        self.assertEqual(sorted(["backend/openapi.yaml", "docs/openapi.yaml", "docs/R2/openapi.yaml"], key=contract_rank)[0], "docs/R2/openapi.yaml")
+
+
+class TestMutation(unittest.TestCase):
+    """Mutation testing with StrykerJS (evaluator/collectors/mutation.py): informational, only with --mutation and --run-tests."""
+
+    def test_score_counts_only_valid_mutants(self):
+        from evaluator.collectors.mutation import score
+        self.assertEqual(score({"Killed": 6, "Timeout": 1, "Survived": 2, "NoCoverage": 1, "CompileError": 5, "Ignored": 3}), 70.0)
+        self.assertIsNone(score({"CompileError": 2}))
+
+    def test_only_production_sources_of_the_package_are_mutated(self):
+        from evaluator.collectors.mutation import mutate_files
+        with tempfile.TemporaryDirectory() as t:
+            app = Path(t); be = app / "backend"; nested = be / "tools"
+            ast = {"files": [{"path": p, "test": p.endswith(".test.js")} for p in
+                             ("backend/src/a.js", "backend/src/a.test.js", "backend/jest.config.js", "backend/migrations/1-init.js",
+                              "backend/tools/x.js", "frontend/src/App.jsx")]}
+            self.assertEqual(mutate_files(app, be, ast, [nested]), ["src/a.js"])
+
+    def test_the_tests_point_reports_it_without_changing_the_level(self):
+        from evaluator.points.tests import mutation_measure
+        mu = {"ok": True, "tool": "StrykerJS 10.1.1 (command runner)", "score": 58.3, "statuses": {"Killed": 7, "Survived": 5},
+              "packages": [{"ok": True, "survivors": ["src/price.js:11 EqualityOperator (Survived)"]}]}
+        met, ev, txt = mutation_measure({"mutation": mu})
+        self.assertEqual((met["mutation_score"], met["mutants_detected"], met["mutants_undetected"]), (58.3, 7, 5))
+        self.assertIn("7 of 12 valid mutants", txt); self.assertTrue(ev[0].startswith("surviving mutant: src/price.js:11"))
+        self.assertEqual(mutation_measure({}), ({}, [], ""))
+
+    def test_stryker_on_a_node_test_suite(self):
+        from evaluator.collectors import mutation
+        if not mutation.available():
+            self.skipTest("StrykerJS is not installed (npm install)")
+        with tempfile.TemporaryDirectory() as t:
+            app = Path(t) / "app"; shutil.copytree(FIX / "mutation_app", app); out = Path(t) / "out"; out.mkdir()
+            ast = ev.run_ast(app, out)
+            before = sorted(p.relative_to(app).as_posix() for p in app.rglob("*"))
+            r = mutation.run_mutation(app, [{"dir": "backend", "scripts": {"test": "node --test"}}], ast, out)
+            after = sorted(p.relative_to(app).as_posix() for p in app.rglob("*"))
+        self.assertTrue(r["ok"], r); self.assertEqual(before, after)  # the app is not modified (Stryker works in a sandbox copy)
+        # unitPrice is tested, shipping is not: every surviving mutant is in shipping (lines 10-11)
+        self.assertTrue(0 < r["score"] < 100, r["score"])
+        self.assertTrue(all(re.search(r"src/price\.js:1[01] ", s) for s in r["packages"][0]["survivors"]), r["packages"][0]["survivors"])

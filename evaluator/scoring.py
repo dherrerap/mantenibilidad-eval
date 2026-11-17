@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from evaluator.artifacts import artifact_findings
+from evaluator.ascmm import ascmm_profile
 from evaluator.common import RUBRIC
 from evaluator.criteria import level_from, pdict
 from evaluator.points import EVALUATORS, MUST
@@ -79,6 +80,17 @@ def load_pg(out, m):
     return m
 
 
+def load_conformance(out, m):
+    """Adds to `m` the runtime conformance to the OpenAPI contract (<out>/contract_conformance.json, written by acceptance_check.py
+    --app through Prism). Informational: it feeds the metrics of the Contracts point, never its level."""
+    f = Path(out) / "contract_conformance.json"
+    if f.exists():
+        m["conformance"] = json.loads(f.read_text(encoding="utf-8"))
+    else:
+        m.pop("conformance", None)
+    return m
+
+
 def load_judge(out, manual):
     """Adds to `manual` the judge's decisions (<out>/judge.json) under the private key '_judge'; removes it if there is no file."""
     f = Path(out) / "judge.json"
@@ -94,6 +106,7 @@ def evaluate_profile(m, manual, opts):
     pts = evaluate_points(m, manual, opts); prof = profile(pts)
     prof["not_evaluable"] = [p["id"] for p in pts if not p["evaluable"]]
     prof["artifact_findings"] = artifact_findings(m)
+    prof["ascmm"] = ascmm_profile(m, pts)  # ISO/IEC 5055 occurrences and density per KLOC (informational)
     if manual.get("_judge"):
         without = profile(evaluate_points(m, {k: v for k, v in manual.items() if k != "_judge"}, opts))
         prof["without_judge"] = {"min": without["maintainability_min"], "max": without["maintainability_max"], "complete": without["complete"]}

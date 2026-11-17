@@ -11,7 +11,8 @@ resolves them. This page explains how to do it and how the sources are combined.
 | Cohesion | C3 | There is no "god" module, no mixing of distinct responsibilities in one module and no excessive fragmentation. |
 | Data model | C2, C5 (and C1, C3, C4, C6 if the evidence misled the program) | C2 normalization (≤ 3NF) consistent with access, denormalization justified · C5 no unjustified redundancy or inconsistent types. The measured criteria: C1 primary keys and declared foreign keys · C3 constraints declared · C4 indexes on foreign keys and query filters · C6 the ER model matches the schema. |
 | Contracts | C4 | Input validation is consistent with the contract. |
-| Hierarchies | C3 | Only if the project defines its own base class (Unhealthy Inheritance). |
+| Hierarchies | C3 | Only if the project defines its own base class and the dependency graph is missing, so DV8's rules could not be applied (Unhealthy Inheritance). |
+| Any other point | the pending one | A criterion left pending because a measurement did not run: DV8 (cohesion C2, coupling C3), ESLint (configuration C2), Knip (coupling C4, C5), jscpd (cyclomatic C3), the tests (tests C2–C4), the network (technologies), or a reference date earlier than the app (technologies C3). `manual_review.md` lists them with the reason; the best fix is to provide what is missing and evaluate again. |
 
 ## Procedure
 
@@ -19,8 +20,8 @@ resolves them. This page explains how to do it and how the sources are combined.
    - `manual_review.md`: statement, evidence (tables, functions with high fan-out, model code) and a suggestion
      per criterion.
    - `manual_review.draft.json`: the same structure with `ok: null`.
-2. Review the evidence. The suggestions **guide, they do not decide**; they may be wrong (for example, failing to detect an embedded
-   subdocument).
+2. Review the evidence. The suggestions **guide, they do not decide**; they may be wrong (for example, a relation the static analysis
+   could not see because the foreign key is created in a raw SQL string built at run time).
 3. Copy the draft to `manual_review.json` in the same folder and replace `ok` with `true` or `false`. The `note` field
    is recorded as the criterion's value: use it to justify.
 4. Run `python cli.py evaluate --rescore` (or `python evaluate.py rescore results/<run>`). It does not collect again: it re-scores
@@ -61,8 +62,9 @@ python judge.py results/<run> --model claude-opus-5-5   # separately, on an alre
 - **Command.** By default it uses the Claude Code CLI (`claude -p --model {model}`, the prompt goes in through stdin). With `--cmd` you can
   use another (any program that reads the prompt from stdin and writes the answer to stdout).
 
-The judge does not decide what depends on a missing measurement: DL/PC (DV8), versions and vulnerabilities (network) and tests (`--run-tests`).
-If those remain pending, the result will still be a range, but a narrower one.
+The judge does not decide what depends on a missing measurement: DL/PC (DV8), versions and vulnerabilities (network), tests (`--run-tests`),
+duplicated literals (ESLint), unused dependencies and dead files (Knip) and duplication (jscpd). If those remain pending, the result will still
+be a range, but a narrower one.
 
 ## Where values are read from (priority)
 

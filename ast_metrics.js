@@ -7,11 +7,11 @@
  *
  * Produces, among others: cyclomatic complexity and fan-out per function,
  * class hierarchies, switch without default / fall-through (CWE-478/484),
- * labeled jumps (CWE-1075), network literals (CWE-1051) and duplicates
- * (CWE-1052), console.*, catch blocks, error middleware, Express routes and
+ * labeled jumps (CWE-1075), network literals (CWE-1051), console.*, catch blocks, error middleware, Express routes and
  * the raw material of the relational schema: Sequelize models, associations and
  * migrations (queryInterface.*), raw SQL strings and query filters (`where`).
  * The schema itself is assembled and normalized by relational_schema.py.
+ * Duplicated literals (S1192, CWE-1052) and cognitive complexity (S3776) are measured by lint_metrics.js with the SonarJS rules.
  */
 const fs = require("fs");
 const path = require("path");
@@ -100,50 +100,12 @@ function fnName(fn) {
   return "<anonymous>";
 }
 
-/** Cognitive complexity (SonarSource, approximate): +1 per control structure, +nesting level, +1 per sequence of
- *  logical operators and per labeled jump. Nested functions are measured separately (as their own entries). */
-function cognitive(fn) {
-  let total = 0;
-  const LOOPS = new Set([SyntaxKind.ForStatement, SyntaxKind.ForInStatement, SyntaxKind.ForOfStatement, SyntaxKind.WhileStatement, SyntaxKind.DoStatement]);
-  const LOGIC = new Set([SyntaxKind.AmpersandAmpersandToken, SyntaxKind.BarBarToken, SyntaxKind.QuestionQuestionToken]);
-  const walk = (node, nesting, elseIf) => {
-    const k = node.getKind();
-    if (FN_KINDS.has(k)) return;
-    if (k === SyntaxKind.IfStatement) {
-      total += elseIf ? 1 : 1 + nesting;
-      walk(node.getExpression(), nesting, false);
-      walk(node.getThenStatement(), nesting + 1, false);
-      const e = node.getElseStatement();
-      if (e) {
-        if (e.getKind() === SyntaxKind.IfStatement) walk(e, nesting, true);
-        else { total += 1; walk(e, nesting + 1, false); }
-      }
-      return;
-    }
-    if (LOOPS.has(k) || k === SyntaxKind.SwitchStatement || k === SyntaxKind.CatchClause || k === SyntaxKind.ConditionalExpression) {
-      total += 1 + nesting;
-      node.forEachChild((c) => walk(c, nesting + 1, false));
-      return;
-    }
-    if (k === SyntaxKind.BinaryExpression && LOGIC.has(node.getOperatorToken().getKind())) {
-      const par = node.getParent();
-      const same = par && Node.isBinaryExpression(par) && par.getOperatorToken().getKind() === node.getOperatorToken().getKind();
-      if (!same) total += 1;
-    }
-    if ((k === SyntaxKind.BreakStatement || k === SyntaxKind.ContinueStatement) && node.getLabel && node.getLabel()) total += 1;
-    node.forEachChild((c) => walk(c, nesting, false));
-  };
-  const body = fn.getBody ? fn.getBody() : undefined;
-  if (body) walk(body, 0, false);
-  return total;
-}
-
 const normCallee = (t) => t.replace(/\([^()]*\)/g, "()").replace(/\s+/g, "").slice(0, 80);
 
 const out = {
   root, files: [], functions: [], classes: [],
   switchesMissingDefault: [], fallthrough: [], labeledJumps: [],
-  consoleCalls: [], networkLiterals: [], literalOccurrences: {},
+  consoleCalls: [], networkLiterals: [],
   catchBlocks: { total: 0, logging: 0, delegating: 0, silent: [] },
   errorMiddleware: [], routes: [], mounts: [],
   sequelize: { models: [], associations: [], migrations: [] }, sqlStrings: [],
@@ -356,7 +318,7 @@ for (const sf of project.getSourceFiles()) {
     out.functions.push({
       event, logs: cs.some((c) => LOG_RE.test(c)),
       file, test, frontend: front, name: fnName(n), line: n.getStartLineNumber(),
-      cc: cyclomatic(n), cog: cognitive(n), fanout: callees.size,
+      cc: cyclomatic(n), fanout: callees.size,
       loc: n.getEndLineNumber() - n.getStartLineNumber() + 1,
       params: n.getParameters().map((p) => p.getName()),
     });
@@ -526,7 +488,6 @@ for (const sf of project.getSourceFiles()) {
       const isJsxAttr = Node.isJsxAttribute(parent);
       if (!isModuleSpec && !isKey && !isJsxAttr) {
         if (NET_RE.test(v)) out.networkLiterals.push({ file, line, value: v.slice(0, 80), kind: "url/ip", envFallback: ENV_FALLBACK(n) });
-        if (v.length >= 4) (out.literalOccurrences[v] ||= []).push(`${file}:${line}`);
       }
     }
     if (Node.isNumericLiteral(n)) {

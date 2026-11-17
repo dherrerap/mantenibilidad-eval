@@ -23,7 +23,7 @@ r2 phase how much it costs to **modify** it, which is the operational side of ma
 | `technical-n2.md` | Level 2: N1 plus expected quality attributes (understandable, modifiable, testable). |
 | `technical-n3.md` | Level 3: N2 plus explicit architectural guidelines (SRP, dependency injection, unit tests, validation, documenting decisions). |
 | `combiner-prompt.md` | Prompt of phase initial: combines a technical specification with the requirements. `{LEVEL}` is replaced by `n1`, `n2` or `n3` and `{DOMAIN}` by `ecommerce` or `cinema`. |
-| `r2-additional-requirements.md` | Requirements of phase r2: documentation versioning (the R2 set goes in `docs/R2/`, with `README.md` and `entity-relationship-model.md`), Requirements 1–9, and the HTTP interface and environment variables that make them verifiable (`REPLICA_DATABASE_URL`, `SQLSERVER_URL`, `ADMIN_EMAIL`/`ADMIN_PASSWORD`, `AUDITOR_EMAIL`/`AUDITOR_PASSWORD`, `SEED_DATE`, `CANCELLATION_WINDOW_HOURS`, `SALES_CUTOFF_MINUTES`). |
+| `r2-additional-requirements.md` | Requirements of phase r2: documentation versioning (the R2 set goes in `docs/R2/`, with `README.md`, `entity-relationship-model.md` and `openapi.yaml`), Requirements 1–9, and the HTTP interface and environment variables that make them verifiable (`REPLICA_DATABASE_URL`, `SQLSERVER_URL`, `ADMIN_EMAIL`/`ADMIN_PASSWORD`, `AUDITOR_EMAIL`/`AUDITOR_PASSWORD`, `SEED_DATE`, `CANCELLATION_WINDOW_HOURS`, `SALES_CUTOFF_MINUTES`). |
 | `r2-prompt.md` | Prompt of phase r2. It refers to the `technical-*.md`, `requirements-*.md` and `PROMPT.md` already in the app's folder. |
 
 For another domain or another scale of levels, change these files and keep the names `technical-<level>.md` and `requirements-<domain>.md`.
@@ -104,8 +104,9 @@ reconstructed.
 
 `backend/` and `frontend/` at the root, each with a `package.json`, installable with `npm install` and runnable with
 `npm start`; the backend reads its port from `PORT` and the PostgreSQL connection string from `DATABASE_URL`; a `docker-compose.yml` at the root that
-starts PostgreSQL; a `README.md` with instructions; and `docs/entity-relationship-model.md` with a Mermaid `erDiagram` that matches the implemented schema
-(criterion C6 and the *Entity-relationship model* artifact). The backend must create its schema when it starts (the generated specs say how). If
+starts PostgreSQL; a `README.md` with instructions; `docs/entity-relationship-model.md` with a Mermaid `erDiagram` that matches the implemented schema
+(criterion C6 and the *Entity-relationship model* artifact); and `docs/openapi.yaml`, the OpenAPI 3 contract of every endpoint (Contracts, whose C1 is
+mandatory, and the runtime conformance checked with Prism during the acceptance gate). Phase r2 adds `docs/R2/openapi.yaml`, which is the one evaluated. The backend must create its schema when it starts (the generated specs say how). If
 `backend/` or `frontend/` is missing, the package and test analysis will not see that part; if no SQL file, Sequelize migration or Sequelize model defines the
 schema, the *Data model design* point is not evaluable.
 
@@ -122,4 +123,6 @@ schema, the *Data model design* point is not evaluable.
    e-commerce (money as JSON numbers, opaque ids, the volume-discount examples, the stock rules, the order statuses) or cinema (the seed
    screenings and prices, the seat map, locks between users, sold seats, isolation of purchases). The suites cover the **original**
    requirements, so the gate runs right after phase initial, before r2; on a project that already implements r2 it is skipped and
-   the earlier result is kept. It needs Docker; without it the gate is skipped and says so. Or test the application by hand.
+   the earlier result is kept. It needs Docker; without it the gate is skipped and says so. Without Docker, `cli.py evaluate --postgres`
+   runs the same gate against a disposable database of a PostgreSQL server (`PG_ADMIN_URL`). In both, the suite also goes through a Prism
+   proxy that checks the responses against `docs/openapi.yaml` (`contract_conformance.json`). Or test the application by hand.

@@ -1,5 +1,6 @@
 """Decision point *Contracts* (Modularity, Testability): C1 machine-readable contract, C2 Spectral errors, C3 routes covered
-by the contract, C4 input validation consistent with the contract.
+by the contract, C4 input validation consistent with the contract. When the acceptance gate ran through Prism, the share of its
+responses that match the contract at run time is reported next to them (informational).
 """
 
 from evaluator.common import RUBRIC
@@ -35,8 +36,28 @@ def eval_contracts(m, manual, opts):
             "C3": C((cov >= T["coverage_min"]) if cov is not None else False, "Contract covers ≥ 90% of routes", None if cov is None else f"{cov:.0f}% of {len(routes)} routes"),
             "C4": C(c4_ok, "Input validation consistent with the contract (write routes validated ≥ 90% and validated fields present in the contract)", c4_value)}
     apply_manual("contracts", crit, manual)
-    return crit, {"implemented_routes": len(routes), "coverage_pct": cov, "routes_with_unresolved_prefix": unresolved,
-                  "contract_endpoints_over_implemented": (len(ct["paths"]) / len(routes)) if routes and ct["paths"] else None}, \
-        ct["files"][:3] + [f"{r['method']} {r['full_path']}" for r in routes[:4]], \
-        f"{'Contract: ' + ', '.join(ct['files']) if has else 'No machine-readable contract'}; {len(routes)} implemented routes" \
-        + (f" ({unresolved} with a mount prefix that could not be resolved)." if unresolved else "."), None
+    met = {"implemented_routes": len(routes), "coverage_pct": cov, "routes_with_unresolved_prefix": unresolved,
+           "contract_endpoints_over_implemented": (len(ct["paths"]) / len(routes)) if routes and ct["paths"] else None}
+    ev = ct["files"][:3] + [f"{r['method']} {r['full_path']}" for r in routes[:4]]
+    finding = f"{'Contract: ' + ', '.join(ct['files']) if has else 'No machine-readable contract'}; {len(routes)} implemented routes" \
+        + (f" ({unresolved} with a mount prefix that could not be resolved)." if unresolved else ".")
+    rmet, rev, rtxt = runtime_conformance(m)
+    met.update(rmet); ev += rev
+    return crit, met, ev, finding + rtxt, None
+
+
+def runtime_conformance(m):
+    """Informational: share of the acceptance suite's responses that match the contract at run time (Prism, contract_conformance.py).
+    Only when the acceptance gate ran with --app (pg_analysis.py --postgres or run_experiment.py)."""
+    rc = m.get("conformance")
+    if not rc:
+        return {}, [], ""
+    if not rc.get("ok"):
+        return {"runtime_conformance": None}, [], f" Runtime conformance not measured ({rc.get('error')})."
+    met = {"runtime_conformance_pct": rc["conformance_pct"], "runtime_calls": rc["calls"], "undocumented_routes": len(rc["undocumented_routes"]),
+           "undocumented_status": len(rc["undocumented_status"]), "invalid_responses": len(rc["invalid_responses"])}
+    ev = [f"at run time: {x}" for x in (rc["invalid_responses"][:2] + rc["undocumented_status"][:1] + rc["undocumented_routes"][:1])]
+    txt = (f" At run time (Prism, {rc['calls']} calls of the acceptance suite): {rc['conformance_pct']}% of the responses match the contract; "
+           f"{len(rc['undocumented_routes'])} undocumented route(s), {len(rc['undocumented_status'])} undocumented status code(s), "
+           f"{len(rc['invalid_responses'])} response(s) off the schema (informational).")
+    return met, ev, txt

@@ -30,5 +30,5 @@ def eval_cohesion(m, manual, opts):
     ev = [f"{f['file']}:{f['line']} {f['name']} (fan-out={f['fanout']})" for f in sorted(hi, key=lambda f: -f["fanout"])[:5]] + gods[:3] \
         + [f"{p_}: {l} LOC" for p_, l in oversized[:3]]
     il = (manual.get("dv8") or {}).get("IL")
-    return crit, {"pct_fanout": p, "suggested_god_modules": gods, "oversized_files": len(oversized), "IL": il}, ev, \
+    return crit, {"pct_fanout": p, "functions_fanout_above": len(hi), "suggested_god_modules": gods, "oversized_files": len(oversized), "IL": il}, ev, \
         f"{len(hi)} of {len(fns)} functions with fan-out > {T['fanout_max']}; {len(gods)} candidate 'god' module(s); {len(oversized)} file(s) over {T['file_loc_max']} LOC.", None

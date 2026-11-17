@@ -7,9 +7,10 @@ What the framework does **not** guarantee. Cite them alongside any result.
 - **PERN applications only** (PostgreSQL, Express, React, Node) with `backend/` and `frontend/` folders, each with its own `package.json`. Other
   structures require adjusting `ast_metrics.js` and the package detection. Results from the MERN pilot (EXP-01, tag `v0.1.0-mern`) were measured with
   a different data model rubric and are not comparable with PERN results criterion by criterion.
-- **It does not evaluate whether the application works.** Without the acceptance gate (`run_experiment.py` runs `acceptance_check.py` against PostgreSQL
-  started from the app's `docker-compose.yml`) a high score may correspond to a broken app. The gate needs Docker and Docker Compose v2; when they are
-  missing it is skipped, says so, and nothing in the profile tells whether the app works. It is a maintainability measure, not a correctness one.
+- **It does not evaluate whether the application works.** Without the acceptance gate a high score may correspond to a broken app. The gate
+  (`acceptance_check.py`) runs in two ways: `run_experiment.py` starts PostgreSQL from the app's `docker-compose.yml` (needs Docker and Docker
+  Compose v2; without them it is skipped and says so), and `cli.py evaluate --postgres` runs it against a disposable database of the server in
+  `PG_ADMIN_URL`. Without either, nothing in the profile tells whether the app works. It is a maintainability measure, not a correctness one.
 - **The gate covers the original requirements only** (`requirements-ecommerce.md` or `requirements-cinema.md`, chosen by the domain).
   The additional requirements of phase r2 change some of its rules (prices, shipping, roles), so `run_experiment.py` runs it right
   after phase initial and skips it on a project that already implements r2. There is no acceptance suite for r2 yet. The 5-minute
@@ -36,11 +37,28 @@ What the framework does **not** guarantee. Cite them alongside any result.
   duplication. The 10% threshold is the default ISO/IEC 5055 publishes for CWE-1041, but the standard applies it to the instructions of
   each clone instance while `jscpd` reports duplicated lines across the whole application: the number is the standard's, the
   measurement basis is not. It is also looser than the 5% it replaced.
-- **Cognitive complexity** is our own approximation, not the output of SonarQube, and stays informational.
-- **Dead code (CWE-561)** is now scored (Coupling C5) but only sees production files that nobody imports, which is the *structural*
-  half of the weakness, for which ISO/IEC 5055 sets the threshold at 0. It does not detect unused exports or functions, nor unreachable
-  statements inside a function, so the 5% the standard allows for *logically* dead code is not evaluated. It is our own approximation,
-  not the output of `knip`.
+- **Duplicated-literal threshold (Configuration C2, S1192).** Its parameters (3 repetitions, 10 characters) come from a widely used
+  external rule, SonarQube's, not from our own calibration study, and CWE-1052 publishes no numeric threshold.
+- **Cognitive complexity** comes from SonarSource's own rule (S3776 in `eslint-plugin-sonarjs`) and stays informational.
+- **ESLint parses less permissively than ts-morph.** A file it cannot parse is listed in `metrics.json` (`lint.parse_errors`) and its
+  S1192, S3776 and ASCMM reports are missing: a count of 0 is then left pending (C2) or n/a (ASCMM), while a reported occurrence still
+  counts. The McCabe count and the other AST measures still see that file.
+- **The ESLint indicators of ASCMM weaknesses are informational, and their mapping is ours.** ISO/IEC 5055 names no tool: which rules
+  stand for CWE-480, 570/571, 783, 1085 and 1095 (`lint.ascmm`) is a decision of this framework. CWE-783 counts `&&` mixed with `||`
+  without parentheses, which is a risk of a precedence error, not always an error. CWE-1095 is partial: S2310 reports plain
+  assignments to a `for` counter (`i = …`) but not `i++` or `i += …` in the body, nor updates of a `while` condition. CWE-570 and 571
+  are counted together. CWE-1085 relates commented-out *lines* to the function's lines, where the standard relates instructions.
+- **Dead code (CWE-561)** is scored (Coupling C5) over the production files that Knip cannot reach from any entry point, which is the
+  *structural* half of the weakness, for which ISO/IEC 5055 sets the threshold at 0. Unused exports are reported but not scored, and
+  unreachable statements inside a function are not detected, so the 5% the standard allows for *logically* dead code is not evaluated.
+  A file is only reachable through an entry point Knip knows (package.json `main`, `bin` and scripts, the tools it recognizes, and the
+  `entry_points` / `entry_globs` of `rubric.json`): a file run only from a Dockerfile, a Procfile or a tool Knip does not recognize is
+  counted as dead until it is added to `entry_globs`. Files outside every package directory are not analyzed.
+- **Knip reads the tools' JS/TS configuration files as source, without running them** (`knip_metrics.js`, `no_exec_guard.mjs`): their
+  imports count, but whatever a configuration computes at run time (entries built in a loop, a Jest `projects` list returned by a
+  function) is not seen. Without the app's `node_modules` (`--skip-tests`) Knip cannot map a binary to its package, so it reports a
+  devDependency that a script runs (`jest`, `vite`) as unused. This only matters with `include_devdependencies` on (off by default):
+  then such a devDependency counts as used when its binary has the package's name.
 - **Data model C2/C5 suggestions and contracts C4** are heuristics over the code and schema text (repeating groups, columns that copy a
   column of the referenced table, type names, validation middleware names). C2 does not verify third normal form: it only looks for the symptoms listed
   in `docs/methodology.md`. They do not compare the schema with the contract field by field.
@@ -48,13 +66,29 @@ What the framework does **not** guarantee. Cite them alongside any result.
   `assert`, `expect` and `should`; credential detection looks at the variable name; the SQL check only sees a template
   literal with `${}` or a `+` concatenation passed as the first argument of `query`, `raw`, `execute` or `unsafe`, and ignores interpolated constants
   (literals, ternaries of literals, a module-level `const` string) but not parameters or values it cannot trace; the prop count of a component that receives `props` without
-  destructuring is approximate. There is no mutation testing, dependency licenses or unused exports.
+  destructuring is approximate. Dependency licenses are not checked. Mutation testing (`--mutation`) and unused exports (Knip) are
+  reported elsewhere, also without scoring.
 - **Observability C1** is a proxy: critical events are `catch` blocks, functions that use `bcrypt`/`jwt`/`passport`
   (authentication) and those that write with Sequelize (`save`, `create`, `bulkCreate`, `update`, `destroy`, `upsert`…; raw `INSERT`/`UPDATE`
   statements are not recognized). A function counts as logged if it
   calls a logger or if the app has a request logger (`morgan`, `pino-http`…). It does not tell whether the message is useful.
-- **Technologies** depends on the moment of the query: npm versions, deprecations and vulnerabilities change over
-  time. The run records the date in `environment.json`. The `supported_runtimes` table in `rubric.json` is a working
+- **The OpenAPI contract is a deliverable since this version of the prompt** (`specs/combiner-prompt.md`, and `docs/R2/openapi.yaml` in
+  `r2-additional-requirements.md`). Contracts C1 is mandatory, so applications generated with an earlier prompt, which did not ask for it,
+  fail that point and **are not comparable** with the ones generated after it: generate every application of an experiment with the same
+  prompt.
+- **The mutation score is informational and partial.** StrykerJS's command runner runs the whole suite per mutant, without per-test
+  coverage, so an untested mutant appears as Survived rather than NoCoverage, and the run stops at `mutation.max_minutes_per_package`
+  (the package is then reported as not measured). Only the packages with a `test` script are mutated. There is no published cut-off for
+  the score, which is why it does not score.
+- **Runtime contract conformance only sees what the acceptance suite calls.** The suite covers the original requirements of the domain,
+  not every endpoint, so a route it does not call is neither confirmed nor refuted; and it only runs with the gate (`--postgres` or
+  `run_experiment.py` with Docker). Prism 5.14 (the last one that runs on Node 22) validates against OpenAPI 3.0/3.1 and Swagger 2.
+- **Technologies** is fixed at the reference date `as_of` (resolved versions, latest version, advisories, supported runtimes), with three
+  exceptions that are today's data: the **deprecation** of a version (npm does not date it), the **severity** of an advisory (OSV keeps the
+  current one, which GitHub may have revised) and the advisories OSV did not have when it was queried. "Latest version as of `as_of`" is
+  the highest stable version published by then, which may differ from the `latest` dist-tag of that day (a tag on an older line). The app's
+  own lockfile wins over the reference date when it pins every direct dependency, because it is what the agent installed. OSV receives
+  the names and versions of the installed packages, never code or paths. The `supported_runtimes` table in `rubric.json` is a working
   assumption that must be verified by hand.
 - **PostgreSQL, Sequelize and `pg` versions are unverified assumptions** (`supported_runtimes.unverified`, dated 2026-10-26): PostgreSQL 14–18
   are the majors that endoflife.date lists as supported on that date (14 reaches end of life on 2026-11-12), Sequelize 6 and `pg` 8 are the
@@ -94,7 +128,6 @@ What the framework does **not** guarantee. Cite them alongside any result.
   Differences in attribute types and in optionality (zero vs. one) are listed but do not fail C6. A many-to-many line drawn between two entities when the
   schema has a join table counts as a mismatch. Mermaid syntax beyond entities, attributes with `PK`/`FK`/`UK`, and relationship lines is ignored.
   With a live database, C6 compares the ER against the real schema, not the static one.
-- **Duplication threshold (S1192).** It comes from a widely used external practice, not from our own calibration study.
 
 ## Real database
 
@@ -182,10 +215,16 @@ included. Use a virtual machine or a disposable container.
   external measures they are meant to predict, so the profile this framework produces is not validated against them.
 - **The weights come from a panel of four with low concordance.** Kendall's W over the rankings of Table 23 of PIA02 is 0.158
   (chi-square 2.52, 4 df, critical value 9.49 at alpha 0.05): not statistically significant. The ranking of E4 also sums 17 instead of
-  15, because it assigns rank 5 twice and omits rank 3. Treat 30/24/24/22 as the priority profile of a small, dispersed panel and
-  report a sensitivity analysis, including the uniform 25% profile.
+  15, because it assigns rank 5 twice and omits rank 3. Treat 30/24/24/22 as the priority profile of a small, dispersed panel. The
+  report includes a sensitivity analysis (uniform 25%, equal points, each point removed, and optional per-expert sets; see
+  [methodology](methodology.md#weight-sensitivity)): cite only the conclusions that hold across it.
 - **The Technologies point has no backing at all.** Dependency obsolescence is not a weakness of the maintainability measure and is not
   among the analysability or modifiability measures of ISO/IEC 25023. Counting high and critical vulnerabilities inside a
   maintainability point also borrows from the Automated Source Code *Security* Measure, which the standard does not authorize.
-- **Ten of the 25 applicable ASCMM weaknesses are not detected** (`backing._coverage_ascmm`): CWE-407, 480, 570, 571, 783, 1064, 1084,
-  1085, 1090 and 1095. Four of the 29 do not apply to JavaScript or TypeScript.
+- **Of the 25 applicable ASCMM weaknesses, 15 are scored, 7 are only informational and 3 are not detected**
+  (`backing._coverage_ascmm`). Informational: CWE-480, 570, 571, 783, 1064, 1085 and 1095 (supplementary indicators, group ASCMM).
+  Not detected: CWE-407, 1084 and 1090. Four of the 29 do not apply to JavaScript or TypeScript.
+- **The ASCMM density is per KLOC, not per AFP.** ISO/IEC 5055 Annex C.1 divides the occurrences by Automated Function Points, which are
+  not computed; KLOC of production code is a substitute that rewards verbose code (more lines, lower density). The total adds
+  occurrences of different kinds (a function, a file, a cycle), as the standard does, and leaves out the 3 weaknesses not detected, so
+  it is not comparable with an ASCMM measured by a certified tool such as CAST.

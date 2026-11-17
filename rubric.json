@@ -6,6 +6,27 @@
     "Modularity": 0.24,
     "Modifiability": 0.22
   },
+  "lint": {
+    "_comment": "Rules run by lint_metrics.js (ESLint + eslint-plugin-sonarjs, versions pinned in package.json) over the production files. `ascmm` maps each ISO/IEC 5055 weakness that no other collector detects to the maintained rules that report it; each report counts as one occurrence. The rule-to-CWE mapping is ours: the standard names no tool. The measurement rules (S1192 for configuration.C2, S3776 for the cognitive complexity and ESLint `complexity` as a cross-check of the McCabe count) are configured from `thresholds` by evaluator/collectors/lint.py.",
+    "ascmm": {
+      "CWE-480": { "name": "Use of Incorrect Operator", "rules": { "no-cond-assign": ["error", "except-parens"], "sonarjs/non-existent-operator": "error", "use-isnan": "error", "valid-typeof": "error", "no-compare-neg-zero": "error" } },
+      "CWE-570/571": { "name": "Expression is Always False / Always True", "rules": { "sonarjs/no-gratuitous-expressions": "error", "no-constant-condition": "error", "no-constant-binary-expression": "error" } },
+      "CWE-783": { "name": "Operator Precedence Logic Error", "rules": { "no-mixed-operators": ["error", { "groups": [["&&", "||"], ["&", "|", "^", "<<", ">>", ">>>", "==", "!=", "===", "!==", "<", "<=", ">", ">="]], "allowSamePrecedence": true }], "no-unsafe-negation": "error" } },
+      "CWE-1095": { "name": "Loop Condition Value Update within the Loop", "rules": { "sonarjs/updated-loop-counter": "error" },
+        "_note": "Partial: S2310 reports plain assignments to the counter of a `for` (`i = …`) but not `i++` or `i += …` inside the body (checked with eslint-plugin-sonarjs 4.2.2), nor updates of a `while` condition." },
+      "CWE-1085": { "name": "Invokable Control Element with Excessive Volume of Commented-out Code", "rules": { "sonarjs/no-commented-code": "error" } }
+    }
+  },
+  "mutation": {
+    "_comment": "Mutation testing with StrykerJS (evaluator/collectors/mutation.py), only with --mutation and --run-tests: informational, it changes no level (the Tests point reports the mutation score next to the coverage). Run parameters, not thresholds: the command runner runs the package's own `npm test` once per mutant, so the time grows with the number of mutants times the duration of the suite.",
+    "max_minutes_per_package": 30,
+    "concurrency": 2,
+    "timeout_ms": 10000
+  },
+  "sensitivity": {
+    "_comment": "Extra weight sets for the weight sensitivity analysis (evaluator/sensitivity.py), on top of the built-in scenarios: uniform 25%, every point with the same weight and each point removed in turn. Each set maps the four subcharacteristics to a weight and is normalized to 1; a natural choice is each expert's own Borda weights from Table 23 of PIA02, e.g. \"E1\": {\"Testability\": 5, \"Analyzability\": 3, \"Modularity\": 4, \"Modifiability\": 2}.",
+    "weight_sets": {}
+  },
   "partial_min_fraction": 0.5,
   "level_score": { "Meets": 1.0, "Partial": 0.5, "Fails": 0.0 },
   "level_severity": { "Meets": "Negligible", "Partial": "Marginal", "Fails": "Critical" },
@@ -15,7 +36,7 @@
     "cyclomatic":    { "name": "Cyclomatic complexity", "category": "Structure and modularity", "subcharacteristics": ["Modularity", "Modifiability"], "type": "Automatable" },
     "cohesion":      { "name": "Cohesion of modules with shared responsibility", "category": "Structure and modularity", "subcharacteristics": ["Modularity", "Modifiability"], "type": "Mixed" },
     "hierarchies":   { "name": "Depth and breadth of inheritance or composition hierarchies", "category": "Structure and modularity", "subcharacteristics": ["Modularity"], "type": "Automatable" },
-    "technologies":  { "name": "Technology/framework selection and obsolescence risk", "category": "Dependencies and integration", "subcharacteristics": ["Analyzability", "Modifiability"], "type": "Manual" },
+    "technologies":  { "name": "Technology/framework selection and obsolescence risk", "category": "Dependencies and integration", "subcharacteristics": ["Analyzability", "Modifiability"], "type": "Automatable" },
     "coupling":      { "name": "External coupling and volume of declared dependencies", "category": "Dependencies and integration", "subcharacteristics": ["Modularity"], "type": "Automatable" },
     "data_model":    { "name": "Data model design", "category": "Dependencies and integration", "subcharacteristics": ["Modularity", "Analyzability"], "type": "Mixed",
                        "criteria": {
@@ -39,7 +60,9 @@
     "technologies": { "pct_major_outdated_max": 20.0, "vuln_high_critical_max": 0 },
     "coupling": { "outgoing_deps_max": 10, "X_min": 0.90, "PC_max": 0.20, "pct_unused_max": 10.0, "include_devdependencies": false },
     "cognitive": { "_comment": "Informational (does not change the level). SonarSource reference threshold for S3776: 15 per function.", "function_threshold": 15 },
-    "dead_code": { "_comment": "CWE-561. Production files that no other file imports and that are not entry points are treated as structurally dead code, for which ISO/IEC 5055 sets the threshold at 0. The 5% allowance that CWE-561 gives to logically dead code is not used because unreachable statements inside a function are not detected.", "structural_max_files": 0, "entry_points": ["index", "server", "app", "main", "App", "setupTests", "reportWebVitals"] },
+    "ascmm": { "_comment": "Informational ASCMM weaknesses (supplementary indicators, group 'ASCMM'): they change no level. params_max is the CWE-1064 default, commented_code_max_pct the CWE-1085 default (per function), occurrences_max the count threshold of the weaknesses detected with the rules of `lint.ascmm`.", "params_max": 7, "commented_code_max_pct": 2.0, "occurrences_max": 0 },
+    "dead_code": { "_comment": "CWE-561. Production files that Knip cannot reach from any entry point are treated as structurally dead code, for which ISO/IEC 5055 sets the threshold at 0. Reachability is transitive: two files that only import each other are dead too. The entry points are Knip's (package.json main, bin and scripts, the tools it recognizes: Vite's index.html, Jest's test patterns…) plus `entry_points` (base names, in any directory) and `entry_globs` (files run by a tool by convention, such as sequelize-cli migrations). The 5% allowance that CWE-561 gives to logically dead code is not used because unreachable statements inside a function are not detected.", "structural_max_files": 0, "entry_points": ["index", "server", "app", "main", "App", "setupTests", "reportWebVitals"],
+      "entry_globs": ["**/{migrations,seeders,seeds}/**/*.{js,mjs,cjs,ts,mts,cts}", "**/*.config.{js,mjs,cjs,ts,mts,cts}"] },
     "supplementary": { "_comment": "Informational (do not change any level). Reference values from common practice, not from our own study, except component_props_max (see backing).", "test_ratio_min": 0.3, "jsdoc_min_pct": 50.0, "component_loc_max": 150, "component_props_max": 7, "contract_fields_min_pct": 80.0 },
     "duplication": { "_comment": "CWE-1041. Scored: it lowers the level of the Cyclomatic complexity point. jscpd detection parameters: clones of at least 5 lines and 50 tokens, excluding tests and node_modules.", "pct_max": 10.0, "min_lines": 5, "min_tokens": 50 },
     "data_model": { "_comment": "C3: minimum % of non-primary-key columns that declare some constraint (NOT NULL, UNIQUE, CHECK or FOREIGN KEY). C4: maximum % of distinct code query filters that no index can serve. Both values are carried over from the Mongo version of the rubric and have not been calibrated for relational schemas.", "constraints_min_pct": 50.0, "unindexed_queries_max_pct": 0.0 },
@@ -48,10 +71,8 @@
     "tests": { "lines_min": 70.0, "branches_min": 50.0 },
     "configuration": {
       "cwe1051_ignore_env_fallback": false,
-      "_dup_literal": "CWE-1052 via SonarQube rule S1192 (eslint-plugin-sonarjs no-duplicate-string): threshold 3, minimum length 10, no ^\\w*$ literals, ignores 'application/json'. Verified against the plugin source code on 2026-10-13; the rules.sonarsource.com page could not be consulted.",
+      "_dup_literal": "CWE-1052 via SonarQube rule S1192, run as eslint-plugin-sonarjs no-duplicate-string (lint_metrics.js), per file. Configurable options of the rule: threshold and ignoreStrings. Fixed by the rule itself, not configurable (checked in the source of eslint-plugin-sonarjs 4.2.2, cjs/S1192/rule.js): quoted string literals only (template literals are not counted), trimmed length of at least 10, not made only of word characters, and not an import/export/require specifier, a JSX attribute, an object key, a directive such as 'use strict', a computed member access obj['key'] or a TypeScript literal type.",
       "dup_literal_threshold": 3,
-      "dup_literal_min_len": 10,
-      "dup_literal_ignore_word_only": true,
       "dup_literal_ignore": ["application/json"]
     }
   },
@@ -98,7 +119,7 @@
     "thresholds.hierarchies.children_max": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1086 (Class with Excessive Number of Child Classes)", "standard_default": 10, "deviation": null },
 
     "thresholds.technologies.pct_major_outdated_max": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
-      "note": "Dependency obsolescence is not a weakness of the Automated Source Code Maintainability Measure and is not among the analysability or modifiability measures of ISO/IEC 25023 (8.8.3 and 8.8.4). The whole Technologies point is a construct of this framework." },
+      "note": "Dependency obsolescence is not a weakness of the Automated Source Code Maintainability Measure and is not among the analysability or modifiability measures of ISO/IEC 25023 (8.8.3 and 8.8.4). The whole Technologies point is a construct of this framework. The published measure of dependency freshness, libyear (Cox, Bouwers, van Eekelen and Visser, ICSE 2015), is reported next to it as an informational metric; the study proposes the measure but no cut-off, so it does not replace this threshold." },
     "thresholds.technologies.vuln_high_critical_max": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
       "note": "Vulnerabilities belong to the Automated Source Code Security Measure of ISO/IEC 5055, not to the maintainability measure, so counting them inside a maintainability point is a cross-characteristic borrowing that the standard does not authorize." },
 
@@ -114,12 +135,20 @@
       "note": "Scope switch, not a threshold: whether devDependencies count as declared dependencies." },
 
     "thresholds.cognitive.function_threshold": { "type": "tool_parameter", "standard": null, "locator": "SonarSource rule S3776", "standard_default": null, "deviation": null,
-      "note": "Cognitive complexity is not a measure of ISO/IEC 25023 nor a weakness of ISO/IEC 5055. Informational: it changes no level." },
+      "note": "Cognitive complexity is not a measure of ISO/IEC 25023 nor a weakness of ISO/IEC 5055. Informational: it changes no level. Measured with the rule itself (eslint-plugin-sonarjs cognitive-complexity); not measured if ESLint did not run." },
+    "thresholds.ascmm.params_max": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1064 (Invokable Control Element with Signature Containing an Excessive Number of Parameters)", "standard_default": 7, "deviation": null,
+      "note": "Informational: a function with more than 7 parameters is one occurrence. Counted from the AST (ast_metrics.js), so it does not need ESLint." },
+    "thresholds.ascmm.commented_code_max_pct": { "type": "normative_alternate", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1085 (Invokable Control Element with Excessive Volume of Commented-out Code)", "standard_default": 2.0, "deviation": "The standard relates commented-out instructions to the instructions of the function; the commented-out lines reported by SonarJS S125 inside the function are related to the function's lines.",
+      "note": "Informational: a function whose commented-out lines exceed 2% of its lines is one occurrence." },
+    "thresholds.ascmm.occurrences_max": { "type": "normative_zero_count", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-480, CWE-570, CWE-571, CWE-783, CWE-1095", "standard_default": null, "deviation": null,
+      "note": "These weaknesses publish no numeric default: the measure counts occurrences, so the reference is 0. Detected with the rules of `lint.ascmm`; the rule-to-CWE mapping is ours and is not given by the standard." },
 
     "thresholds.dead_code.structural_max_files": { "type": "normative_exact", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-561 (Dead code)", "standard_default": 0, "deviation": "Only the structural half of the weakness is evaluated.",
       "note": "The standard's wording: 'Thresholds are set at 5% logically dead code or 0% for code that is structurally dead'. A production file that no other file imports and that is not an entry point is structurally dead, hence the threshold of 0. The 5% allowance for logically dead code is not applied because unreachable statements inside a function are not detected." },
     "thresholds.dead_code.entry_points": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
-      "note": "Detection parameter: file names exempt from the orphan check. The standard defines no such list." },
+      "note": "Detection parameter: base names added to Knip's entry points. The standard defines no such list." },
+    "thresholds.dead_code.entry_globs": { "type": "own_calibration", "standard": null, "locator": null, "standard_default": null, "deviation": null,
+      "note": "Detection parameter: files no other file imports because a tool runs them by convention (sequelize-cli or knex migrations and seeders, *.config.* files of tools Knip does not recognize). The standard defines no such list." },
 
     "thresholds.supplementary.component_props_max": { "type": "normative_alternate", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1064 (Invokable Control Element with Signature Containing an Excessive Number of Parameters)", "standard_default": 7, "deviation": "Applied to the props of a frontend component rather than to the parameters of a function signature; informational only.",
       "note": "The numeric value now matches the standard's default, but the object measured differs: CWE-1064 counts parameters of an invokable control element. CWE-1064 is not detected on function signatures." },
@@ -150,9 +179,6 @@
 
     "thresholds.configuration.dup_literal_threshold": { "type": "tool_parameter", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1052 (Excessive Use of Hard-Coded Literals in Initialization); parameters from SonarQube rule S1192", "standard_default": null, "deviation": null,
       "note": "The weakness is normative and is scored by counting occurrences, but CWE-1052 publishes no numeric threshold; the detection parameters come from the eslint-plugin-sonarjs rule, which is a tool and not a standard of this study." },
-    "thresholds.configuration.dup_literal_min_len": { "type": "tool_parameter", "standard": null, "locator": "SonarQube rule S1192", "standard_default": null, "deviation": null },
-    "thresholds.configuration.dup_literal_ignore_word_only": { "type": "tool_parameter", "standard": null, "locator": "SonarQube rule S1192", "standard_default": null, "deviation": null,
-      "note": "Detection switch, not a threshold: literals made only of word characters are not counted." },
     "thresholds.configuration.dup_literal_ignore": { "type": "tool_parameter", "standard": null, "locator": "SonarQube rule S1192", "standard_default": null, "deviation": null,
       "note": "Detection parameter, not a threshold: literals the rule exempts." },
     "thresholds.configuration.cwe1051_ignore_env_fallback": { "type": "own_calibration", "standard": "ISO/IEC 5055:2021", "locator": "6.4, Table 1, CWE-1051", "standard_default": null, "deviation": null,
@@ -172,10 +198,11 @@
       "not_applicable_reason": "They depend on virtual destructors or on inheritance from more than one concrete class, which JavaScript and TypeScript do not have.",
       "applicable": 25,
       "scored": ["CWE-478", "CWE-484", "CWE-561", "CWE-1041", "CWE-1047", "CWE-1048", "CWE-1051", "CWE-1052", "CWE-1054", "CWE-1062", "CWE-1074", "CWE-1075", "CWE-1080", "CWE-1086", "CWE-1121"],
-      "informational": [],
-      "not_detected": ["CWE-407", "CWE-480", "CWE-570", "CWE-571", "CWE-783", "CWE-1064", "CWE-1084", "CWE-1085", "CWE-1090", "CWE-1095"],
-      "not_detected_with_published_default": { "CWE-1064": "7 parameters", "CWE-1084": "7 SQL or file operations", "CWE-1085": "2% commented-out instructions" },
-      "normalization": "ISO/IEC 5055 Annex C.1 proposes normalizing the measure by size to compare applications (ASCxM-density = ASCxM / AFP). Applications generated at different specificity levels do not have the same size, so the absolute count should be reported alongside a density."
+      "informational": ["CWE-480", "CWE-570", "CWE-571", "CWE-783", "CWE-1064", "CWE-1085", "CWE-1095"],
+      "informational_note": "Reported as supplementary indicators (group ASCMM) with their count and density per KLOC; they change no level. All but CWE-1064 need ESLint (lint_metrics.js, rules in `lint.ascmm`); CWE-570 and CWE-571 are counted together.",
+      "not_detected": ["CWE-407", "CWE-1084", "CWE-1090"],
+      "not_detected_with_published_default": { "CWE-1084": "7 SQL or file operations" },
+      "normalization": "ISO/IEC 5055 Annex C.1 proposes normalizing the measure by size to compare applications (ASCxM-density = ASCxM / AFP). Applications generated at different specificity levels do not have the same size, so the absolute count should be reported alongside a density. Implemented in evaluator/ascmm.py (profile.json `ascmm`, profile.md, report.md, comparison.csv): occurrences of every detected weakness and their density per KLOC of production code, a normative_alternate of the AFP denominator, which is not computed. Informational: no level uses it."
     },
 
     "_conformance_25023": {

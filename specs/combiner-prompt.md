@@ -40,6 +40,17 @@ of each relationship and relevant constraints (uniqueness, nullability).
 It must correspond exactly to the schema implemented in the code, and it
 must be linked from the README.
 
+### API contract
+
+Deliver the contract of the HTTP API in `docs/openapi.yaml`, as an
+OpenAPI 3 document. It must describe every endpoint the backend
+implements: method and full path (including any common prefix such as
+`/api`), path and query parameters, request bodies and the schema of
+each response, error responses included, and which endpoints require
+authentication. It must correspond exactly to the implemented routes and
+to the data they accept and return, and it must be linked from the
+README.
+
 Work autonomously: do not ask questions or wait for confirmation.
 Generate all the project files inside the current directory.
 

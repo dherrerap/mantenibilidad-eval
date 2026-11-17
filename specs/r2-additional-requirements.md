@@ -31,9 +31,14 @@ The R2 set lives in the folder `docs/R2/` and must contain at least:
   description of each entity, matching exactly the implemented schema).
   The replicas of Requirement 1 are described in a separate section or
   file, not mixed into this diagram.
+- `docs/R2/openapi.yaml`: the OpenAPI 3 contract of the whole HTTP API
+  after these requirements, with the same rules as the original one
+  (every implemented endpoint, the original ones and those of
+  Requirements 1 to 9, with its parameters, request bodies and responses,
+  errors included).
 
-The original documents (`README.md` at the root and
-`docs/entity-relationship-model.md`) stay as they were; the only change
+The original documents (`README.md` at the root,
+`docs/entity-relationship-model.md` and `docs/openapi.yaml`) stay as they were; the only change
 allowed in the root `README.md` is a line at the top that links to
 `docs/R2/README.md`.
 

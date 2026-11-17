@@ -33,14 +33,15 @@ changes them, this page may become outdated and the file takes precedence.
 
 \* The absence of a test suite is not treated as missing data but as a **high-severity finding**.
 
-How the framework applies it (`inventory_artifacts` in `evaluate.py`; the table itself is in `rubric.json` under `artifacts`, so the
-mapping is editable):
+How the framework applies it (`inventory_artifacts` in `evaluator/artifacts.py`; the table itself is in `rubric.json` under `artifacts`,
+so the mapping is editable):
 
 - **Core artifact missing** → the points it feeds are **not evaluable**: no level, no score, and they are excluded from the subcharacteristic
   averages. They are shown as ▨ "not evaluable", never as "Meets".
-- **Complementary artifact missing** → a finding (Medium; High for the test suite) in `profile.json` / `profile.md`, and the confidence of
-  each affected point drops: `high` (nothing missing), `medium` (one missing), `low` (two or more). A High finding also raises the point's
-  severity to High.
+- **Complementary artifact missing** → a finding in `profile.json` / `profile.md`, ranked on the IEEE Std 1028 scale used for the
+  points: *Marginal*, or *Critical* for the test suite (`"absence": "high_finding"` in the table). The confidence of each affected point
+  drops: `high` (nothing missing), `medium` (one missing), `low` (two or more). A Critical finding also raises the point's severity to
+  *Critical*, whatever its level, and forces red in the dashboard.
 - **Optional artifacts** never produce findings.
 - Detection is by file patterns and parsed evidence (e.g. the test suite is "present" if test cases are found; the logging configuration
   if a logger or metrics library is declared). The result is saved in `artifacts.json` and in the "Input artifacts" section of `profile.md`.
@@ -90,6 +91,25 @@ use and is what forces red in the dashboard.
   subcharacteristic and the overall score are then expressed as `minimum–maximum`. When everything is resolved, the range collapses to a
   single number and `complete = true`.
 
+### Weight sensitivity
+
+The weights come from a panel whose concordance is not significant (Kendall's W = 0.158, see [limitations](limitations.md)), so the
+report (`report.md`, section *Weight sensitivity*; `_comparison/sensitivity.json`) scores every run again under other schemes
+(`evaluator/sensitivity.py`):
+
+| Scenario | Weights |
+|---|---|
+| `panel` | 30/24/24/22, the reference. |
+| `uniform` | 25% per subcharacteristic. |
+| `equal_points` | Plain mean of the evaluable points, without subcharacteristics: a point counts once however many subcharacteristics it feeds. |
+| `without_<point>` | Panel weights with that point removed from every subcharacteristic (leave-one-out, 11 scenarios). |
+| `sensitivity.weight_sets` | Optional sets in `rubric.json`, normalized to 1; for example each expert's own Borda weights. |
+
+For each scenario the report gives every run's score and rank, Kendall's tau-b against the panel ranking, whether the best run is the
+same, and whether the order of the levels and of the agents by mean score holds. Ranks use the midpoint of each score range. A
+conclusion that holds only under the panel weights (for example "N3 is more maintainable than N1") depends on a weighting the panel
+did not agree on, and has to be reported as such.
+
 ## The 11 points
 
 The *Type* column indicates how it is decided: **auto** (no intervention), **mixed** (the program computes and a person confirms
@@ -101,12 +121,12 @@ or completes) or **manual**.
 | **Cyclomatic complexity** | Modularity, Modifiability | C1 X ≥ 0.95 · C2 X ≥ 0.98, where X = 1 − (functions with CC > 20)/(total) · C3 ≤ 10% duplicated lines (CWE-1041). | auto |
 | **Cohesion** | Modularity, Modifiability | C1 ≤ 5% of functions with fan-out > 5 · C2 DL (DV8) ≥ 60% · C3 checklist with no findings ("god" module, mixed responsibilities, fragmentation) · C4 0 production files over 1000 LOC (CWE-1080). | mixed |
 | **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. | auto |
-| **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime, framework and PostgreSQL supported (endoflife.date; table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (`npm audit`). Queries the npm registry. | auto with network |
-| **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (`depcheck`) · C5 0 structurally dead production files (CWE-561). | auto |
+| **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime, framework and PostgreSQL supported (endoflife.date; table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (OSV). On the resolved versions and as of the reference date `--as-of`; dependency age in libyears is informational. Queries the npm registry and OSV. | auto with network |
+| **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (Knip) · C5 0 production files unreachable from every entry point (Knip, CWE-561). | auto |
 | **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 and C5 are suggestions |
-| **Contracts** | Modularity, Testability | C1 machine-readable contract (OpenAPI…) · C2 0 Spectral errors · C3 contract covers ≥ 90% of routes · C4 input validation consistent with the contract. | mixed |
-| **Observability** | Analyzability | C1 ≥ 80% of critical events logged (approximated with `catch` blocks that log or delegate to a handler that logs) · C2 structured logger and no `console.*` · C3 centralized error handling · C4 health check, metrics or traces (a parameterless route whose last segment is `health`, `ready`, `live`, `ping`, `status`, `metrics`…, so that `PATCH /orders/:id/status` does not count). | mixed |
-| **Tests** | Testability | C1 0 CWE-478/484/1075 violations · C2 tests exist and pass · C3 line coverage ≥ 70% · C4 branch coverage ≥ 50% (not applicable, and left out, when the coverage report has no branches). | auto (requires running the tests) |
+| **Contracts** | Modularity, Testability | C1 machine-readable contract (OpenAPI…) · C2 0 Spectral errors · C3 contract covers ≥ 90% of routes · C4 input validation consistent with the contract. Informational: runtime conformance of the responses to the contract (Prism, during the acceptance gate). | mixed |
+| **Observability** | Analyzability | C1 ≥ 80% of critical events logged (approximated with `catch` blocks that log or delegate to a handler that logs, plus authentication and write functions that log or are covered by a request logger) · C2 structured logger and no `console.*` · C3 centralized error handling · C4 health check, metrics or traces (a parameterless route whose last segment is `health`, `ready`, `live`, `ping`, `status`, `metrics`…, so that `PATCH /orders/:id/status` does not count). | mixed |
+| **Tests** | Testability | C1 0 CWE-478/484/1075 violations · C2 tests exist and pass · C3 line coverage ≥ 70% · C4 branch coverage ≥ 50% (not applicable, and left out, when the coverage report has no branches). Informational, with `--mutation`: mutation score (StrykerJS). | auto (requires running the tests) |
 | **Configuration** | Modifiability | C1 0 network literals (URL, IP, port) · C2 no duplicated literals per S1192 · C3 external configuration (`.env.example` or configuration module). | auto |
 
 ### Notes per point
@@ -117,8 +137,10 @@ or completes) or **manual**.
   there is no structural evidence) and **(b)** a violation that depends on an ambiguous directory such as `domain` or `core`, which
   depending on the architecture may be business logic or the application core.
 - **Configuration C2.** Uses SonarQube rule S1192 (`no-duplicate-string` in `eslint-plugin-sonarjs`): threshold of 3
-  repetitions, minimum length of 10, no literals made only of word characters and no `application/json`. Values
-  verified against the plugin's code. It is an **absolute** rule: it does not depend on the other evaluated applications.
+  repetitions, minimum length of 10, no literals made only of word characters and no `application/json`. The rule itself runs
+  (`lint_metrics.js`, over the production files) and counts the repetitions **per file**, like SonarQube. A reported literal fails
+  C2. C2 stays **pending** when ESLint did not run, and when it reports nothing but could not parse some file (a 0 is not proven
+  then). It is an **absolute** rule: it does not depend on the other evaluated applications.
 - **MMo-1-G (Coupling C2).** The numerator counts the modules whose outgoing coupling is bounded. It no longer counts the absence of
   dependency cycles: that is criterion C1 of the same point (CWE-1047), and counting it in both let a single defect lower two of the
   five criteria. ISO/IEC 25023 defines the denominator as the components *specified* as required to be independent; a generated
@@ -128,9 +150,10 @@ or completes) or **manual**.
   type `Import`. DV8 does not analyze JavaScript or TypeScript by itself. The values **without isolated files** are used,
   because DV8 reports 100% DL when there is an isolated file (for example `vite.config.js`) and that distorts the result.
   Both values are recorded.
-- **Unhealthy Inheritance.** Needs a base class defined in the project. If no class extends another class of the project
-  (all inherit from `Error`, for example) the count is 0. If an own hierarchy exists, it stays pending and is reviewed by hand
-  with DV8's two criteria: a parent that depends on its child, or a client that depends on both.
+- **Unhealthy Inheritance (Hierarchies C3, CWE-1062).** Needs a base class defined in the project. If no class extends another class of
+  the project (all inherit from `Error`, for example) the count is 0. If an own hierarchy exists, the framework applies DV8's two rules to
+  the import graph: a parent that imports its child, or a client that imports both. It stays pending only when there is no dependency
+  graph; a value in the manual review or in `dv8/dv8_manual.json` overrides the computed one.
 - **Coverage.** With Jest, `coverage-summary.json` is read, also counting the files that no test loads. With Node's native
   runner (`node --test`) it is run under `c8 --all`, which also instruments the files that no test loads, so
   lines and branches have the full denominator. If `c8` is not installed it falls back to `--experimental-test-coverage`
@@ -140,13 +163,33 @@ or completes) or **manual**.
   ISO/IEC 5055 publishes for CWE-1041 (`thresholds.duplication.pct_max`). Caveat recorded in `backing`: the standard sets 10% *of the
   instructions in each clone instance*, while `jscpd` reports the percentage of duplicated lines across the whole application, so the
   numbers coincide but the measurements do not. If `jscpd` did not run, C3 stays pending and the point's level becomes a range.
-- **Cognitive complexity** (SonarSource, approximate): +1 per control structure, plus the nesting level, and +1 per
-  sequence of logical operators. Nested functions are measured separately. Informational; reference of 15 per function.
-- **Structurally dead code (CWE-561).** Production files that no other file imports and that are not entry points (`index`, `server`,
-  `app`…, configuration files, and the files `package.json` launches: its `main` and those named in its scripts, such as
-  `"migrate": "node src/data/migrateCli.js"`). **Scored** as criterion C5 of Coupling, with the threshold of 0 that ISO/IEC 5055 sets for structurally dead code. The 5%
-  allowance the same weakness gives to *logically* dead code is not applied, because unreachable statements inside a function are not
-  detected.
+- **Cognitive complexity**: measured with SonarSource rule S3776 itself (`sonarjs/cognitive-complexity`); not measured if ESLint
+  did not run. Informational; reference of 15 per function.
+- **McCabe cross-check** (informational): the McCabe count of `ast_metrics.js`, which decides Cyclomatic C1/C2, is compared function by
+  function with ESLint's `complexity` rule (`metrics.mccabe_eslint`: share of equal values and the X ESLint would give). Both count
+  default parameters, `&&`/`||`/`??`, logical assignments, `case` and `catch` alike; ESLint also counts each optional chaining `?.`.
+- **ASCMM weaknesses that no point scores** (supplementary indicators, group *ASCMM*; informational): CWE-1064 (functions with more than
+  7 parameters, from the AST), and with ESLint + `eslint-plugin-sonarjs` CWE-480, CWE-570/571, CWE-783, CWE-1095 and CWE-1085 (functions
+  whose commented-out lines exceed 2% of their lines). Each gives the count, its density per KLOC (ISO/IEC 5055, Annex C.1) and the
+  reference of the standard. The rules of each weakness are in `lint.ascmm` of `rubric.json`; the rule-to-CWE mapping is ours.
+  ESLint runs with its own configuration only: the app's `eslint.config.*` and its `eslint-disable` comments are ignored.
+- **Structurally dead code (CWE-561).** Production files that Knip cannot reach from any entry point. Reachability is transitive: two
+  files that only import each other are dead too. The entry points are Knip's own (package.json `main`, `bin` and the files its
+  scripts run, such as `"migrate": "node src/data/migrateCli.js"`; Vite's `index.html`, Jest's test patterns and the other tools it
+  recognizes) plus `dead_code.entry_points` (base names such as `index`, `server`, `app`) and `dead_code.entry_globs` (migrations and
+  seeders, `*.config.*`) of `rubric.json`. Each directory with a `package.json` is analyzed as its own project. **Scored** as criterion
+  C5 of Coupling, with the threshold of 0 that ISO/IEC 5055 sets for structurally dead code. The 5% allowance the same weakness gives
+  to *logically* dead code is not applied, because unreachable statements inside a function are not detected.
+- **Unused dependencies (Coupling C4)** come from the same Knip run, as do two informational counts: unused exports and dependencies
+  used but not declared in `package.json`. C4 and C5 stay pending if Knip did not run.
+- **Knip does not execute the app.** Knip normally imports the JS/TS configuration files of the tools it recognizes, which would run
+  code written by the model. `knip_metrics.js` gives each plugin the package enables only its data configuration files (JSON, YAML,
+  rc, `package.json`) and passes the JS/TS ones as entries, which are parsed like any source file; and Knip runs under
+  `no_exec_guard.mjs`, which makes any import, `require` or `vm` evaluation of a file of the app fail. Load errors, if any, are in
+  `metrics.json` (`knip.config_load_errors`).
+- **Contracts C1 and the *Contract specification* artifact.** C1 is met only by an OpenAPI or Swagger document (`openapi*.json|yaml`,
+  `swagger*.json|yaml`; the one of `docs/R2/` first), because C2–C4 and the runtime conformance need one. The artifact of Table 27 is
+  wider: JSON Schema files and DTO modules also make it present, so an app with DTOs but no OpenAPI has the artifact and still fails C1.
 - **Contract coverage (Contracts C3).** Each route gets its full path from the `app.use(prefix, router)` calls whose router resolves
   to a file of the app (imports, `require`, factories such as `createRouter(deps)`, nested routers). It matches a contract operation
   only with the same method and the same path, with parameter names ignored, alone or under the contract's base path (`servers[].url`,
@@ -190,6 +233,20 @@ or completes) or **manual**.
     `_` and plurals), the same attributes in each entity, the same primary-key and foreign-key markers, and a relationship for each foreign key with the
     "one" side on the referenced table. Differences in attribute types and in optionality (zero vs. one) are reported but are not mismatches. If the file is
     missing or has no `erDiagram`, C6 fails and the *Entity-relationship model* artifact is recorded as absent.
+- **Technologies: resolved versions and reference date.** Every criterion looks at the version each direct dependency *resolves to*, not at
+  the lower bound of its declared range: the app's `package-lock.json` when it pins every direct dependency, otherwise the lockfile npm
+  generates with the registry as it was on the reference date (`npm install --package-lock-only --ignore-scripts --before=<as_of>`).
+  Everything that changes with time is computed as of that date (`--as-of YYYY-MM-DD` in `cli.py evaluate`, `as_of` in `experiment.json`;
+  default: the evaluation date): the latest version of a dependency is the highest stable one published by then (C3); the vulnerabilities are
+  the OSV advisories (the GitHub Advisory Database that `npm audit` uses) for every package of the lockfile, transitive ones included,
+  that were published and not withdrawn by then, with severity HIGH or CRITICAL (C4; a malicious-package record counts as critical); and
+  the supported runtimes are the endoflife.date cycles released and not yet at end of life by then (C2). **Fix `as_of` to the generation
+  date of the experiment**: a re-evaluation months later then gives the same versions and the same advisories. A dependency whose version
+  was published after `as_of` means the date is earlier than the app: the finding warns and C3 stays pending.
+- **Dependency age (libyear, informational).** Cox, Bouwers, van Eekelen and Visser, *Measuring Dependency Freshness in Software Systems*
+  (ICSE 2015): for each direct dependency, the years between the release of the version in use and the release of the latest version as of
+  `as_of`; the point reports the sum and the mean over the production dependencies (`metrics.libyear`), and the devDependencies apart.
+  It changes no level: the study proposes the measure, not a cut-off.
 - **Technologies (C2).** The supported majors of Node, React, Express and PostgreSQL are queried from `endoflife.date` on every run with a
   network (`supported_runtimes.eol_products` in `rubric.json`); Sequelize and `pg` use the `rubric.json` table, and so does everything when offline.
   The PostgreSQL version of the evaluated app is the major in the image tag of its `docker-compose.yml`. The table entries for PostgreSQL, Sequelize and
@@ -214,6 +271,44 @@ catalog is saved in `results/<run>/pg_schema.json` and replaces the static schem
 
 Without a real database (without `--postgres`, if the backend does not start, or if the database ends up with no tables) the static schema of the code is
 used, as described above. The thresholds are in `thresholds.data_model` of `rubric.json`.
+
+## Test quality and runtime contract conformance (informational)
+
+Two measures look at behaviour instead of structure. Neither changes a level: there is no published cut-off for either, and one has
+to be calibrated on the experiment's data before it can score.
+
+- **Mutation score (Tests, `--mutation`).** Coverage says which lines the tests run; mutation testing says whether the tests would
+  notice if those lines were wrong. StrykerJS plants small faults (mutants: a `>=` turned into `>`, a condition forced to `true`…) in the
+  production code of every package with a `test` script and runs the package's own `npm test` against each one, in a sandbox copy (the
+  app is not modified). Score = mutants detected (Killed, Timeout) / valid mutants (detected + Survived + NoCoverage), as Stryker defines
+  it; the surviving mutants are listed as evidence (`metrics.json` → `mutation`). It runs the app's tests once per mutant, so it needs
+  `--run-tests`, is opt-in and slow: bounded by `mutation.max_minutes_per_package` in `rubric.json` (30 by default), and StrykerJS 10
+  needs Node.js 22 or later. Configuration, migrations, seeders, type declarations and test files are not mutated.
+- **Runtime conformance to the contract (Contracts).** The static criteria tell whether a contract exists and whether its paths match the
+  routes in the code; this tells whether the responses the running API returns are the ones the contract documents. When the acceptance
+  gate runs (`cli.py evaluate --postgres`, or `run_experiment.py` with Docker), `acceptance_check.py --app` sends the suite through a Prism
+  proxy (`contract_conformance.py`) that validates every exchange against the app's contract (the one of `docs/R2/` first). A call
+  conforms when its route is documented, its status code is declared and its body matches the schema; the requests the suite makes
+  invalid on purpose (to check the 400s) are counted apart and do not lower it. Result: `contract_conformance.json`, read by the scoring
+  like the live database.
+
+## ISO/IEC 5055 weaknesses and their density
+
+ISO/IEC 5055 measures maintainability (ASCMM) by counting the occurrences of its weaknesses, and its Annex C.1 proposes dividing that
+count by the size of the application to compare applications of different size. The levels of this framework decide each weakness
+as pass/fail; next to them, every run reports the occurrences of the 22 weaknesses it detects and their **density per KLOC of production
+code** (`profile.json` → `ascmm`, a section of `profile.md`, and in `report.md`, `_comparison/comparison.md` and the `kloc`,
+`ascmm_*` columns of `comparison.csv`). It is informational: no level uses it.
+
+- **Same values as the levels.** The count of each scored weakness is the one its point measured (for example the switches without
+  `default` of Tests C1, the cycles of Coupling C1, the functions over CC 20 of Cyclomatic), so a density can never contradict a level.
+  The informational ones (CWE-480, 570/571, 783, 1064, 1085, 1095) come from the supplementary indicators.
+- **What one occurrence is** depends on the weakness (a function, a file, a cycle, a clone instance, a literal…); the profile says it per
+  row. The total, like the ASCMM of the standard, adds them up.
+- **Size.** The standard normalizes by Automated Function Points, which the framework does not compute; KLOC of production code (test files
+  left out) is the substitute. Applications generated from N1 and from N3 differ in size, so **compare densities, not counts**.
+- **Not measured.** A weakness whose criterion is pending, whose tool did not run or whose point is not evaluable shows `n/a`; the totals
+  are then a lower bound (`≥`).
 
 ## Ranked risk list
 
@@ -281,8 +376,24 @@ absolute terms and relative to its creation; the framework provides the data to 
 
 ## Traceability
 
-Each run leaves in `results/<app>/`: `profile.md` and `profile.json` (result), `scorecard.json` and `scorecard.csv` (the 11 points
-with their criteria and evidence), `traceability.csv`, `metrics.json` (raw evidence), `detected_layers.json` (each
-file's layer and which directory decided it), `token_usage.json` (tokens per phase and per session, with the source file of each) and
-the `dv8/` folder with the matrix and the metrics. `results/environment.json` records
-the versions used.
+Each run leaves in `results/<run>/`:
+
+| File | Content |
+|---|---|
+| `profile.md`, `profile.json` | Result: profile, ranges, risk list, dashboard data and the ISO/IEC 5055 occurrences (`ascmm`). |
+| `scorecard.json`, `scorecard.csv` | The 11 points with their criteria, metrics and evidence. |
+| `traceability.csv` | Design decision → weakness → subcharacteristics → level → evidence. |
+| `metrics.json`, `meta.json` | Raw evidence of the collection and the identity and options of the run; `rescore` works from them. |
+| `manual.json` | The manual review and DV8 values the last scoring used. |
+| `supplementary.json`, `artifacts.json` | Supplementary indicators (ASCMM group included) and input artifacts (Table 27). |
+| `risk_dashboard.html`, `.md`, `.json` | The risk dashboard (Table 29). |
+| `detected_layers.json` | Each file's layer and the directory that decided it. |
+| `manual.template.json`, `manual_review.md`, `manual_review.draft.json` | Every pending criterion, and the review guide with evidence and suggestions. |
+| `ast.json`, `depcruise.config.json`, `lint_raw.json`, `lint_request.json`, `jscpd/`, `knip/`, `mutation/` | Raw outputs of ts-morph, dependency-cruiser, ESLint, jscpd, Knip and StrykerJS (`mutation/` only with `--mutation`). |
+| `dv8/` | The DV8 matrix and its metrics (`dv8_metrics.json`; `dv8_manual.json` for a human review). |
+| `token_usage.json` | Tokens per phase and per session, with the source file of each. |
+| `acceptance.json`, `contract_conformance.json`, `pg_schema.json`, `seed.json` | Only with the acceptance gate / `--postgres`: functional result, runtime conformance to the contract (Prism) and catalog of the live database. |
+| `judge.json` | Only with `--judge`: the judge's decisions, votes and audit sample. |
+
+`results/environment.json` records the versions used, the options and the reference date `as_of`; `results/_comparison/` has
+`comparison.csv`, `comparison.md` and `sensitivity.json`.

@@ -1,4 +1,5 @@
 """Decision point *Tests* (Testability): C1 CWE-478/484/1075, C2 tests exist and pass, C3 line coverage, C4 branch coverage.
+With --mutation, the mutation score of StrykerJS is reported next to them (informational).
 """
 
 from evaluator.common import RUBRIC
@@ -27,6 +28,23 @@ def eval_tests(m, manual, opts):
         del crit["C4"]  # not applicable: the level is decided by C1–C3
     apply_manual("tests", crit, manual)
     ev = [f"switch without default {x['file']}:{x['line']}" for x in a["switchesMissingDefault"][:3]] + ts["test_files"][:3]
-    return crit, {"cases": ts["test_cases"], "line_coverage": lines, "branch_coverage": branches}, ev, \
-        f"{ts['test_cases']} test cases; line coverage {'n/a' if lines is None else f'{lines:.0f}%'}, branches " \
-        f"{'not measured by the coverage report (C4 not applicable)' if no_branches else ('n/a' if branches is None else f'{branches:.0f}%')}.", None
+    met = {"cases": ts["test_cases"], "line_coverage": lines, "branch_coverage": branches}
+    finding = f"{ts['test_cases']} test cases; line coverage {'n/a' if lines is None else f'{lines:.0f}%'}, branches " \
+        f"{'not measured by the coverage report (C4 not applicable)' if no_branches else ('n/a' if branches is None else f'{branches:.0f}%')}."
+    mmet, mev, mtxt = mutation_measure(m)
+    met.update(mmet)
+    return crit, met, ev + mev, finding + mtxt, None
+
+
+def mutation_measure(m):
+    """Informational: the mutation score of StrykerJS (evaluator/collectors/mutation.py), only when the run used --mutation."""
+    mu = m.get("mutation")
+    if not mu:
+        return {}, [], ""
+    if not mu.get("ok"):
+        return {"mutation_score": None}, [], f" Mutation score not measured ({mu.get('error')})."
+    st = mu["statuses"]; det = st.get("Killed", 0) + st.get("Timeout", 0); und = st.get("Survived", 0) + st.get("NoCoverage", 0)
+    surv = [s for p in mu["packages"] if p.get("ok") for s in p.get("survivors", [])]
+    return ({"mutation_score": mu["score"], "mutants": sum(st.values()), "mutants_detected": det, "mutants_undetected": und},
+            [f"surviving mutant: {s}" for s in surv[:3]],
+            f" Mutation score ({mu['tool']}): {mu['score']}% ({det} of {det + und} valid mutants detected by the tests; informational).")

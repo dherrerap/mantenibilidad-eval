@@ -21,3 +21,6 @@ results-*/
 
 # Token records of the generator agent per app and phase (token_usage.py)
 token-usage/
+
+# Local logs of evaluation runs
+*.log

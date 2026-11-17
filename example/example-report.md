@@ -1,5 +1,7 @@
 # Maintainability report
 
+> **Historical example of the MERN version (v0.1.0-mern).** It does not reflect the current PERN framework: see [README.md](README.md).
+
 Generated: 2026-10-14 00:05 · 3 application(s)
 
 ## Overall result (0–100)

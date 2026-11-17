@@ -1,0 +1,2 @@
+{ "name": "backend", "main": "src/server.js", "scripts": { "start": "node src/server.js", "migrate": "node src/db/migrate.js", "test": "jest" },
+  "dependencies": { "express": "^4.19.0", "pg": "^8.11.0", "lodash": "^4.17.21" }, "devDependencies": { "jest": "^29.7.0", "supertest": "^7.0.0", "nodemon": "^3.1.0" } }

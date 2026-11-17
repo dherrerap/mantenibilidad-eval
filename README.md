@@ -19,10 +19,10 @@ expressed as a **range** until a person completes it.
 | Requirement | Notes |
 |---|---|
 | Python ≥ 3.9 | Standard library only: there is no `pip install`. |
-| Node.js ≥ 18 and npm | Used for code analysis and npm queries. |
-| `npm install` in this folder | Installs `ts-morph`, `dependency-cruiser`, `depcheck`, `spectral`, `c8`, `jscpd`, `pg`. |
+| Node.js 20.19+, 22.13+ or 24+, and npm | Used for code analysis and npm queries. ESLint 10 and Knip 6 need those lines (Node 22 LTS recommended); `--mutation` (StrykerJS 10) needs Node 22 or later. |
+| `npm install` in this folder | Installs `ts-morph`, `dependency-cruiser`, `knip`, `spectral`, `c8`, `jscpd`, `pg`, `eslint` with `eslint-plugin-sonarjs` and `typescript-eslint`, and the optional `@stoplight/prism-cli` (runtime contract conformance) and `@stryker-mutator/core` (`--mutation`). |
 | DV8 (optional) | For DL and PC. Without it those criteria stay pending. Set `DV8_CONSOLE` if it is not at the default path. |
-| Network (optional) | npm versions and vulnerabilities, and the PostgreSQL/Node/React/Express support dates of endoflife.date. Without a network use `--offline`. |
+| Network (optional) | npm versions and release dates, vulnerabilities (OSV, api.osv.dev) and the PostgreSQL/Node/React/Express support dates of endoflife.date, all as of `--as-of` (default today). Without a network use `--offline`. |
 | Docker + Docker Compose (optional) | Only for the acceptance gate of `run_experiment.py`, which starts PostgreSQL from each app's own `docker-compose.yml`. Without Docker the gate is skipped with a message. |
 | PostgreSQL server (optional) | Only for `--postgres`: a role with `CREATEDB` in `PG_ADMIN_URL`. Without it the data model is evaluated from the code (SQL files, Sequelize migrations and models). |
 
@@ -55,17 +55,22 @@ level contaminating another, and for measuring the tokens, are in [docs/generati
 python cli.py evaluate --model "<model that generated the apps>"
 ```
 
+Add `--as-of YYYY-MM-DD` with the generation date to fix the versions, advisories and supported runtimes at that date, so that evaluating
+again later gives the same result (default: the evaluation date).
+
 `--model` is required: the generator model is a variable of the experiment. Without it the command stops with an error; `--allow-missing-model`
 evaluates anyway, and then `profile.md` and `report.md` carry a prominent warning. The model is recorded in `results/environment.json`.
 
 For each app it evaluates the 11 points, runs the tests, computes DL and PC with DV8, leaves the manual review templates and
-finally aggregates the results. Useful options: `--skip-tests`, `--skip-dv8`, `--offline`, `--accept-heuristics`, or
+finally aggregates the results. Useful options: `--skip-tests`, `--skip-dv8`, `--offline`, `--accept-heuristics`,
+`--mutation` (mutation testing of the apps' own tests with StrykerJS: informational and slow, up to 30 minutes per package), or
 pass specific folders (`python cli.py evaluate path/app1 path/app2`). You can fix the options in `experiment.json`
 (copy [experiment.example.json](experiment.example.json)).
 
 **3. View the results.** Open `results/report.md` (regenerated with `python cli.py report`). It has the overall result,
-the AI token consumption (initial, R2 and R2 / initial), a risk dashboard (semaphore per subcharacteristic, heat map, not-evaluable points, hotspots), a ranked risk heat map, the matrix of the 11 points, the pending manual reviews, the findings, the methodological warnings and the environment.
-There is a [real example](example/example-report.md).
+its sensitivity to the weights (ranking under uniform weights, equal points and each point removed), the ISO/IEC 5055 weaknesses with their density per KLOC, the AI token consumption (initial, R2 and R2 / initial), a risk dashboard (semaphore per subcharacteristic, heat map, not-evaluable points, hotspots), a ranked risk heat map, the matrix of the 11 points, the pending manual reviews, the findings, the methodological warnings and the environment.
+[example/](example/) keeps a report of the earlier MERN version (v0.1.0-mern) for reference only: its sections and its data model
+point do not match the current framework.
 
 ### Closing the ranges: manual review
 
@@ -84,11 +89,14 @@ Details in [docs/manual-review.md](docs/manual-review.md).
 | Path | What it is for |
 |---|---|
 | `cli.py` | Entry point: `doctor`, `evaluate`, `report`. |
-| `evaluate.py` | Command line of the evaluator: `run` (one app) and `aggregate` (all runs). It re-exports the `evaluator/` package. |
-| `evaluator/collectors/` | Evidence collection, one module per source: `source` (AST), `dependencies` (graph), `packages` (npm, audit, runtimes), `contract`, `testing`, `duplication`, `layers`, `documents`. |
+| `evaluate.py` | Command line of the evaluator: `run` (collect and score one app), `rescore` (score again from `metrics.json`) and `aggregate` (all runs and the comparison). It re-exports the `evaluator/` package. |
+| `evaluator/collectors/` | Evidence collection, one module per source: `source` (AST), `dependencies` (graph), `packages` (npm versions, libyear, runtimes), `osv` (vulnerabilities), `contract`, `testing`, `mutation` (StrykerJS, `--mutation`), `duplication`, `layers`, `lint` (ESLint + SonarJS), `knip` (dead files, unused dependencies), `documents`. |
 | `evaluator/points/` | The 11 decision points, one module each (`layers.py`, `cyclomatic.py`, … `configuration.py`); `points.EVALUATORS` maps each id to its function. |
-| `evaluator/` (rest) | `pipeline` (scoring of a run from its saved evidence: `evaluate.py rescore`), `criteria` (levels and ranges), `artifacts` (Table 27), `graph` and `routes` (measures shared by several points), `scoring` (profile and risk list), `dashboard` (Table 29), `supplementary`, `outputs`, `common` (rubric and utilities). |
+| `evaluator/` (rest) | `pipeline` (scoring of a run from its saved evidence: `evaluate.py rescore`), `criteria` (levels and ranges), `artifacts` (Table 27), `graph` and `routes` (measures shared by several points), `scoring` (profile and risk list), `ascmm` (ISO/IEC 5055 occurrences and density per KLOC), `sensitivity` (the overall score and ranking under other weights), `dashboard` (Table 29), `supplementary`, `outputs`, `common` (rubric and utilities). |
 | `ast_metrics.js` | Code analysis with ts-morph (complexity, classes, literals, routes, Sequelize models/migrations, raw SQL and query filters…). |
+| `contract_conformance.py` | Runtime conformance to the OpenAPI contract: the acceptance suite goes through a Prism proxy that checks every response (`acceptance_check.py --app`). |
+| `knip_metrics.js`, `no_exec_guard.mjs`, `no_exec_guard_hooks.mjs` | Run Knip on each package of the app without executing any of its files (configuration files are read as source; the guard makes any attempt to run one fail). Called by `evaluator/collectors/knip.py`. |
+| `lint_metrics.js` | Runs ESLint + `eslint-plugin-sonarjs` with the rules of `rubric.json` (`lint`): S1192, S3776, the McCabe cross-check and the ASCMM weaknesses no point scores. Called by `evaluator/collectors/lint.py`. |
 | `dv8_metrics.py` | Computes DL and PC with DV8 from the dependency graph. |
 | `manual_template.py` | Generates the guide and draft for the manual review. |
 | `relational_schema.py`, `relational_analysis.py` | Extract the relational schema from SQL files and Sequelize migrations/models, and measure the data model criteria (including the ER comparison). |
@@ -101,7 +109,7 @@ Details in [docs/manual-review.md](docs/manual-review.md).
 | `run_experiment.py`, `acceptance_check.py` | Optional: generate apps with an agent's CLI (phases initial and r2, recording their tokens) and test them against PostgreSQL started from each app's own `docker-compose.yml` (needs Docker; without it the gate is skipped with a message). |
 | `docs/` | Methodology, limitations and guides. |
 | `tests/` | Tests of the evaluator itself: `python -m unittest discover -s tests -v`. |
-| `example/` | Report from a real run. |
+| `example/` | Report of a run of the earlier MERN version (v0.1.0-mern), kept for reference. |
 
 ## Documentation
 

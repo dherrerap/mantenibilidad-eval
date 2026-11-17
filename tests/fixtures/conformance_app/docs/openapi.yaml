@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info: { title: Conformance fixture, version: "1" }
+servers:
+  - url: /api
+paths:
+  /products:
+    get:
+      responses:
+        "200":
+          description: Catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, price]
+                  properties: { id: { type: integer }, name: { type: string }, price: { type: number } }
+  /orders:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [qty], properties: { qty: { type: integer } } }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, required: [id, qty], properties: { id: { type: integer }, qty: { type: integer } } }
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema: { type: object, properties: { error: { type: string } } }
+  /orders/{id}:
+    get:
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: Order }
+        "404": { description: Not found }

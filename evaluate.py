@@ -17,12 +17,12 @@ per decision point (evaluator/points/<id>.py), and the scoring, dashboard and ou
 USAGE
   python3 evaluate.py run <app_dir> --out results/claude-n2-ecommerce-r1
         --agent claude --model "claude-sonnet-5-5" --level N2 --domain ecommerce
-        [--run-tests] [--test-cmd "npm test -- --coverage ..."] [--offline]
+        [--run-tests [--mutation]] [--test-cmd "npm test -- --coverage ..."] [--offline] [--as-of YYYY-MM-DD]
         [--accept-heuristics] [--manual manual.json] [--layers layers.json] [--allow-missing-model]
   python3 evaluate.py rescore results/<run> [results/<run2> …]
   python3 evaluate.py aggregate results/ [--out results/_comparison]
 
-`run` collects the evidence (the slow part: AST, npm registry and audit, the app's tests, jscpd) into metrics.json and scores it.
+`run` collects the evidence (the slow part: AST, npm registry and OSV, the app's tests, jscpd, Knip, ESLint) into metrics.json and scores it.
 `rescore` scores a run again from its metrics.json without collecting: after DV8 (dv8_metrics.py), the live database
 (pg_analysis.py), the judge (judge.py) or a manual review (manual_review.json). `aggregate` re-scores every run the same way
 and writes the comparison.
@@ -71,6 +71,8 @@ from evaluator.scoring import *  # noqa: E402,F401,F403
 from evaluator.dashboard import *  # noqa: E402,F401,F403
 from evaluator.outputs import *  # noqa: E402,F401,F403
 from evaluator.pipeline import *  # noqa: E402,F401,F403
+from evaluator.sensitivity import sensitivity, sensitivity_md  # noqa: E402,F401
+from evaluator.ascmm import COLUMNS as ASCMM_COLUMNS, ascmm_columns, ascmm_comparison_md  # noqa: E402,F401
 
 
 def cmd_run(a):
@@ -81,7 +83,7 @@ def cmd_run(a):
     print(f"[1/4] Collecting evidence from {app} …")
     m = collect(app, out, a)
     meta = {"run_id": a.run_id or out.name, "agent": a.agent, "model": a.model, "model_missing": model_missing(a.model), "level": a.level, "domain": a.domain,
-            "accept_heuristics": a.accept_heuristics, "run_tests": a.run_tests, "offline": a.offline, "date": m["date"],
+            "accept_heuristics": a.accept_heuristics, "run_tests": a.run_tests, "offline": a.offline, "date": m["date"], "as_of": m["as_of"], "mutation": bool(getattr(a, "mutation", False)),
             "manual_file": str(Path(a.manual).resolve()) if a.manual else None}  # so that `rescore` reads the same review
     (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
     (out / "metrics.json").write_text(json.dumps(m, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
@@ -123,11 +125,11 @@ def cmd_aggregate(a):
     out = Path(a.out) if a.out else root / "_comparison"; out.mkdir(parents=True, exist_ok=True)
     ids = list(RUBRIC["points"])
     with open(out / "comparison.csv", "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f); w.writerow(["run_id", "agent", "level", "domain"] + ids + list(RUBRIC["subcharacteristic_weights"]) + ["maintainability_min", "maintainability_max", "complete", "acceptance_pct"] + list(TOKEN_COLUMNS))
+        w = csv.writer(f); w.writerow(["run_id", "agent", "level", "domain"] + ids + list(RUBRIC["subcharacteristic_weights"]) + ["maintainability_min", "maintainability_max", "complete", "acceptance_pct"] + list(TOKEN_COLUMNS) + list(ASCMM_COLUMNS))
         for meta, pts, prof, (acc, tok) in rows:
             lv = {p["id"]: (p["level"] or f"{p['level_min']}…{p['level_max']}") for p in pts}
             w.writerow([meta["run_id"], meta["agent"], meta["level"], meta["domain"]] + [lv[i] for i in ids] +
-                       [fmt_rng(v["min"], v["max"]) for v in prof["subcharacteristics"].values()] + [prof["maintainability_min"], prof["maintainability_max"], prof["complete"], acc] + [tok[k] for k in TOKEN_COLUMNS])
+                       [fmt_rng(v["min"], v["max"]) for v in prof["subcharacteristics"].values()] + [prof["maintainability_min"], prof["maintainability_max"], prof["complete"], acc] + [tok[k] for k in TOKEN_COLUMNS] + ascmm_columns(prof))
     L = [f"# Comparison ({len(rows)} runs)", "", "| Run | Agent | Level | " + " | ".join(i for i in ids) + " | Overall | Acceptance % | Tokens initial | Tokens R2 | R2 / initial |", "|" + "---|" * (len(ids) + 8)]
     no_model = [meta["run_id"] for meta, _, _, _ in rows if model_missing(meta.get("model"))]
     if no_model:
@@ -137,6 +139,10 @@ def cmd_aggregate(a):
         ratio = tok["tokens_r2_vs_initial"]
         L.append(f"| {meta['run_id']} | {meta['agent']} | {meta['level']} | " + " | ".join(ab.get(p["level"], "?") for p in pts) + f" | {fmt_rng(prof['maintainability_min'], prof['maintainability_max'])} | {'n/a' if acc is None else acc} | "
                  f"{tu.fmt(tok['tokens_initial_total'])} | {tu.fmt(tok['tokens_r2_total'])} | {'n/a' if ratio is None else f'×{ratio:.2f}'} |")
+    L += [""] + ascmm_comparison_md([(meta["run_id"], prof) for meta, _, prof, _ in rows])
+    sens = sensitivity([(meta, pts) for meta, pts, _, _ in rows])
+    (out / "sensitivity.json").write_text(json.dumps(sens, indent=1, ensure_ascii=False), encoding="utf-8")
+    L += [""] + sensitivity_md(sens)
     (out / "comparison.md").write_text("\n".join(L) + "\n", encoding="utf-8")
     print(f"Comparison written to {out} ({len(rows)} runs)")
 
@@ -147,16 +153,20 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = ap.add_subparsers(dest="cmd", required=True)
     r = sp.add_parser("run"); r.add_argument("app"); r.add_argument("--out", required=True)
-    for k in ("agent", "model", "level", "domain", "run-id", "manual", "layers", "test-cmd"):
+    for k in ("agent", "model", "level", "domain", "run-id", "manual", "layers", "test-cmd", "as-of"):
         r.add_argument("--" + k)
     r.add_argument("--run-tests", action="store_true"); r.add_argument("--offline", action="store_true")
     r.add_argument("--accept-heuristics", action="store_true")
+    r.add_argument("--mutation", action="store_true", help="with --run-tests: mutation testing with StrykerJS (slow; informational)")
     r.add_argument("--allow-missing-model", action="store_true", help="evaluate without --model (the profile carries a warning)")
     s = sp.add_parser("rescore", help="score evaluated runs again from their metrics.json (no collection)")
     s.add_argument("res", nargs="+", help="results folders of evaluated runs")
     g = sp.add_parser("aggregate"); g.add_argument("dir"); g.add_argument("--out")
     a = ap.parse_args()
-    a.run_id = getattr(a, "run_id", None); a.test_cmd = getattr(a, "test_cmd", None)
+    a.run_id = getattr(a, "run_id", None); a.test_cmd = getattr(a, "test_cmd", None); a.as_of = getattr(a, "as_of", None)
+    if a.as_of:
+        import datetime
+        datetime.date.fromisoformat(a.as_of)  # YYYY-MM-DD, or a ValueError before anything is collected
     {"run": cmd_run, "rescore": cmd_rescore, "aggregate": cmd_aggregate}[a.cmd](a)
 
 

@@ -15,8 +15,8 @@ Convention: each app is a folder (by default inside apps/). If it is named <agen
 domain are deduced from the name; the domain of the name takes precedence over --domain. Options can go in experiment.json (see
 experiment.example.json); the command line takes precedence over the file.
 
-Judge: with --judge MODEL (different from the generator) a model decides the design-judgment criteria and the evaluation ends
-without a range; see judge.py. The decisions are saved in results/<run>/judge.json and manual review always overrides them.
+Judge: with --judge MODEL (different from the generator) a model decides the pending design-judgment criteria (layers C2, cohesion
+C3, data model C1–C6, contracts C4); the range closes only if nothing else is pending (DV8, ESLint, Knip, the tests…); see judge.py. The decisions are saved in results/<run>/judge.json and manual review always overrides them.
 
 Manual review: evaluate leaves results/<run>/manual_review.md and manual_review.draft.json. Copy the draft to
 manual_review.json, fill in ok=true/false and run `evaluate --rescore`: it is read automatically and only the scoring is redone.
@@ -72,6 +72,17 @@ def find_dv8():
 
 
 # ───────────────────────── doctor ─────────────────────────
+def node_version(text):
+    """(major, minor, patch) of `node --version` output ("v22.17.1"); (0, 0, 0) when Node is not found."""
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)", text or "")
+    return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
+
+
+def node_supported(v):
+    """The Node.js lines every required tool runs on: ESLint 10 (^20.19 || ^22.13 || >=24) and Knip 6 (^20.19 || >=22.12)."""
+    return (v[0] == 20 and v >= (20, 19, 0)) or (v[0] == 22 and v >= (22, 13, 0)) or v[0] >= 24
+
+
 def cmd_doctor(a):
     rows = []  # (status, name, detail, help)
 
@@ -80,12 +91,21 @@ def cmd_doctor(a):
 
     add(sys.version_info >= (3, 9), "Python ≥ 3.9", platform.python_version(), "Install Python 3.9 or later (python.org).")
     node = version(["node", "--version"])
-    nmajor = int(re.match(r"v?(\d+)", node).group(1)) if node else 0
-    add(nmajor >= 18, "Node.js ≥ 18", node or "not found", "Install Node.js 18 or later (nodejs.org).")
+    nv = node_version(node)
+    add(node_supported(nv), "Node.js 20.19+, 22.13+ or 24+", node or "not found",
+        "Install Node.js 22 LTS (nodejs.org): ESLint 10 needs ^20.19 || ^22.13 || >=24 and Knip 6 ^20.19 || >=22.12.")
+    add(nv >= (22, 0, 0), "Node.js ≥ 22 for --mutation (optional)", node or "not found",
+        "StrykerJS 10 needs Node.js 22 or later; without it --mutation cannot run.", required=False)
     add(bool(shutil.which("npm")), "npm", version(["npm", "--version"]) or "not found", "npm comes with Node.js.")
-    missing = [d for d in ("ts-morph", "dependency-cruiser", "depcheck") if not (HERE / "node_modules" / d / "package.json").exists()]
+    missing = [d for d in ("ts-morph", "dependency-cruiser", "knip", "eslint", "eslint-plugin-sonarjs", "typescript-eslint")
+               if not (HERE / "node_modules" / d / "package.json").exists()]
     add(not missing, "Evaluator dependencies", "installed" if not missing else "missing: " + ", ".join(missing),
-        f"Run 'npm install' in {HERE}.")
+        f"Run 'npm install' in {HERE}. Without ESLint, Configuration C2 (S1192) stays pending and the cognitive complexity and "
+        "the ASCMM indicators are not measured.")
+    extra = [n for n, p in (("Prism", "@stoplight/prism-cli"), ("StrykerJS", "@stryker-mutator/core")) if not (HERE / "node_modules" / p / "package.json").exists()]
+    add(not extra, "Prism and StrykerJS (optional)", "installed" if not extra else "missing: " + ", ".join(extra),
+        "Without Prism the runtime conformance to the OpenAPI contract is not measured during the acceptance gate; without StrykerJS "
+        f"--mutation is not available. Run 'npm install' in {HERE}.", required=False)
     pg = (HERE / "node_modules" / "pg" / "package.json").exists()
     add(pg and bool(os.environ.get("PG_ADMIN_URL")), "PostgreSQL analysis (optional: --postgres)",
         ("pg installed" if pg else "pg missing") + ("; PG_ADMIN_URL set" if os.environ.get("PG_ADMIN_URL") else "; PG_ADMIN_URL not set"),
@@ -136,12 +156,12 @@ def load_config(path):
 def options(a):
     cfg = load_config(a.config)
     def pick(name, default):
-        v = getattr(a, name)
+        v = getattr(a, name, None)
         return v if v not in (None, False) else cfg.get(name, default)
     return {"apps": a.apps or cfg.get("apps") or None, "apps_dir": pick("apps_dir", "apps"), "results": pick("results", "results"),
             "domain": pick("domain", "ecommerce"), "model": pick("model", None), "allow_missing_model": pick("allow_missing_model", False), "rep": pick("rep", 1),
-            "skip_tests": pick("skip_tests", False), "skip_dv8": pick("skip_dv8", False), "offline": pick("offline", False),
-            "accept_heuristics": pick("accept_heuristics", False),
+            "skip_tests": pick("skip_tests", False), "skip_dv8": pick("skip_dv8", False), "offline": pick("offline", False), "as_of": pick("as_of", None),
+            "accept_heuristics": pick("accept_heuristics", False), "mutation": pick("mutation", False),
             "judge": pick("judge", None), "judge_votes": pick("judge_votes", 3), "judge_cmd": pick("judge_cmd", None),
             "allow_same_model": pick("allow_same_model", False), "postgres": pick("postgres", False),
             "usage_dir": pick("usage_dir", tu.DEFAULT_DIR),
@@ -177,7 +197,9 @@ def evaluate_app(app, o, dv8):
            "--level", level, "--domain", domain, "--run-id", run_id]
     if ev.model_missing(o["model"]): cmd.append("--allow-missing-model")  # cmd_evaluate already refused unless it was allowed
     if not o["skip_tests"]: cmd.append("--run-tests")
+    if not o["skip_tests"] and o.get("mutation"): cmd.append("--mutation")  # mutation testing runs the tests: never with --skip-tests
     if o["offline"]: cmd.append("--offline")
+    if o.get("as_of"): cmd += ["--as-of", o["as_of"]]
     if o["accept_heuristics"]: cmd.append("--accept-heuristics")
     warnings = [copy_token_usage(app, out, o["usage_dir"])]
     if o.get("rescore_only"):  # --rescore: the evidence is already collected; only the scoring is redone
@@ -262,7 +284,9 @@ def record_environment(o, dv8, apps):
             "node": version(["node", "--version"]), "npm": version(["npm", "--version"]), "os": platform.platform(),
             "generator_model": None if ev.model_missing(o["model"]) else o["model"], "generator_model_missing": ev.model_missing(o["model"]),
             "dv8": dv8, "apps": [a.name for a in apps], "options": {k: v for k, v in o.items() if k != "apps"},
-            "supported_runtimes": rub.get("supported_runtimes", {}).get("date")}
+            "supported_runtimes": rub.get("supported_runtimes", {}).get("date"),
+            # reference date of versions, advisories and supported runtimes (Technologies); the evaluation date when not fixed
+            "as_of": o.get("as_of") or datetime.date.today().isoformat()}
     (res / "environment.json").write_text(json.dumps(info, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
@@ -317,6 +341,19 @@ def fmt_range(lo, hi):
     return "n/a" if lo is None else (f"{lo:.1f}" if lo == hi else f"{lo:.1f}–{hi:.1f}")
 
 
+def native_coverage_runs(runs):
+    """Runs whose `node --test` coverage was measured without c8 (runner "node:test" in metrics.json): their branches are overestimated."""
+    out = []
+    for d, pf, _ in runs:
+        try:
+            m = json.loads((d / "metrics.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if any(p.get("runner") == "node:test" for p in (m.get("tests_run") or {}).get("packages", [])):
+            out.append(pf["meta"]["run_id"])
+    return out
+
+
 def write_report(res):
     runs = []
     for d in sorted(res.iterdir()):
@@ -338,8 +375,9 @@ def write_report(res):
         L.append(f"| {m['run_id']} | {m['level']} | **{fmt_range(pf['maintainability_min'], pf['maintainability_max'])}** | "
                  + " | ".join(fmt_range(pf["subcharacteristics"][s]["min"], pf["subcharacteristics"][s]["max"]) for s in subs)
                  + f" | {'yes' if pf['complete'] else 'no'} |")
-    L += ["", "A range (a–b) indicates pending criteria: the real value lies between both ends until the manual review is completed.", "",
-          "## Risk dashboard", "",
+    L += ["", "A range (a–b) indicates pending criteria: the real value lies between both ends until the manual review is completed.", ""]
+    L += ev.sensitivity_md(ev.sensitivity([(pf["meta"], pts) for _, pf, pts in runs]))
+    L += ["## Risk dashboard", "",
           "Semaphore per subcharacteristic (weighted score, worst case of the range; cut-offs in `rubric.json`). A high-severity finding forces red (↑). "
           "▨ = not evaluable for lack of evidence. Each application folder has `risk_dashboard.html` / `.md` with the full points × subcharacteristics heat map and the module hotspots.", "",
           "| Application | " + " | ".join(subs) + " |", "|---|" + "---|" * len(subs)]
@@ -364,6 +402,7 @@ def write_report(res):
         for i, a in enumerate(first):
             L.append(f"| {a['name']} | {a['level']} | {', '.join(a['feeds']) or '—'} | "
                      + " | ".join(("✔" if v[i]["present"] else "✘") for v in arts.values()) + " |")
+    L += [""] + ev.ascmm_comparison_md([(pf["meta"]["run_id"], pf) for _, pf, _ in runs])
     L += token_section(runs)
     L += ["",
           "## Risk heat map", "",
@@ -404,8 +443,11 @@ def write_report(res):
             L += [f"- **{f['severity']}** — {f['name']}: {f['note']}" for f in fs] + [""]
     warn = ["Each level has a single run: differences between levels are not statistically conclusive.",
             "Unless acceptance.json is present, the applications were not run against PostgreSQL (no acceptance gate): it is not known whether they work.",
-            "Layer classification is a directory-name heuristic; review `detected_layers.json`.",
-            "Test coverage: with `node --test`, files that no test loads count as 0%, but their branches do not enter the denominator (branches overestimated)."]
+            "Layer classification is a directory-name heuristic; review `detected_layers.json`."]
+    native = native_coverage_runs(runs)
+    if native:
+        warn.append(f"Test coverage of {', '.join(native)} was measured with Node's native coverage because c8 was not installed: files that no "
+                    "test loads count as 0% of lines, but their branches do not enter the denominator (branches overestimated).")
     if any((d / tu.RESULT_FILE).exists() for d, _, _ in runs):
         warn.append("Tokens come from the agents' own usage records (Claude Code transcripts or results, Codex rollouts) normalized so that input "
                     "includes the cache; a cache read is much cheaper than a fresh input token, so compare totals between agents with care.")
@@ -416,7 +458,9 @@ def write_report(res):
     L += ["## Methodological warnings", ""] + [f"- {x}" for x in warn]
     if env:
         L += ["", "## Environment", "", f"Python {env.get('python')} · Node {env.get('node')} · npm {env.get('npm')} · DV8: {env.get('dv8') or 'not used'}",
-              f"System: {env.get('os')} · evaluated on {env.get('date')} · supported-runtimes table dated {env.get('supported_runtimes')}"]
+              f"System: {env.get('os')} · evaluated on {env.get('date')} · versions and advisories as of {env.get('as_of') or env.get('date', '')[:10]}"
+              f"{'' if (env.get('options') or {}).get('as_of') else ' (the evaluation date: fix it with --as-of to reproduce the result)'}"
+              f" · supported-runtimes table dated {env.get('supported_runtimes')}"]
     path = res / "report.md"
     path.write_text("\n".join(L) + "\n", encoding="utf-8")
     return path
@@ -470,11 +514,15 @@ def main():
     e.add_argument("--judge-votes", type=int, dest="judge_votes"); e.add_argument("--judge-cmd", dest="judge_cmd")
     e.add_argument("--allow-same-model", action="store_true", default=None)
     e.add_argument("--postgres", action="store_true", default=None, help="analyze the real database with pg_analysis.py (requires PG_ADMIN_URL)")
+    e.add_argument("--mutation", action="store_true", default=None, help="mutation testing with StrykerJS on the apps' own tests (slow: up to "
+                                                                       "rubric.json mutation.max_minutes_per_package per package; informational; not with --skip-tests)")
     e.add_argument("--usage-dir", dest="usage_dir", help="folder of the token records written by token_usage.py (default token-usage)")
     e.add_argument("--rescore", action="store_true", help="do not collect again: re-score the evaluated apps from results/<run>/metrics.json "
                                                           "(after filling manual_review.json, editing dv8_manual.json or changing the rubric)")
     for f in ("skip-tests", "skip-dv8", "offline", "accept-heuristics"):
         e.add_argument("--" + f, action="store_true", default=None)
+    e.add_argument("--as-of", dest="as_of", help="reference date YYYY-MM-DD of the versions, advisories and supported runtimes (default: "
+                                                 "today). Fix it, for example to the generation date, to get the same result when evaluating again")
     i = sp.add_parser("report", help="generate the report"); i.set_defaults(fn=cmd_report); i.add_argument("--results")
     a = ap.parse_args()
     sys.exit(a.fn(a))

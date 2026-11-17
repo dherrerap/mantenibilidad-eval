@@ -6,6 +6,7 @@ import json
 
 import evaluator  # noqa: F401  (puts the repository root on sys.path)
 import token_usage as tu  # noqa: E402
+from evaluator.ascmm import ascmm_markdown
 from evaluator.common import MODEL_WARNING, model_missing
 from evaluator.dashboard import dashboard_html, dashboard_markdown, risk_dashboard
 from evaluator.scoring import risk_summary
@@ -68,6 +69,8 @@ def write_outputs(out, meta, points, prof, m):
     for p in points:
         n = p["level"] or f"{p['level_min']}…{p['level_max']}"
         L.append(f"| {p['name']} | {'▨ not evaluable' if not p['evaluable'] else n} | {p['severity'] or '—'} | {p['confidence']} | {', '.join(p['pending_criteria']) or '—'} | {p['finding']} |")
+    if prof.get("ascmm"):
+        L += [""] + ascmm_markdown(prof["ascmm"])
     if comp:
         L += ["", "## Supplementary indicators (informational; not scored)", "", "| Group | Indicator | Value | Reference | Status |", "|---|---|---|---|---|"]
         L += [f"| {c['group']} | {c['name']} | {c['value']} | {c['reference']} | {c['status']} |" for c in comp]
@@ -75,7 +78,9 @@ def write_outputs(out, meta, points, prof, m):
     if gaps:
         L += ["", "## Declarative gaps (README vs. structure)"] + [f"- {p['name']}: {p['declarative_gap']}" for p in gaps]
     (out / "profile.md").write_text("\n".join(L) + "\n", encoding="utf-8")
-    tpl = {"_instructions": "Fill in ok=true/false (and note) on the pending criteria and run 'run' again with --manual manual.json. DV8 values go in 'dv8'.",
+    tpl = {"_instructions": "Every pending criterion of this run. Fill in ok=true/false (and note), save it as manual_review.json in this folder and "
+                            "run `python cli.py evaluate --rescore` (or `python evaluate.py rescore <this folder>`). DV8 values go in 'dv8'. "
+                            "manual_review.draft.json (manual_template.py) has the same criteria with evidence and suggestions.",
            "dv8": {"DL": None, "PC": None, "unhealthy_inheritance": None}}
     for p in points:
         pend = {k: {"ok": None, "suggested": v["suggested"], "note": ""} for k, v in p["criteria"].items() if v["ok"] is None}

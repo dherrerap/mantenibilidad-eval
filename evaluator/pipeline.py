@@ -1,6 +1,6 @@
 """Scoring of a run from its saved evidence, without collecting it again.
 
-Collecting (collectors.collect: AST, npm registry, npm audit, the app's tests, jscpd…) is the slow part of an evaluation; scoring
+Collecting (collectors.collect: AST, npm registry, OSV, the app's tests, jscpd, Knip, ESLint…) is the slow part of an evaluation; scoring
 is instantaneous. Everything a later step adds — DV8 values (dv8_metrics.py), the live database (pg_analysis.py), the judge's
 decisions (judge.py), a manual review — only changes the scoring, so after those steps a run is RE-SCORED from
 results/<run>/metrics.json instead of being evaluated again.
@@ -11,6 +11,7 @@ Inputs of the scoring, read fresh every time:
   manual review                    --manual of the run > <app>/manual.json > <res>/manual_review.json
   dv8/dv8_manual.json, dv8_metrics.json   DV8 values (the manual review takes precedence)
   pg_schema.json                   catalog of the live database (pg_analysis.py)
+  contract_conformance.json        responses of the acceptance suite checked against the OpenAPI contract by Prism (informational)
   judge.json                       the judge's decisions (lowest priority)
 """
 import json
@@ -19,7 +20,7 @@ from types import SimpleNamespace
 
 from evaluator.artifacts import refresh_schema_artifact
 from evaluator.outputs import write_outputs
-from evaluator.scoring import evaluate_profile, load_judge, load_pg
+from evaluator.scoring import evaluate_profile, load_conformance, load_judge, load_pg
 
 MANUAL_REVIEW = "manual_review.json"
 
@@ -47,6 +48,7 @@ def score(res, m, meta, manual_file=None):
     manual = assemble_manual(m.get("app"), res, manual_file)
     (res / "manual.json").write_text(json.dumps(manual, indent=1), encoding="utf-8")  # what this scoring used, for traceability
     load_pg(res, m)
+    load_conformance(res, m)
     refresh_schema_artifact(m)
     load_judge(res, manual)
     pts, prof = evaluate_profile(m, manual, SimpleNamespace(accept_heuristics=bool(meta.get("accept_heuristics"))))

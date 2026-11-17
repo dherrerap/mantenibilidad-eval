@@ -5,8 +5,9 @@ existing code, without rewriting the application from scratch. Keep the
 architectural style, stack and guidelines in the original `technical-*.md`
 and the functional rules in the original `requirements-*.md` of this
 directory, together with the cross-cutting constraints of `PROMPT.md`
-(code comments, entity-relationship model). The updated documentation,
-the entity-relationship model included, is delivered in `docs/R2/` as
+(code comments, entity-relationship model, API contract). The updated
+documentation, the entity-relationship model and the API contract
+included, is delivered in `docs/R2/` as
 `r2-additional-requirements.md` describes; the original documents stay
 as they are.
 

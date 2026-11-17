@@ -1,10 +1,11 @@
 """Supplementary indicators: informational, they score none of the 11 points (test quality, documentation, frontend,
-static security, schema-contract consistency).
+static security, schema-contract consistency, and the ISO/IEC 5055 weaknesses that no point scores).
 """
 import re
 
 import evaluator  # noqa: F401  (puts the repository root on sys.path)
 import relational_schema as rs  # noqa: E402
+from evaluator.collectors.lint import decide_count, usable
 from evaluator.common import RUBRIC
 
 
@@ -74,4 +75,53 @@ def supplementary_indicators(m):
         cov = 100.0 * (len(fields) - len(missing)) / len(fields)
         add("contract_schema", "Contract", "Table columns present in the contract (%)", round(cov, 1), f"≥ {R['contract_fields_min_pct']}%",
             cov >= R["contract_fields_min_pct"], f"{len(fields) - len(missing)} of {len(fields)} fields appear as a property in the contract.", [f"missing {c}" for c in missing])
+    for row in ascmm_indicators(m):
+        add(*row)
     return res
+
+
+def commented_out_functions(fns, reports, max_pct):
+    """CWE-1085: functions whose commented-out lines (SonarJS S125 reports, which span the lines of each comment block) exceed
+    `max_pct` of the function's lines. Returns [(function, commented lines)]."""
+    by_file = {}
+    for x in reports:
+        by_file.setdefault(x["file"], set()).update(range(x["line"], x["end_line"] + 1))
+    out = []
+    for f in fns:
+        lines = by_file.get(f["file"], set()) & set(range(f["line"], f["line"] + f["loc"]))
+        if lines and 100.0 * len(lines) / f["loc"] > max_pct:
+            out.append((f, len(lines)))
+    return out
+
+
+def ascmm_indicators(m):
+    """Informational ISO/IEC 5055 weaknesses that no point scores (`backing._coverage_ascmm.informational`): count, density per
+    KLOC of production code and the reference of the standard. All but CWE-1064 need ESLint (lint_metrics.js)."""
+    T = RUBRIC["thresholds"]["ascmm"]; a = m["ast"]; rows = []
+    fns = [f for f in a.get("functions", []) if not f["test"]]
+    kloc = sum(f["loc"] for f in a["files"] if not f["test"]) / 1000.0
+    dens = lambda n: f" ({n / kloc:.2f}/KLOC)" if kloc else ""  # noqa: E731
+    many = [f for f in fns if len(f.get("params", [])) > T["params_max"]]
+    rows.append(("ascmm_cwe1064", "ASCMM", f"CWE-1064 Functions with more than {T['params_max']} parameters", len(many), "0", not many,
+                 f"{len(many)} of {len(fns)} functions{dens(len(many))}. Default of ISO/IEC 5055: {T['params_max']} parameters.",
+                 [f"{f['file']}:{f['line']} {f['name']} ({len(f['params'])} parameters)" for f in many]))
+    lint, note = usable(m)
+    tail = f" {note}." if note else ""
+    for cwe, d in RUBRIC.get("lint", {}).get("ascmm", {}).items():
+        id_ = "ascmm_" + cwe.lower().replace("-", "").replace("/", "_")
+        if lint is None:
+            rows.append((id_, "ASCMM", f"{cwe} {d['name']}", None, "0", None, note + "."))
+            continue
+        reps = lint["ascmm"].get(cwe, [])
+        if cwe == "CWE-1085":
+            bad = commented_out_functions(fns, reps, T["commented_code_max_pct"])
+            rows.append((id_, "ASCMM", f"{cwe} Functions with more than {T['commented_code_max_pct']:g}% commented-out code", len(bad), "0",
+                         decide_count(len(bad), lint, note),
+                         f"{len(bad)} of {len(fns)} functions{dens(len(bad))}; {len(reps)} commented-out block(s) in total (SonarJS S125).{tail}",
+                         [f"{f['file']}:{f['line']} {f['name']} ({n} of {f['loc']} lines)" for f, n in bad]))
+            continue
+        rules = sorted({x["rule"] for x in reps})
+        rows.append((id_, "ASCMM", f"{cwe} {d['name']}", len(reps), str(T["occurrences_max"]), decide_count(len(reps), lint, note),
+                     f"{len(reps)} occurrence(s){dens(len(reps))}" + (f" ({', '.join(rules)})" if rules else "") + f".{tail}",
+                     [f"{x['file']}:{x['line']} {x['message']}" for x in reps]))
+    return rows

@@ -4,12 +4,20 @@ import json
 import re
 from pathlib import Path
 
-from evaluator.common import BIN, HERE, rel, sh, walk
+from evaluator.common import BIN, HERE, RUBRIC, rel, sh, walk
+
+
+def contract_rank(path):
+    """Sort key: the contract of the latest documentation set first (docs/R2/openapi.yaml after phase R2, as for the README and the
+    ER model: `relational.doc_versions`), then the one under docs/, then the shallowest."""
+    labels = list(RUBRIC.get("relational", {}).get("doc_versions", []))
+    version = next((i for i, lb in enumerate(labels) if f"docs/{lb}/".lower() in path.lower()), len(labels))
+    return (version, 0 if path.lower().startswith("docs/") else 1, path.count("/"), path)
 
 
 def find_contracts(app):
-    return [rel(p, app) for p in walk(app)
-            if re.match(r"^(openapi|swagger)[\w.-]*\.(json|ya?ml)$", p.name, re.I)]
+    """Machine-readable contracts of the app, the one that is evaluated first."""
+    return sorted((rel(p, app) for p in walk(app) if re.match(r"^(openapi|swagger)[\w.-]*\.(json|ya?ml)$", p.name, re.I)), key=contract_rank)
 
 
 def run_contract(app, out, contracts):

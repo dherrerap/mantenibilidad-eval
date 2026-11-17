@@ -27,12 +27,14 @@ Examples
   # evaluate an app that already exists (without invoking the agent)
   python3 run_experiment.py --agent claude --level N1 --existing-app ./my_app --skip-acceptance
 
-Outputs in experiments/<id>/{project/, agent.log, agent-r2.log, acceptance.json, meta.json} and
-results/<id>/ (scorecard, traceability, profile, token_usage.json). At the end: results/_comparison/.
+Outputs in experiments/<id>/{project/, agent.log, agent-r2.log, acceptance.json, contract_conformance.json, meta.json} and
+results/<id>/ (scorecard, traceability, profile, token_usage.json, and the copies of acceptance.json and contract_conformance.json).
+At the end: results/_comparison/.
 
 The acceptance gate (acceptance_check.py) starts the PostgreSQL service of the evaluated app's own docker-compose.yml (project
 name eval_<run>), creates a disposable database eval_<run> in it, runs the backend with DATABASE_URL and PORT set, waits until
-PostgreSQL and the backend are ready, runs the checks of the minimum HTTP interface of the domain (--domain) and tears everything
+PostgreSQL and the backend are ready, runs the checks of the minimum HTTP interface of the domain (--domain) through a Prism proxy
+that also checks every response against the app's OpenAPI contract (contract_conformance.json, informational) and tears everything
 down (containers and volumes). If Docker or Docker Compose is not available the gate is SKIPPED with a clear message (it is not a
 silent failure) and the maintainability evaluation continues. The suites cover the ORIGINAL requirements, so the gate runs right
 after phase initial (before r2); on a project that already implements r2 it is skipped and the earlier result is kept.
@@ -64,6 +66,7 @@ PROMPT_ARG = "{prompt}"
 PHASES = ("initial", "r2")
 R2_SPEC = "r2-additional-requirements.md"
 ACCEPTANCE_FILE = "acceptance.json"
+CONFORMANCE_FILE = "contract_conformance.json"  # written by acceptance_check.py --app next to acceptance.json
 
 
 def resolve(cmd):
@@ -156,8 +159,9 @@ def run_backend_gate(be, env, port, expdir, wait=90, domain="ecommerce"):
             if not rt.wait_for_port(port, wait):
                 return {"error": f"the backend did not open the port within {wait} s (see backend.log)"}
             time.sleep(2)  # margin for the schema creation and the initial data
+            # --app: also through Prism against the app's OpenAPI contract (contract_conformance.json, informational)
             sh([sys.executable, str(HERE / "acceptance_check.py"), "--base", f"http://127.0.0.1:{port}", "--domain", domain,
-                "--out", str(expdir / ACCEPTANCE_FILE)], log=log)
+                "--out", str(expdir / ACCEPTANCE_FILE), "--app", str(be.parent)], log=log)
         finally:
             rt.kill_tree(proc)
     f = expdir / ACCEPTANCE_FILE
@@ -179,6 +183,7 @@ def acceptance(project, expdir, run_id, wait=90, domain="ecommerce"):
     if cmd is None:
         return {"skipped": True, "reason": why}
     (expdir / ACCEPTANCE_FILE).unlink(missing_ok=True)
+    (expdir / CONFORMANCE_FILE).unlink(missing_ok=True)
     name = rt.eval_db_name(run_id)  # compose project name and disposable database name
     compose = rt.Compose(cmd, compose_file, name, expdir / "compose.log")
     (expdir / "compose.log").write_text("", encoding="utf-8")
@@ -268,8 +273,10 @@ def evaluate_run(project, res, run_id, agent, level, a):
            "--agent", agent, "--model", a.model or "n/a", "--level", level, "--domain", a.domain, "--run-id", run_id]
     if ev.model_missing(a.model): cmd.append("--allow-missing-model")
     if not a.skip_tests: cmd.append("--run-tests")
+    if not a.skip_tests and getattr(a, "mutation", False): cmd.append("--mutation")
     if a.accept_heuristics: cmd.append("--accept-heuristics")
     if a.offline: cmd.append("--offline")
+    if getattr(a, "as_of", None): cmd += ["--as-of", a.as_of]
     sh(cmd, log=sys.stdout)
     if a.dv8:  # DL/PC with DV8, then a re-score (no new collection) to bring them into the profile
         print("[dv8] computing DL and PC …")
@@ -297,6 +304,8 @@ def main():
     ap.add_argument("--dv8", action="store_true", help="compute DL and PC with DV8 (see dv8_metrics.py)")
     ap.add_argument("--accept-heuristics", action="store_true")
     ap.add_argument("--offline", action="store_true")
+    ap.add_argument("--mutation", action="store_true", help="mutation testing with StrykerJS on the app's tests (slow; informational)")
+    ap.add_argument("--as-of", dest="as_of", help="reference date YYYY-MM-DD of versions and advisories (default: the evaluation date)")
     ap.add_argument("--exp", default="experiments"); ap.add_argument("--results", default="results")
     a = ap.parse_args()
     a.phase = a.phase or ("none" if a.existing_app else "initial")
@@ -334,8 +343,9 @@ def main():
             gate_after_phases(phases, project, expdir, run_id, a, meta)
         (expdir / "meta.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8")
         evaluate_run(project, res_root / run_id, run_id, agent, level, a)
-        if (expdir / ACCEPTANCE_FILE).exists():
-            shutil.copy(expdir / ACCEPTANCE_FILE, res_root / run_id / ACCEPTANCE_FILE)
+        for f in (ACCEPTANCE_FILE, CONFORMANCE_FILE):
+            if (expdir / f).exists():
+                shutil.copy(expdir / f, res_root / run_id / f)
         if tu.usage_path(usage_key, a.usage_dir).exists():
             shutil.copy(tu.usage_path(usage_key, a.usage_dir), res_root / run_id / tu.RESULT_FILE)
     print("\n=== comparison ===")

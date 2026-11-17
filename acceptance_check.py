@@ -10,14 +10,30 @@ these rules (prices, shipping, roles), so the gate must run on the state after p
 Equivalent to the "pass rate" of Yuen et al. (2025): before comparing maintainability
 we need to know whether the apps do the same thing.
 
-Usage: python3 acceptance_check.py --base http://localhost:4000 [--domain cinema] --out acceptance.json
+Usage: python3 acceptance_check.py --base http://localhost:4000 [--domain cinema] --out acceptance.json [--app <app folder>]
 Requires a FRESHLY created database (the cases depend on the initial stock).
-run_experiment.py starts PostgreSQL from the app's own docker-compose.yml and the backend before calling this script.
-Standard library only.
+run_experiment.py (PostgreSQL from the app's own docker-compose.yml) and pg_analysis.py (--postgres) start the backend before
+calling this script. With --app, the suite also goes through a Prism proxy that checks every response against the app's OpenAPI
+contract and writes contract_conformance.json next to --out (contract_conformance.py); the acceptance result is the same.
+Standard library only (Prism comes from this folder's node_modules).
 """
 import argparse, datetime, json, re, time, urllib.request, urllib.error
 
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+# Calls made while CALLS is a list (acceptance through the Prism proxy: contract_conformance.py), with the contract violations that
+# Prism returns in the `sl-violations` header. None: nothing is recorded.
+CALLS = None
+
+
+def record(method, path, status, headers):
+    if CALLS is None:
+        return
+    try:
+        v = json.loads((headers or {}).get("sl-violations") or "[]")
+    except ValueError:
+        v = []
+    CALLS.append({"method": method, "path": path.split("?")[0], "status": status, "violations": v if isinstance(v, list) else []})
 
 
 def call(base, method, path, body=None, token=None):
@@ -27,7 +43,9 @@ def call(base, method, path, body=None, token=None):
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             status, raw = r.status, r.read().decode("utf-8", "replace")
+            record(method, path, status, r.headers)
     except urllib.error.HTTPError as e:
+        record(method, path, e.code, e.headers)
         try:
             return e.code, json.loads(e.read().decode() or "null")
         except Exception:
@@ -428,14 +446,61 @@ def run_cinema(base):
 SUITES = {"ecommerce": run_ecommerce, "cinema": run_cinema}
 
 
+def run_with_contract(base, domain, app):
+    """The suite through a Prism proxy that validates every response against the app's OpenAPI contract (contract_conformance.py).
+    The acceptance result is the same as without the proxy; `_conformance` carries the conformance, or why it was not measured
+    (no contract, Prism not installed, a contract Prism cannot load). A proxy failure never fails the gate: the suite then runs direct."""
+    global CALLS
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import contract_conformance as cc
+    from evaluator.collectors.contract import find_contracts
+    found = find_contracts(Path(app))
+    if not found:
+        return {**run(base, domain), "_conformance": cc.without_prism("the app has no OpenAPI contract")}
+    contract = Path(app) / found[0]
+    if not cc.available():
+        return {**run(base, domain), "_conformance": cc.without_prism("Prism is not installed (npm install)", found[0])}
+    proxy = cc.Proxy(contract, base)
+    try:
+        proxied = proxy.__enter__()
+    except Exception as e:  # Prism did not start or could not load the contract: the suite runs direct (the database is still fresh)
+        proxy.__exit__(None, None, None)
+        return {**run(base, domain), "_conformance": cc.without_prism(str(e)[:300], found[0])}
+    CALLS = []
+    try:
+        res = run(proxied, domain)
+        res["base"] = base
+        return {**res, "_conformance": cc.summarize(CALLS, found[0], proxy.base_path)}
+    finally:
+        CALLS = None
+        proxy.__exit__(None, None, None)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://localhost:4000"); ap.add_argument("--out", default="acceptance.json")
     ap.add_argument("--domain", default="ecommerce", choices=sorted(SUITES))
+    ap.add_argument("--app", help="app folder: if it has an OpenAPI contract, the suite also runs through a Prism proxy that checks every "
+                                  "response against it, written to contract_conformance.json next to --out (informational)")
     a = ap.parse_args()
-    res = run(a.base.rstrip("/"), a.domain)
+    base = a.base.rstrip("/")
+    conformance = None
+    if a.app:
+        res = run_with_contract(base, a.domain, a.app)
+        conformance = res.pop("_conformance")
+    else:
+        res = run(base, a.domain)
     with open(a.out, "w", encoding="utf-8") as f:
         f.write(json.dumps(res, indent=1, ensure_ascii=False))
+    if conformance is not None:
+        import os
+        import contract_conformance as cc
+        with open(os.path.join(os.path.dirname(os.path.abspath(a.out)), cc.RESULT_FILE), "w", encoding="utf-8") as f:
+            f.write(json.dumps(conformance, indent=1, ensure_ascii=False))
+        print(f"Contract conformance: {conformance.get('conformance_pct', 'n/a')}%" if conformance.get("ok") else
+              f"Contract conformance not measured: {conformance.get('error')}")
     for r in res["cases"]:
         print(("✔" if r["ok"] else "✘"), r["case"], "" if r["ok"] else f"→ {r['detail']}")
     print(f"\nAcceptance: {res['passed']}/{res['total']} = {res['acceptance_pct']}%")

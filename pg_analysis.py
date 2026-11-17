@@ -8,6 +8,7 @@ every app), reads the catalog of the real database with pg_schema.js (informatio
 keys, indexes, index usage) and drops the database. Writes to <res>/:
     pg_schema.json     catalog of the real database (used by evaluate.py and judge.py for C1, C3, C4 and C6)
     acceptance.json    result of the functional gate
+    contract_conformance.json   the gate's responses checked against the app's OpenAPI contract by Prism (informational)
     seed.json          users and orders created by pg_seed.py
     backend.log        backend output (passwords masked)
 
@@ -47,8 +48,9 @@ def exercise_backend(be, env, port, res, wait, skip_seed, log, domain="ecommerce
         time.sleep(2)  # margin for the schema creation and the initial data
         base = f"http://127.0.0.1:{port}"
         if gate:
-            subprocess.run([sys.executable, str(HERE / "acceptance_check.py"), "--base", base, "--domain", domain, "--out", str(res / "acceptance.json")],
-                           stdout=log, stderr=subprocess.STDOUT, timeout=600)
+            # --app: the suite also runs through Prism against the app's OpenAPI contract (contract_conformance.json, informational)
+            subprocess.run([sys.executable, str(HERE / "acceptance_check.py"), "--base", base, "--domain", domain, "--out", str(res / "acceptance.json"),
+                            "--app", str(be.parent)], stdout=log, stderr=subprocess.STDOUT, timeout=900)
         if not skip_seed:  # same users and orders in every app of the domain: the data left in the database is comparable
             subprocess.run([sys.executable, str(HERE / "pg_seed.py"), "--base", base, "--domain", domain, "--output", str(res / "seed.json")],
                            stdout=log, stderr=subprocess.STDOUT, timeout=600)
@@ -64,6 +66,7 @@ def gate_allowed(app, res):
     if not rt.has_r2(app):
         return True
     (res / "acceptance.json").unlink(missing_ok=True)
+    (res / "contract_conformance.json").unlink(missing_ok=True)
     print(f"Acceptance gate skipped: {rt.R2_GATE_SKIP}.")
     return False
 

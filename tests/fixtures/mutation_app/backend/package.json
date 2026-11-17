@@ -1,0 +1,5 @@
+{
+  "name": "mutation-fixture",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

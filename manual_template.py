@@ -4,8 +4,9 @@ For an already evaluated run, generates the manual review templates:
   <res>/manual_review.md             guide with the statement of each criterion, the collected evidence and a suggestion
   <res>/manual_review.draft.json     same format as manual.json, with ok=null for the evaluator to decide
 
-Criteria it covers (those the script cannot decide): layers C2 (if left pending), cohesion C3, data model C1–C6 (C2 and C5 are
-suggestions; the others are measured and can be overridden), contracts C4.
+Criteria it covers: the design-judgment ones, with their evidence and a suggestion — layers C2 (if left pending), cohesion C3,
+data model C1–C6 (C2 and C5 are suggestions; the others are measured and can be overridden), contracts C4 — and every other
+pending criterion, listed with the reason why the measurement did not run (DV8, ESLint, Knip, jscpd, tests, network, --as-of…).
 Flow: 1) python3 manual_template.py results/<run>
       2) copy manual_review.draft.json to manual_review.json and fill in ok=true/false (and note)
       3) run the evaluation again: evaluate.py reads <res>/manual_review.json if --manual is not given.
@@ -86,6 +87,30 @@ def data_model_point(res):
     return next((x for x in json.loads(f.read_text(encoding="utf-8"))["points"] if x["id"] == "data_model"), None)
 
 
+DESIGN = {"layers": {"C2"}, "cohesion": {"C3"}, "data_model": {"C1", "C2", "C3", "C4", "C5", "C6"}, "contracts": {"C4"}}
+
+
+def other_pending(res):
+    """Pending criteria outside the design-judgment ones of this guide: those left pending because a measurement did not run (DV8,
+    ESLint, Knip, jscpd, the tests, the network, a reference date earlier than the app…). [(point, criterion id, criterion)]."""
+    f = res / "scorecard.json"
+    if not f.exists():
+        return []
+    return [(p, cid, p["criteria"][cid]) for p in json.loads(f.read_text(encoding="utf-8"))["points"]
+            for cid in p.get("pending_criteria", []) if cid not in DESIGN.get(p["id"], ())]
+
+
+def other_pending_md(rows):
+    if not rows:
+        return []
+    L = ["## Other pending criteria (a measurement did not run)", "",
+         "These are not design judgments: the evaluator could not measure them. The best fix is to provide what is missing and evaluate again "
+         "(install the tool, run with a network, run the tests, run DV8, correct --as-of…); the reason is in each row. If you measure it yourself, "
+         "you can also decide it here.", "", "| Point | Criterion | Statement | Why it is pending |", "|---|---|---|---|"]
+    L += [f"| {p['name']} | {cid} | {c['desc']} | {c['source']} |" for p, cid, c in rows]
+    return L + [""]
+
+
 def layers_point(res):
     """Returns the 'layers' point of the scorecard if its C2 was left pending manual review, or None."""
     f = res / "scorecard.json"
@@ -150,6 +175,8 @@ def main():
          f"- Machine-readable contract: {'yes' if has_contract else 'no'}; implemented routes: {n_routes}.",
          f"- Declared validation libraries: {', '.join(libs) or 'none'}.",
          f"**Suggestion:** {'true' if contract_sug else 'false'}" + ("" if has_contract else " (without a contract there is nothing to compare the validation against)."), ""]
+    others = other_pending(res)
+    L += other_pending_md(others)
     (res / "manual_review.md").write_text("\n".join(L), encoding="utf-8")
 
     def item(sug, note):
@@ -159,6 +186,8 @@ def main():
              "cohesion": {"C3": item(coh_sug, "")},
              "data_model": {cid: item(dm_items[cid], "") for cid in ("C1", "C2", "C3", "C4", "C5", "C6")},
              "contracts": {"C4": item(contract_sug, "")}}
+    for p, cid, c in others:  # measurement-pending criteria: no suggestion, the note should say how it was measured
+        draft.setdefault(p["id"], {})[cid] = item(None, "")
     (res / "manual_review.draft.json").write_text(json.dumps(draft, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"{res.name}: manual_review.md and manual_review.draft.json")
 
