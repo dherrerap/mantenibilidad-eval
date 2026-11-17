@@ -181,16 +181,37 @@ const propName = (nameNode) => (Node.isStringLiteral(nameNode) || Node.isNoSubst
 
 /** Converts a JS expression into JSON: literals and object/array literals are evaluated; anything else
  *  (Sequelize.STRING(100), DataTypes.NOW, a model reference…) becomes {$expr: "<source text>"}. */
+/** The object literal an identifier stands for when it is a `const` initialized with one (`const options = { freezeTableName: true }`,
+ *  then `define('users', attrs, options)` or `{ ...options }`); null otherwise. Only `const`: a `let`/`var` may be reassigned. */
+function constObject(n) {
+  if (!n || !Node.isIdentifier(n)) return null;
+  for (const d of n.getSymbol()?.getDeclarations() || []) {
+    if (!Node.isVariableDeclaration(d)) continue;
+    const list = d.getParent();
+    if (!list || !Node.isVariableDeclarationList(list) || list.getDeclarationKind() !== "const") continue;
+    let init = d.getInitializer();
+    while (init && (Node.isParenthesizedExpression(init) || Node.isAsExpression(init))) init = init.getExpression();
+    if (init && Node.isObjectLiteralExpression(init)) return init;
+  }
+  return null;
+}
+
 function lit(n, depth = 0) {
   if (!n) return null;
   if (depth > 8) return { $expr: n.getText().slice(0, 160) };
   if (Node.isParenthesizedExpression(n) || Node.isAsExpression(n) || Node.isAwaitExpression(n)) return lit(n.getExpression(), depth + 1);
+  const named = constObject(n);
+  if (named) return lit(named, depth + 1);
   if (Node.isObjectLiteralExpression(n)) {
     const o = {};
     for (const p of n.getProperties()) {
       if (Node.isPropertyAssignment(p)) o[propName(p.getNameNode())] = lit(p.getInitializer(), depth + 1);
       else if (Node.isShorthandPropertyAssignment(p)) o[p.getName()] = { $expr: p.getName() };
-      else if (Node.isSpreadAssignment(p)) (o.$spread ||= []).push(p.getExpression().getText().slice(0, 80));
+      else if (Node.isSpreadAssignment(p)) {
+        const spread = constObject(p.getExpression());  // `{ ...options, tableName: 'x' }`: the known properties, in order
+        if (spread && depth < 8) Object.assign(o, lit(spread, depth + 1));
+        else (o.$spread ||= []).push(p.getExpression().getText().slice(0, 80));
+      }
       else if (Node.isMethodDeclaration(p) || Node.isGetAccessor(p) || Node.isSetAccessor(p)) o[p.getName()] = { $expr: "function" };
     }
     return o;
@@ -272,7 +293,7 @@ function relational(n, file, line) {
     return;
   }
   // models: sequelize.define('Name', attrs, opts)  |  Model.init(attrs, { sequelize, ... })
-  const isDefine = method === "define" && args.length >= 2 && Node.isStringLiteral(args[0]) && Node.isObjectLiteralExpression(args[1]);
+  const isDefine = method === "define" && args.length >= 2 && Node.isStringLiteral(args[0]) && (Node.isObjectLiteralExpression(args[1]) || !!constObject(args[1]));
   const isInit = method === "init" && args.length >= 2 && Node.isObjectLiteralExpression(args[0]) && Node.isObjectLiteralExpression(args[1]) && !!args[1].getProperty("sequelize");
   if (isDefine || isInit) {
     const decl = n.getFirstAncestorByKind(SyntaxKind.VariableDeclaration);

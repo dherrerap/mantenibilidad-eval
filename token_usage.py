@@ -101,10 +101,11 @@ def claude_usage(u):
 
 
 def parse_claude_transcript(lines, path):
-    seen, t, models, stamps, prompts, sid = set(), empty(), set(), [], [], None
+    seen, t, models, stamps, prompts, sid, cwd = set(), empty(), set(), [], [], None, None
     for o in lines:
         stamps.append(o.get("timestamp"))
         sid = sid or o.get("sessionId")
+        cwd = cwd or o.get("cwd")
         msg = o.get("message") if isinstance(o.get("message"), dict) else {}
         if o.get("type") == "user" and msg.get("role") == "user" and len(prompts) < 3:
             txt = text_of(msg.get("content"))
@@ -127,7 +128,7 @@ def parse_claude_transcript(lines, path):
         except (OSError, json.JSONDecodeError):
             pass
     start, end = span(stamps)
-    return {"format": "claude-transcript", "session_id": sid, "subagent": "subagents" in Path(path).parts, "description": desc,
+    return {"format": "claude-transcript", "session_id": sid, "subagent": "subagents" in Path(path).parts, "description": desc, "cwd": cwd,
             "models": sorted(models), "started": start, "ended": end, "prompt": (prompts[0] if prompts else "")[:2000], **finish(t)}
 
 
@@ -179,6 +180,7 @@ def parse_codex_rollout(lines):
     t["requests"] = n
     start, end = span(stamps)
     return {"format": "codex-rollout", "session_id": meta.get("id"), "subagent": bool(meta.get("parent_thread_id")), "description": None,
+            "cwd": meta.get("cwd"),
             "models": sorted(models), "started": start, "ended": end, "prompt": (prompts[0] if prompts else "")[:2000], **t}
 
 
@@ -291,8 +293,13 @@ def fmt(n):
 
 # ───────────────────────── scan ─────────────────────────
 def guess(session, apps):
-    """App and phase a session seems to belong to, from the prompt it received (or, failing that, the whole transcript)."""
+    """App and phase a session seems to belong to: the app whose folder the session ran in (a `codex exec` or `claude -p` launched in
+    apps/<app> by an orchestrator), otherwise the app its prompt names (or, failing that, its whole transcript)."""
     txt = session.get("prompt") or ""
+    here = Path(str(session.get("cwd") or "").replace("\\", "/")).name
+    if here in apps:
+        phase = "r2" if any(m.lower() in txt.lower() for m in R2_MARKERS) else "initial"
+        return here, phase, [here]
     if session.get("description"):
         txt = session["description"] + "\n" + txt
     def hits(t):

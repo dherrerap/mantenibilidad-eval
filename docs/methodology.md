@@ -239,7 +239,8 @@ or completes) or **manual**.
   Everything that changes with time is computed as of that date (`--as-of YYYY-MM-DD` in `cli.py evaluate`, `as_of` in `experiment.json`;
   default: the evaluation date): the latest version of a dependency is the highest stable one published by then (C3); the vulnerabilities are
   the OSV advisories (the GitHub Advisory Database that `npm audit` uses) for every package of the lockfile, transitive ones included,
-  that were published and not withdrawn by then, with severity HIGH or CRITICAL (C4; a malicious-package record counts as critical); and
+  that were in the database and not withdrawn by then (the later of the publication date and GitHub's review date, since an advisory
+  can carry the earlier date of its CVE and enter the reviewed database weeks later), with severity HIGH or CRITICAL (C4; a malicious-package record counts as critical); and
   the supported runtimes are the endoflife.date cycles released and not yet at end of life by then (C2). **Fix `as_of` to the generation
   date of the experiment**: a re-evaluation months later then gives the same versions and the same advisories. A dependency whose version
   was published after `as_of` means the date is earlier than the app: the finding warns and C3 stays pending.

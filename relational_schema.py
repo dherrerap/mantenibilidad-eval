@@ -401,7 +401,10 @@ def parse_table_constraint(b, t, item):
     return True
 
 
-def apply_sql(b, text, file, R):
+def apply_sql(b, text, file, R, deferred=None):
+    """Applies the DDL of `text` to builder `b`. With a `deferred` list, an ALTER TABLE or CREATE INDEX on a table not created yet is
+    kept there as (statement, file) instead of reported, to be applied once every source of the builder has been read: an app may
+    create its base tables in a string its backend runs at start-up and alter them in a .sql file it reads afterwards."""
     for stmt in clean_and_split(text):
         s = re.sub(r"\s+", " ", stmt).strip()
         up = s.upper()
@@ -430,6 +433,8 @@ def apply_sql(b, text, file, R):
         if m:
             t = b.table(qname_table(m.group(1)))
             if t is None:
+                if deferred is not None:
+                    deferred.append((stmt, file)); continue
                 b.unparsed.append(f"ALTER TABLE on a table not created before: {qname_table(m.group(1))} ({file})")
                 continue
             for act in split_top(m.group(2)):
@@ -477,6 +482,8 @@ def apply_sql(b, text, file, R):
         if m:
             t = b.table(qname_table(m.group(3)))
             if t is None:
+                if deferred is not None:
+                    deferred.append((stmt, file)); continue
                 b.unparsed.append(f"CREATE INDEX on a table not created before: {qname_table(m.group(3))} ({file})")
                 continue
             p = m.end() - 1
@@ -530,8 +537,9 @@ def natural_key(path):
     return [int(x) if x.isdigit() else x.lower() for x in re.split(r"(\d+)", str(path))]
 
 
-def sql_builder(files, R, skipped=None):
-    """`files` = [(relative_path, text)]; applied in natural path order. SQL of secondary databases goes to `skipped`."""
+def sql_builder(files, R, skipped=None, deferred=None):
+    """`files` = [(relative_path, text)]; applied in natural path order. SQL of secondary databases goes to `skipped`; statements on
+    tables not created yet go to `deferred` when it is given (see apply_sql)."""
     b = Builder("sql")
     for path, text in sorted(files, key=lambda f: natural_key(f[0])):
         if re.search(r"[._-]down\.sql$", path, re.I):
@@ -542,7 +550,7 @@ def sql_builder(files, R, skipped=None):
                 skipped.append({"file": path, "reason": why})
             continue
         m = DOWN_MARK.search(text)
-        apply_sql(b, text[:m.start()] if m else text, path, R)
+        apply_sql(b, text[:m.start()] if m else text, path, R, deferred)
     return b
 
 
@@ -866,7 +874,8 @@ def extract(sql_files, ast, R):
     """sql_files = [(relative path, text)]; ast = the ast_metrics.js output. Returns the normalized schema."""
     seq = ast.get("sequelize") or {"models": [], "associations": [], "migrations": []}
     skipped = []  # SQL of secondary databases (R2 replicas, SQL Server): kept out of the main schema, reported
-    sqlb = sql_builder(sql_files, R, skipped)
+    deferred = []  # ALTER / CREATE INDEX of the sql source on a table that a later source (start-up DDL) creates
+    sqlb = sql_builder(sql_files, R, skipped, deferred)
     migs = migrations_builder(seq.get("migrations", []), R)
     for path, text in ddl_strings(ast.get("sqlStrings", []), True, skipped):  # DDL in JS migrations: same parser, labelled as a migration
         tmp = Builder("sequelize_migration")
@@ -874,7 +883,9 @@ def extract(sql_files, ast, R):
         apply_sql(tmp, text, path, R)
         migs.unparsed += tmp.unparsed
     for path, text in ddl_strings(ast.get("sqlStrings", []), False, skipped):  # DDL executed by the backend at start-up
-        apply_sql(sqlb, text, path, R)
+        apply_sql(sqlb, text, path, R, deferred)
+    for stmt, path in deferred:  # now every CREATE of the source is known; what still has no table is reported as before
+        apply_sql(sqlb, stmt, path, R)
     modb, model_tables = models_builder(seq, R)
     order = {"sql": sqlb, "sequelize_migration": migs, "sequelize_model": modb}
     tables = merge([order[s] for s in R["source_preference"] if s in order], R)

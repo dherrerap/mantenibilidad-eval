@@ -331,12 +331,17 @@ class TestSequelizeSchema(unittest.TestCase):
 
     def test_models_only_app_belongsToMany_hasMany_and_belongsTo(self):
         T = self.m["tables"]
-        self.assertEqual(sorted(T), ["Courses", "Enrollments", "Students", "Teachers"])
+        self.assertEqual(sorted(T), ["Courses", "Enrollments", "Students", "Teachers", "desks", "rooms"])
         self.assertEqual(T["Enrollments"]["primary_key"], ["StudentId", "CourseId"])
         self.assertEqual({(f["columns"][0], f["ref_table"]) for f in T["Enrollments"]["foreign_keys"]}, {("StudentId", "Students"), ("CourseId", "Courses")})
         self.assertEqual([(f["columns"], f["ref_table"]) for f in T["Courses"]["foreign_keys"]], [(["teacherId"], "Teachers")])  # hasMany + belongsTo: one FK
         self.assertNotIn("createdAt", T["Teachers"]["columns"])  # timestamps: false
         self.assertEqual(T["Courses"]["columns"]["price"]["family"], "float")
+
+    def test_model_options_held_in_a_const_and_spread_are_read(self):
+        T = self.m["tables"]  # `define('rooms', attrs, frozen)` with `const frozen = { timestamps: false, freezeTableName: true }`
+        self.assertNotIn("roomses", T); self.assertNotIn("createdAt", T["rooms"]["columns"])
+        self.assertIn("createdAt", T["desks"]["columns"])  # `{ ...frozen, timestamps: true }`: the later key wins, the name stays frozen
 
     def test_query_filters_and_sql_strings_from_the_ast(self):
         q = {(x["model"], x["call"]): x for x in self.ast["queryFields"]}
@@ -408,6 +413,30 @@ class TestErModel(unittest.TestCase):
         self.assertEqual(c["relationships_missing_in_er"], ["order_items → products"]); self.assertEqual(c["relationships_not_in_schema"], ["COUPON — ORDER"])
         self.assertEqual(c["cardinality_mismatch"], [])  # ORDER_ITEM }o--|| ORDER is many-to-one with ORDER on the 'one' side: fine
         self.assertEqual(c["type_differences"], ["products.price: ER float vs schema numeric(10,2)"])
+
+    def test_every_mermaid_cardinality_token_is_accepted_on_either_side(self):
+        er = ra.parse_er("```mermaid\nerDiagram\n    users o|--o{ coupons : deleted_by\n    orders }|..|{ tags : t\n```")
+        self.assertEqual([(r["left"], r["left_card"], r["right"], r["right_card"]) for r in er["relationships"]],
+                         [("users", "o|", "coupons", "o{"), ("orders", "}|", "tags", "|{")])
+
+    def test_alter_in_a_sql_file_applies_to_a_table_created_by_the_startup_ddl(self):
+        # db.js creates the base tables in a string it runs at start-up and then reads migrations/r2.sql, which alters them
+        ast = {"sqlStrings": [{"file": "backend/src/db.js", "line": 30, "migration": False,
+                               "text": "CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT NOT NULL)"}]}
+        s = rs.extract([("backend/src/migrations/r2.sql", "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(10) NOT NULL;\n"
+                                                          "CREATE INDEX users_role ON users(role);\nALTER TABLE ghosts ADD COLUMN x int;")],
+                       ast, RUBRIC_REL)
+        self.assertIn("role", s["tables"]["users"]["columns"]); self.assertEqual([i["columns"] for i in s["tables"]["users"]["indexes"]], [["role"]])
+        self.assertEqual([u for u in s["unparsed"] if "not created before" in u],
+                         ["ALTER TABLE on a table not created before: ghosts (backend/src/migrations/r2.sql)"])  # still reported
+
+    def test_er_that_documents_an_ignored_migration_table_still_matches(self):
+        # schema_migrations is in relational.ignore_tables: the schema drops it, so the ER side must drop it too (and its lines)
+        er = ER_MATCH.replace("erDiagram", "erDiagram\n    schema_migrations {\n        varchar version PK\n    }\n"
+                                           "    schema_migrations ||--o{ ORDERS : tracks", 1)
+        self.assertIn("schema_migrations", ra.parse_er(er)["entities"])
+        c = ra.compare_er(er_from(er), dm_model(OK_SQL)["schema"], RUBRIC_REL)
+        self.assertTrue(c["matches"], c); self.assertEqual(c["entities_not_in_schema"], []); self.assertEqual(c["relationships_not_in_schema"], [])
 
     def test_inverted_cardinality_is_a_mismatch(self):
         er = ER_MATCH.replace("ORDERS ||--|{ ORDER_ITEMS", "ORDERS }|--|| ORDER_ITEMS")
@@ -1259,6 +1288,16 @@ class TestArtifacts(unittest.TestCase):
     def levels(self, m, files=()):
         return {a["id"]: a for a in ev.inventory_artifacts(m, list(files))}
 
+    def test_a_mermaid_diagram_in_docs_counts_as_an_architecture_diagram_but_an_er_diagram_does_not(self):
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "docs" / "R2").mkdir(parents=True)
+            (Path(t) / "docs" / "R2" / "architecture.md").write_text("# A\n\n```mermaid\nflowchart TD\n  A --> B\n```\n", encoding="utf-8")
+            (Path(t) / "docs" / "entity-relationship-model.md").write_text("```mermaid\n%% schema\nerDiagram\n  a ||--o{ b : x\n```\n", encoding="utf-8")
+            files = ["docs/R2/architecture.md", "docs/entity-relationship-model.md"]
+            d = self.levels(artifact_model(app=t), files)["diagrams"]
+            self.assertTrue(d["present"]); self.assertEqual(d["detail"], "docs/R2/architecture.md (embedded diagram)")
+            self.assertFalse(self.levels(artifact_model(app=t), files[1:])["diagrams"]["present"])
+
     def test_table_27_levels_and_detection(self):
         a = self.levels(artifact_model(readme="# Docs", env_example=True), ["Dockerfile", "docs/glossary.md"])
         self.assertEqual((a["source_code"]["level"], a["test_suite"]["level"], a["glossary"]["level"]), ("core", "complementary", "optional"))
@@ -1610,6 +1649,25 @@ class TestTokenUsage(unittest.TestCase):
         self.assertFalse((run / tu.RESULT_FILE).exists())  # a stale copy does not survive once the record is gone
         self.assertIn("Not recorded", "\n".join(cli.token_section([(run, {"meta": {"run_id": run.name}}, [])])))
         self.assertIsNone(ev.token_columns(run)["tokens_initial_total"])
+
+    def test_scan_attributes_a_session_by_the_app_folder_it_ran_in(self):
+        apps = ["codex-ecommerce-n1", "codex-ecommerce-n2"]
+        s = {"cwd": r"C:\exp\apps\codex-ecommerce-n2", "prompt": "Apply the additional requirements defined in `r2-additional-requirements.md`",
+             "file": "", "subagent": False}  # a `codex exec` launched by an orchestrator: not a subagent, and its prompt names no app
+        self.assertEqual(tu.guess(s, apps), ("codex-ecommerce-n2", "r2", ["codex-ecommerce-n2"]))
+        orchestrator = {**s, "cwd": r"C:\exp", "prompt": "For each application codex-ecommerce-n1 and codex-ecommerce-n2 …"}
+        self.assertIsNone(tu.guess(orchestrator, apps)[0])
+
+    def test_the_individual_profile_shows_the_tokens_of_each_phase(self):
+        from evaluator.outputs import token_markdown
+        run = self.d / "results" / "claude-n1-ecommerce-r1"; run.mkdir(parents=True)
+        self.assertIn("No token record", "\n".join(token_markdown(run)))
+        tu.record_phase(run / tu.RESULT_FILE, "claude-n1", "initial", [self.manual(1000, 100)])
+        md = "\n".join(token_markdown(run))
+        self.assertIn("| Initial | 1.0 k | 100 | **1.1 k** |", md); self.assertIn("| R2 | — | — | **missing** | — |", md)
+        tu.record_phase(run / tu.RESULT_FILE, "claude-n1", "r2", [self.manual(500, 50)])
+        md = "\n".join(token_markdown(run))
+        self.assertIn("| R2 | 500 | 50 | **550** |", md); self.assertIn("**×0.50**", md)
 
     def test_run_experiment_prompts_name_the_domain_and_the_r2_inputs(self):
         prompt = run_experiment.build_prompt("N2", "cinema")
@@ -2327,7 +2385,10 @@ class TestDependencyFreshness(unittest.TestCase):
                 "GHSA-new": {"id": "GHSA-new", "published": "2025-06-01T00:00:00Z", "database_specific": {"severity": "CRITICAL"}},
                 "GHSA-gone": {"id": "GHSA-gone", "published": "2023-01-01T00:00:00Z", "withdrawn": "2024-01-01T00:00:00Z", "database_specific": {"severity": "HIGH"}},
                 "MAL-1": {"id": "MAL-1", "published": "2023-01-01T00:00:00Z"},
-                "GHSA-none": {"id": "GHSA-none", "published": "2023-01-01T00:00:00Z"}}
+                "GHSA-none": {"id": "GHSA-none", "published": "2023-01-01T00:00:00Z"},
+                # dated with its CVE (before as_of) but reviewed into GitHub's database, the one npm audit reads, afterwards
+                "GHSA-late": {"id": "GHSA-late", "published": "2024-10-19T18:32:12Z",
+                              "database_specific": {"severity": "HIGH", "github_reviewed_at": "2025-03-01T15:56:42Z"}}}
         def post(url, body, timeout=60):
             return {"results": [{"vulns": [{"id": i} for i in recs]} if q["package"]["name"] == "qs" else {} for q in body["queries"]]}
         with mock.patch.object(osv, "post", side_effect=post), mock.patch.object(osv, "get", side_effect=lambda u: recs[u.rsplit("/", 1)[1]]):
@@ -2336,10 +2397,11 @@ class TestDependencyFreshness(unittest.TestCase):
 
     def test_osv_counts_the_advisories_in_force_at_the_reference_date(self):
         v = self.osv("2025-01-15")
-        self.assertEqual((v["ok"], v["queried"], v["high"], v["critical"], v["unknown_severity"], v["published_after_as_of"]), (True, 2, 1, 1, 1, 1))
+        self.assertEqual((v["ok"], v["queried"], v["high"], v["critical"], v["unknown_severity"], v["published_after_as_of"]), (True, 2, 1, 1, 1, 2))
         self.assertEqual(sorted(x["id"] for x in v["items"]), ["GHSA-none", "GHSA-old", "MAL-1"])  # withdrawn and later ones left out
         self.assertFalse(v["items"][0]["dev"])  # also installed outside devDependencies: production
         self.assertEqual((self.osv("2025-12-31")["critical"]), 2)  # GHSA-new is in force by then
+        self.assertEqual(self.osv("2025-12-31")["high"], 2)  # and GHSA-late, reviewed in March
 
     def test_osv_without_network(self):
         from evaluator.collectors import osv

@@ -2,8 +2,10 @@
 Database that `npm audit` also uses), as of a reference date.
 
 `npm audit` only answers for today's advisory database. OSV records carry their publication and withdrawal dates, so the count can be
-fixed at the reference date of the experiment (`as_of`): an advisory published after it is not counted, which makes a re-evaluation
-months later give the same result. The severity is the one the record has today (GitHub's `database_specific.severity`).
+fixed at the reference date of the experiment (`as_of`): an advisory that was not yet in the database at that date is not counted, which
+makes a re-evaluation months later give the same result. That date is the later of `published` and GitHub's `github_reviewed_at`: a GitHub
+advisory may carry the publication date of its CVE (weeks earlier) and enter the reviewed database, the one `npm audit` reads, only when
+it is reviewed. The severity is the one the record has today (GitHub's `database_specific.severity`).
 
 Only package names and versions are sent to the service, never code or paths of the app.
 """
@@ -52,6 +54,12 @@ def severity(rec):
     return "CRITICAL" if rec["id"].startswith("MAL-") else None
 
 
+def known_since(rec):
+    """When an advisory became available in the database: the later of its publication and its GitHub review (ISO 8601 strings in UTC,
+    comparable as text)."""
+    return max(rec.get("published") or "", (rec.get("database_specific") or {}).get("github_reviewed_at") or "")
+
+
 def vulnerabilities(pkgs, as_of):
     """pkgs: [{"name", "version", "dev"}] (every package of the lockfiles). Returns {"ok", "source", "as_of", "queried", "items",
     "high", "critical", "unknown_severity", "published_after_as_of"}: items are the (package, advisory) pairs in force at `as_of`."""
@@ -70,7 +78,7 @@ def vulnerabilities(pkgs, as_of):
     for (name, version), vs in ids.items():
         for i in sorted(set(vs)):
             rec = recs[i]
-            if (rec.get("published") or "") > end:
+            if known_since(rec) > end:  # not yet in the database at as_of
                 later += 1
                 continue
             if rec.get("withdrawn") and rec["withdrawn"] <= end:

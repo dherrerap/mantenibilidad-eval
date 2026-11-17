@@ -66,6 +66,23 @@ tokens of each session when it finishes (next section).
 prompt and the working folder, and forbid it from reading outside it. Afterwards verify that there are no files outside each folder. Each
 subagent keeps its own transcript, so its tokens can be recorded; the tokens of the orchestrating session are **not** attributed to any app.
 
+The tokens are recorded by the **orchestrating session**, never asked of the subagent: a model has no access to its own usage (it would
+make up a number) and mentioning the measurement breaks the isolation. Add this to the orchestrator's instructions:
+
+```text
+For each application <app> (folder apps/<app>) and phase <phase> (initial or r2):
+1. Launch a new subagent with the text of PROMPT.md (initial) or PROMPT-R2.md (r2) of that folder as its only instruction, working
+   only inside apps/<app>. Do not add anything to the prompt and do not mention tokens, the evaluation or the rubric.
+2. When it finishes, record its tokens from its own transcript (never from what the subagent says):
+       python token_usage.py record apps/<app> --phase <phase> --from <transcript of that subagent>
+   If you cannot locate the transcript, record the usage your environment reported for that subagent:
+       python token_usage.py record apps/<app> --phase <phase> --input <N> --output <N> --note "reported by the orchestrator"
+3. Do not write any token file inside apps/: the records live in token-usage/, which the agent of phase r2 never sees.
+At the end, run `python token_usage.py show` and check that every app has its phases.
+```
+
+`python cli.py evaluate` then copies each record to the results and shows it in every `profile.md`, in `report.md` and in the comparison.
+
 ## Measuring the tokens
 
 The tokens are taken from the agents' own usage records, never from what the agent says about itself. `token_usage.py` reads them and

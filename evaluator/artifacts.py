@@ -2,11 +2,24 @@
 recorded for the missing complementary ones.
 """
 import re
+from pathlib import Path
 
 import evaluator  # noqa: F401  (puts the repository root on sys.path)
 import relational_analysis as ra  # noqa: E402
 import relational_schema as rs  # noqa: E402
 from evaluator.common import RUBRIC
+
+
+def embedded_diagram(text):
+    """Does a Markdown text embed an architecture diagram: a Mermaid block other than an erDiagram (that one is the ER model,
+    a separate artifact) or a PlantUML one?"""
+    if re.search(r"@startuml", text or ""):
+        return True
+    for block in re.findall(r"```[ \t]*mermaid[ \t]*\r?\n(.*?)```", text or "", re.S | re.I):
+        first = next((ln.strip() for ln in block.splitlines() if ln.strip() and not ln.strip().startswith("%%")), "")
+        if first and not re.match(r"erDiagram\b", first):
+            return True
+    return False
 
 
 def inventory_artifacts(m, files):
@@ -23,8 +36,15 @@ def inventory_artifacts(m, files):
     deploy = found(r"(^|/)dockerfile|docker-compose|\.github/workflows/|\.gitlab-ci|jenkinsfile|\.circleci/") + ([".env.example"] if m["env_example"] else [])
     adrs = found(r"(^|/)(adrs?|docs?)/.*\.md$")
     diagrams = found(r"\.(puml|drawio|mmd|plantuml)$|(architecture|diagram)[^/]*\.(png|svg|jpe?g)$")
-    if re.search(r"```mermaid|@startuml", m.get("readme", "")):
+    if embedded_diagram(m.get("readme", "")):
         diagrams.append("README (embedded diagram)")
+    for f in adrs if m.get("app") else []:  # docs/**/*.md with a Mermaid or PlantUML diagram (docs/R2/architecture.md…)
+        try:
+            text = (Path(m["app"]) / f).read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if embedded_diagram(text):
+            diagrams.append(f"{f} (embedded diagram)")
     agent = found(r"(^|/)(prompt|session|transcript)[^/]*\.(md|txt|log|jsonl?)$|(^|/)(technical-n\d|requirements[\w-]*)\.md$")
     glossary = found(r"glossary|ontology") + (["README (glossary section)"] if re.search(r"^#+\s*glossary", m.get("readme", ""), re.I | re.M) else [])
     state = {

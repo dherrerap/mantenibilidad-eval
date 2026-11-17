@@ -26,6 +26,26 @@ def artifacts_markdown(m):
     return L + [""]
 
 
+def token_markdown(run_dir):
+    """Section of profile.md: the tokens the generator agent used per phase (results/<run>/token_usage.json, copied by cli.py before
+    the evaluation). Not part of the score."""
+    sm = tu.summary(tu.load(run_dir / tu.RESULT_FILE))
+    L = ["## AI token consumption", ""]
+    if not sm or not sm["phases"]:
+        return L + ["No token record for this run (see `token_usage.py` and docs/generating-apps.md).", ""]
+    L += ["Tokens the generator agent used to create the application (**initial**) and to implement the additional requirements (**R2**). "
+          "Input includes the prompt-cache reads and writes; output includes reasoning. Not part of the maintainability score.", "",
+          "| Phase | Input | Output | **Total** | Requests |", "|---|---|---|---|---|"]
+    for ph, label in (("initial", "Initial"), ("r2", "R2")):
+        t = sm["phases"].get(ph)
+        L.append(f"| {label} | {tu.fmt(t['input_tokens'])} | {tu.fmt(t['output_tokens'])} | **{tu.fmt(t['total_tokens'])}** | {t.get('requests', 'n/a')} |"
+                 if t else f"| {label} | — | — | **missing** | — |")
+    ratio = (sm.get("r2_vs_initial") or {}).get("total_tokens")
+    if ratio is not None:
+        L.append(f"| R2 / initial | | | **×{ratio:.2f}** | |")
+    return L + [""]
+
+
 def write_outputs(out, meta, points, prof, m):
     out.mkdir(parents=True, exist_ok=True)
     (out / "scorecard.json").write_text(json.dumps({"meta": meta, "points": points}, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
@@ -57,7 +77,7 @@ def write_outputs(out, meta, points, prof, m):
         L += ["", f"> **Judge decisions ({prof['judge_model']}):** {', '.join(prof['judge_criteria'])}. "
                   f"Without them the result would be {fmt_rng(prof['without_judge']['min'], prof['without_judge']['max'])}. "
                   f"For a person to review: {', '.join(prof['judge_audit']) or '—'}."]
-    L += [""] + dashboard_markdown(dash, points) + artifacts_markdown(m)
+    L += [""] + token_markdown(out) + dashboard_markdown(dash, points) + artifacts_markdown(m)
     L += ["## Risk map (highest risk first)", "",
           "🔴 Fails · 🟡 Partial · 🟢 Meets · ⚪ undecided (pending criteria). *At stake* = overall points lost in the worst case (best case–worst case).", "",
           "| | Decision point | Level | At stake | Pending |", "|---|---|---|---|---|"]

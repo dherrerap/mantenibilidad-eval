@@ -39,7 +39,10 @@ def from_catalog(cat, R):
 
 # ───────────────────────── Mermaid erDiagram ─────────────────────────
 ER_ATTR = re.compile(r'^\s*([^\s"]+)\s+([^\s"]+)((?:\s+(?:PK|FK|UK)\s*,?)*)\s*(?:"([^"]*)")?\s*$', re.I)
-ER_REL = re.compile(r'^\s*("[^"]+"|[^\s"]+)\s+(\|\||\|o|\}\||\}o)(--|\.\.)(\|\||o\||\|\{|o\{)\s+("[^"]+"|[^\s"]+)\s*(?::\s*(.*))?$')
+# Mermaid's lexer accepts every cardinality token on either side (`o|` and `|o` are both zero-or-one, `o{` and `}o` zero-or-more,
+# `|{` and `}|` one-or-more), so `users o|--o{ coupons` is a valid line
+ER_CARD = r"(\|\||\|o|o\||\}\||\|\{|\}o|o\{)"
+ER_REL = re.compile(r'^\s*("[^"]+"|[^\s"]+)\s+' + ER_CARD + r'(--|\.\.)' + ER_CARD + r'\s+("[^"]+"|[^\s"]+)\s*(?::\s*(.*))?$')
 ER_OPEN = re.compile(r'^\s*("[^"]+"|[^\s"{\[]+)\s*(?:\[\s*"?([^\]"]+)"?\s*\])?\s*\{\s*$')
 
 
@@ -141,9 +144,16 @@ def card_flags(tok):
 
 def compare_er(er, schema, R):
     """Compares the declared ER (parse_er output) with the schema: entities, attributes, primary and foreign keys and relationships.
-    Type differences and optionality (zero vs one) are reported but do not count as mismatches."""
+    Type differences and optionality (zero vs one) are reported but do not count as mismatches. The tables of `ignore_tables`
+    (migration bookkeeping such as SequelizeMeta or schema_migrations) are left out of the schema, so an ER that documents them
+    is not a mismatch either."""
     T = schema["tables"]
     tn = {norm_entity(n): n for n in T}
+    ignore = {fold(x) for x in R.get("ignore_tables", [])}
+    entities = {name: e for name, e in er["entities"].items() if fold(e["name"]) not in ignore}
+    kept = {fold(e["name"]) for e in entities.values()} | {fold(e["alias"]) for e in entities.values() if e.get("alias")}
+    rels = [r for r in er.get("relationships", []) if not ({fold(r["left"]), fold(r["right"])} & ignore - kept)]
+    er = {**er, "entities": entities, "relationships": rels}
     en = {}
     for name, e in er["entities"].items():
         en[norm_entity(name)] = e

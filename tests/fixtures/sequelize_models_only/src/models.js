@@ -5,10 +5,14 @@ const sequelize = new Sequelize(process.env.DATABASE_URL);
 const Student = sequelize.define('Student', { name: { type: DataTypes.STRING, allowNull: false } });
 const Course = sequelize.define('Course', { title: { type: DataTypes.STRING, allowNull: false }, price: { type: DataTypes.FLOAT } });
 const Teacher = sequelize.define('Teacher', { name: DataTypes.STRING }, { timestamps: false });
+// options held in a const and spread: the table names are not pluralized and the later key wins
+const frozen = { timestamps: false, freezeTableName: true };
+const Room = sequelize.define('rooms', { label: DataTypes.STRING }, frozen);
+const Desk = sequelize.define('desks', { label: DataTypes.STRING }, { ...frozen, timestamps: true });
 
 Student.belongsToMany(Course, { through: 'Enrollments' });
 Course.belongsToMany(Student, { through: 'Enrollments' });
 Teacher.hasMany(Course, { foreignKey: 'teacherId' });
 Course.belongsTo(Teacher, { foreignKey: 'teacherId' });
 
-module.exports = { sequelize, Student, Course, Teacher };
+module.exports = { sequelize, Student, Course, Teacher, Room, Desk };

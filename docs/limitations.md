@@ -85,7 +85,9 @@ What the framework does **not** guarantee. Cite them alongside any result.
   `run_experiment.py` with Docker). Prism 5.14 (the last one that runs on Node 22) validates against OpenAPI 3.0/3.1 and Swagger 2.
 - **Technologies** is fixed at the reference date `as_of` (resolved versions, latest version, advisories, supported runtimes), with three
   exceptions that are today's data: the **deprecation** of a version (npm does not date it), the **severity** of an advisory (OSV keeps the
-  current one, which GitHub may have revised) and the advisories OSV did not have when it was queried. "Latest version as of `as_of`" is
+  current one, which GitHub may have revised) and the advisories OSV did not have when it was queried. An advisory counts from the later of
+  its publication and its GitHub review (`github_reviewed_at`); one without that field that entered the database after `as_of` with an
+  earlier publication date is still counted. "Latest version as of `as_of`" is
   the highest stable version published by then, which may differ from the `latest` dist-tag of that day (a tag on an older line). The app's
   own lockfile wins over the reference date when it pins every direct dependency, because it is what the agent installed. OSV receives
   the names and versions of the installed packages, never code or paths. The `supported_runtimes` table in `rubric.json` is a working
@@ -105,6 +107,10 @@ What the framework does **not** guarantee. Cite them alongside any result.
 - **Sources.** SQL files, Sequelize migrations (`queryInterface.*`) and Sequelize models are read. Knex migrations, Prisma `schema.prisma`, TypeORM
   entities and `sequelize-typescript` decorators are not: such an app has no `data_schema` artifact (not evaluable) unless it also ships SQL migrations.
   Table and column names that are not string literals (variables, template strings) are skipped and reported as `unparsed`.
+- **Order of the SQL.** `.sql` files are applied in path order and then the DDL strings the backend runs at start-up; the order in which the
+  code actually runs them is not followed. An `ALTER TABLE` or `CREATE INDEX` on a table not created yet is therefore retried after all of
+  them (an app may create its base tables in a start-up string and alter them in a `.sql` file it reads afterwards); only what still has no
+  table is reported as `unparsed`.
 - **Secondary databases (r2, Requirement 1).** SQL meant for the read replicas is kept out of the main schema and listed in
   `schema.secondary_sql`: SQL Server (T-SQL) syntax (`GO`, `IDENTITY(1,1)`, `NVARCHAR`, `dbo.`…) or a file path naming a replica or SQL
   Server (`replica`, `replication`, `mssql`, `sqlServer…`). It is a heuristic: a main schema kept under such a path would be skipped, and
@@ -114,7 +120,8 @@ What the framework does **not** guarantee. Cite them alongside any result.
   a model's `belongsTo` does not add a foreign key to a table whose migration lacks it, because in the database it would not exist. Table names are
   matched ignoring case and `_`.
 - **Sequelize defaults are approximated.** Default table names use a simple English pluralizer (not the `inflection` library); default foreign key names
-  follow Sequelize 6 (`UserId`, or `user_id` with `underscored`); `define` options set globally on the `Sequelize` instance (`timestamps: false`,
+  follow Sequelize 6 (`UserId`, or `user_id` with `underscored`); model options are read when written in the call or held in a `const` object
+  (also through a spread such as `{ ...options, tableName }`), but not when built at run time; `define` options set globally on the `Sequelize` instance (`timestamps: false`,
   `underscored: true`) are not visible to the evaluator. Model `validate` rules are application-level and not counted as constraints.
 - **Query filters.** Only Sequelize `findOne/findAll/findAndCountAll/findOrCreate/count/max/min/sum/update/destroy` with a literal `where`, and the `WHERE`
   clause of raw SQL strings, are read. Filters through other helpers, `include` conditions and dynamically built `where` objects are not (the metrics report
