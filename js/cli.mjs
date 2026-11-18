@@ -4,8 +4,7 @@
 //   node js/cli.mjs doctor                    checks that the environment has everything it needs
 //   node js/cli.mjs evaluate [apps…] [opts]   evaluates each app (tests, DV8, manual templates, database, judge) and aggregates
 //   node js/cli.mjs report [--results dir]    generates results/report.md
-// Each app is evaluated by its own `node js/evaluate.mjs run` process, so that one failing app does not stop the batch. The live
-// database analysis still runs pg_analysis.py until it is ported (see docs/js-migration.md).
+// Each app is evaluated by its own `node js/evaluate.mjs run` process, so that one failing app does not stop the batch.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -191,7 +190,7 @@ function postCollectionSteps(out, o, dv8) {
   if (o.postgres) {
     if (!CHILD_ENV.PG_ADMIN_URL) warnings.push("--postgres requested but there is no PG_ADMIN_URL and no PostgreSQL binaries for a temporary server: database analysis skipped");
     else {
-      const [rcp, sp] = execute(["python", path.join(HERE, "pg_analysis.py"), out]);  // still Python: see docs/js-migration.md
+      const [rcp, sp] = execute([NODE, path.join(JS, "pg_analysis.mjs"), out]);
       warnings.push(rcp === 0 ? "postgres: " + (lastLine(sp, /Acceptance|ERROR/) || "no output") : "postgres failed: " + (lastLine(sp, /\S/) || ""));
       rescore("the live database");
     }

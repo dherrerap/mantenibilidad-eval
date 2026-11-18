@@ -7,7 +7,9 @@
 		"test:js": "node --test \"tests/js/*.test.mjs\"",
 		"test:js:collect": "node --test tests/js/collect.slow.mjs",
 		"test:js:entry": "node --test tests/js/entry.slow.mjs",
-		"test:js:cli": "node --test tests/js/cli.slow.mjs"
+		"test:js:cli": "node --test tests/js/cli.slow.mjs",
+		"test:js:pg": "node --test tests/js/pg.slow.mjs",
+		"test:js:experiment": "node --test tests/js/experiment.slow.mjs"
 	},
 	"dependencies": {
 		"@stoplight/prism-cli": "5.14.2",

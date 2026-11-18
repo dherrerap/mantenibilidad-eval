@@ -51,6 +51,18 @@ votes included) and the audit sample. Python picks that sample with `random.Rand
 reimplements CPython's Mersenne Twister, its str seeding and its `shuffle`. Python's `report.md` is compared without its
 "Generated:" line and its Environment section, which name the moment and the interpreter.
 
+`npm run test:js:pg` checks the acceptance gate and the real-database analysis. `pg_analysis.py` and `js/pg_analysis.mjs` run on
+every generated app, each on a fresh database of one temporary PostgreSQL server. The app is copied without its r2 markers, so that
+the gate runs. The two must give the same `acceptance.json`, `contract_conformance.json` (Prism), `seed.json` and `pg_schema.json`.
+Only the backend's port, the timestamps the app writes and the index-usage counters PostgreSQL updates in the background are left
+out. No generated app exercises the cinema suite yet, so it runs in both versions against a stand-in API
+(`tests/js/mock_cinema.mjs`). That API has one deliberate defect, so failing cases are compared too.
+
+`npm run test:js:experiment` checks `run_experiment` as far as this machine allows: the phase inputs (`PROMPT.md`, `PROMPT-R2.md`,
+the copied specs), the agent command, and `--existing-app --phase none --skip-acceptance` end to end. Generating with an agent and the
+Docker Compose gate are not run there, because they need the agents' CLIs and Docker. Their code is ported line by line, and the gate
+itself (`acceptance_check`) is the one `test:js:pg` checks.
+
 `js/lib/py.mjs` holds the Python semantics the port relies on:
 - truthiness (`[]` and `{}` are false);
 - the int/float distinction, which JSON and JavaScript numbers lose but Python prints (`50.0` against `50`). A float that Python
@@ -81,8 +93,9 @@ The port also sorts folder listings without regard to case on Windows, as `Windo
 | `evaluator/outputs.py`, `dashboard.py`, `sensitivity.py`, the Markdown of `ascmm.py`, the summary part of `token_usage.py` | `js/evaluator/{outputs,dashboard,sensitivity,ascmm,tokens}.mjs` | ✔ the 11 files of every recorded `write_outputs`, the same text as Python's. On the 3 ecommerce apps the files also come out the same from `metrics.json` through the JS scoring. Also every recorded call of the sensitivity and the ASCMM comparison. |
 | `evaluator/collectors/*` (ast, schema, ER, dependency graph, packages with npm/OSV/endoflife, contract and Spectral, tests and coverage, mutation, jscpd, Knip, ESLint, layers, README, artifacts) | `js/evaluator/collectors/*.mjs`, `js/evaluator/sys.mjs` | ✔ the same `metrics.json` as Python on the 3 ecommerce apps and the 6 fixture apps. That includes `--run-tests --mutation` on `mutation_app`, run on a fresh copy, because the tests write into the app. |
 | `evaluate.py` (run, rescore, aggregate), `evaluator/pipeline.py`, `manual_template.py`, `dv8_metrics.py` | `js/evaluate.mjs`, `js/evaluator/pipeline.mjs`, `js/manual_template.mjs`, `js/dv8_metrics.mjs` | ✔ the same files as Python on every run of `results/` (rescore, manual review templates, DV8, comparison) and for `run --offline` on a fixture app. |
-| `cli.py` (doctor, evaluate, report), `judge.py`, `token_usage.py`, `pg_temp.py` | `js/cli.mjs`, `js/judge.mjs`, `js/token_usage.mjs`, `js/pg_temp.mjs` | ✔ the same files and judge.json as Python (see `npm run test:js:cli`). `js/cli.mjs` still runs `pg_analysis.py` for `--postgres` until it is ported. |
-| `pg_*.py`, `acceptance_check.py`, `contract_conformance.py`, `run_experiment.py` | — | pending |
+| `cli.py` (doctor, evaluate, report), `judge.py`, `token_usage.py`, `pg_temp.py` | `js/cli.mjs`, `js/judge.mjs`, `js/token_usage.mjs`, `js/pg_temp.mjs` | ✔ the same files and judge.json as Python (see `npm run test:js:cli`). |
+| `acceptance_check.py`, `contract_conformance.py`, `pg_analysis.py`, `pg_runtime.py`, `pg_seed.py` | `js/acceptance_check.mjs`, `js/contract_conformance.mjs`, `js/pg_analysis.mjs`, `js/pg_runtime.mjs`, `js/pg_seed.mjs` | ✔ the same gate, conformance, seed and catalog as Python on the 3 ecommerce apps, and the same cinema suite against a stand-in API (`npm run test:js:pg`). |
+| `run_experiment.py` | `js/run_experiment.mjs` | ✔ the phase inputs, the agent command and `--existing-app` evaluation (`npm run test:js:experiment`). The agents and the Docker gate were not run: this machine has neither. |
 
 **Newlines.** Python's `Path.write_text` turns `
 ` into `
@@ -105,8 +118,8 @@ denied"). The quotes are now removed, as the JavaScript version does, and a test
 **Test runner.** The JavaScript `sh` does not pass `NODE_TEST_CONTEXT` on to the commands it runs. Under `node --test`, that variable
 made the app's own `node --test` report to the evaluator's runner, without running its suite or writing coverage.
 
-The Python evaluator does not call the ported modules yet. Each one is switched over once everything that depends on it has
-been ported as well.
+Every module now has a JavaScript version checked against Python, and the JavaScript command line (`node js/cli.mjs`,
+`node js/evaluate.mjs`, …) runs without Python. Python is still in the repository as the reference until it is retired.
 
 ## Order
 
