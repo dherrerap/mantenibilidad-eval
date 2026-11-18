@@ -235,10 +235,12 @@ export function setEq(a, b) {
 
 /** json.dumps(v, indent=n, ensure_ascii=False): Python's layout (", " / ": " separators, one item per line with `indent`), floats
  *  as Python writes them (50.0, 1e-05, NaN, Infinity). */
-export function dumps(v, indent = null, level = 0) {
+export function dumps(v, indent = null, level = 0, ascii = false) {
   const nl = indent === null ? "" : "\n" + " ".repeat(indent * (level + 1));
   const end = indent === null ? "" : "\n" + " ".repeat(indent * level);
   const sep = indent === null ? ", " : ",";
+  // ensure_ascii: every UTF-16 unit above ASCII as \uXXXX (an astral character becomes its surrogate pair, as in Python)
+  const s = (t) => (ascii ? JSON.stringify(t).replace(/[\u007f-\uffff]/g, (c) => String.raw`\u` + c.charCodeAt(0).toString(16).padStart(4, "0")) : JSON.stringify(t));
   if (v === null || v === undefined) return "null";
   if (v === true) return "true";
   if (v === false) return "false";
@@ -248,11 +250,14 @@ export function dumps(v, indent = null, level = 0) {
     if (!Number.isFinite(x)) return x > 0 ? "Infinity" : "-Infinity";
     return v instanceof Number ? floatRepr(x) : reprNum(x);
   }
-  if (typeof v === "string") return JSON.stringify(v);
-  if (Array.isArray(v)) return v.length ? "[" + v.map((x) => nl + dumps(x, indent, level + 1)).join(sep) + end + "]" : "[]";
+  if (typeof v === "string") return s(v);
+  if (Array.isArray(v)) return v.length ? "[" + v.map((x) => nl + dumps(x, indent, level + 1, ascii)).join(sep) + end + "]" : "[]";
   const ks = Object.keys(v).filter((k) => v[k] !== undefined);
-  return ks.length ? "{" + ks.map((k) => nl + JSON.stringify(k) + ": " + dumps(v[k], indent, level + 1)).join(sep) + end + "}" : "{}";
+  return ks.length ? "{" + ks.map((k) => nl + s(k) + ": " + dumps(v[k], indent, level + 1, ascii)).join(sep) + end + "}" : "{}";
 }
+
+/** json.dumps(v, indent=n) with Python's default ensure_ascii=True: every character above ASCII as \uXXXX. */
+export const dumpsAscii = (v, indent = null) => dumps(v, indent, 0, true);
 
 /** csv.writer (excel dialect) row: fields with , " \r or \n quoted, quotes doubled, None empty, "\r\n" at the end. */
 export function csvRow(fields) {

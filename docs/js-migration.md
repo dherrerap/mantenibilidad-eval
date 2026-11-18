@@ -32,18 +32,25 @@ resulting metrics must be the same field by field: same keys in the same order, 
 time of the run and the test runner's raw output (it carries durations) are left out. It is slow, so it is not part of
 `npm run test:js`. Its records stay in `results/_golden/collect/`, since they hold absolute paths and the generated apps.
 
+The entry points are checked end to end with `npm run test:js:entry`. Every run of `results/` is copied twice. The Python command
+runs on one copy and the JavaScript one on the other, and every file they write must be the same text. The commands covered are
+`evaluate rescore`, `manual_template`, `dv8_metrics` (when DV8 is installed), `evaluate aggregate` (comparison.csv, comparison.md,
+sensitivity.json) and `evaluate run --offline` on a fixture app. Only the time of the run is aligned before the comparison.
+
 `js/lib/py.mjs` holds the Python semantics the port relies on:
 - truthiness (`[]` and `{}` are false);
 - the int/float distinction, which JSON and JavaScript numbers lose but Python prints (`50.0` against `50`). A float that Python
   would print is wrapped in `PyFloat`, which serializes as a plain number. `loadJson` reads a number written with a decimal point or
   an exponent as a `PyFloat`, as Python's `json` reads it as a float. This applies to the rubric and to the recorded inputs;
 - `format()` (`:.1f` rounds half to even, and `:g`) and `str.format` for the templates of `rubric.json`;
-- `json.dumps(indent=1, ensure_ascii=False)` (`dumps`) and the `csv` writer (`csvRow`), so that the files are the same byte for byte;
+- `json.dumps(indent=1, ensure_ascii=False)` (`dumps`), its default `ensure_ascii=True` (`dumpsAscii`, used for meta.json,
+  manual.json, detected_layers.json and DV8's matrix), and the `csv` writer (`csvRow`), so that the files are the same byte for byte;
 - `str()` and `repr()` (`True`, `None`, `1e-05`);
 - `round()`, which rounds half to even on the exact binary value;
 - ordering of mixed values;
 - `re.match` (anchored at the start), `re.findall` and `splitlines`;
-- `read_text` (`readText`), which reads in text mode: `
+- `read_text` (`readText`), which reads in text mode: `
+
 ` becomes `
 `. Two of the ecommerce apps have documents with CRLF.
 
@@ -59,7 +66,8 @@ The port also sorts folder listings without regard to case on Windows, as `Windo
 | `evaluator/criteria.py`, `scoring.py`, `ascmm.py` (profile), `supplementary.py`, `graph.py`, `routes.py` | `js/evaluator/*.mjs` | ✔ `evaluate_profile` and `risk_summary` on the 3 ecommerce apps, plus every call from the test suite. |
 | `evaluator/outputs.py`, `dashboard.py`, `sensitivity.py`, the Markdown of `ascmm.py`, the summary part of `token_usage.py` | `js/evaluator/{outputs,dashboard,sensitivity,ascmm,tokens}.mjs` | ✔ the 11 files of every recorded `write_outputs`, the same text as Python's. On the 3 ecommerce apps the files also come out the same from `metrics.json` through the JS scoring. Also every recorded call of the sensitivity and the ASCMM comparison. |
 | `evaluator/collectors/*` (ast, schema, ER, dependency graph, packages with npm/OSV/endoflife, contract and Spectral, tests and coverage, mutation, jscpd, Knip, ESLint, layers, README, artifacts) | `js/evaluator/collectors/*.mjs`, `js/evaluator/sys.mjs` | ✔ the same `metrics.json` as Python on the 3 ecommerce apps and the 6 fixture apps. That includes `--run-tests --mutation` on `mutation_app`, run on a fresh copy, because the tests write into the app. |
-| `evaluate.py`, `cli.py`, `manual_template.py`, `judge.py`, `token_usage.py` | — | pending |
+| `evaluate.py` (run, rescore, aggregate), `evaluator/pipeline.py`, `manual_template.py`, `dv8_metrics.py` | `js/evaluate.mjs`, `js/evaluator/pipeline.mjs`, `js/manual_template.mjs`, `js/dv8_metrics.mjs` | ✔ the same files as Python on every run of `results/` (rescore, manual review templates, DV8, comparison) and for `run --offline` on a fixture app. |
+| `cli.py`, `judge.py`, `token_usage.py` | — | pending |
 | `pg_*.py`, `acceptance_check.py`, `contract_conformance.py`, `run_experiment.py` | — | pending |
 
 **Newlines.** Python's `Path.write_text` turns `
