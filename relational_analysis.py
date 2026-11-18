@@ -2,11 +2,11 @@
 """
 relational_analysis.py — What the data_model criteria measure over a normalized schema (see relational_schema.py).
 
-  C1  tables_without_pk, implicit_relations
+  C1  tables_without_pk, implicit_relations, polymorphic_references
   C2  repeating_groups, denormalized_copies                (suggestion only)
   C3  constraint_stats
   C4  index_analysis, sql_filters
-  C5  type_conflicts, duplicate_tables                     (suggestion only)
+  C5  type_conflicts (decides: not met), duplicate_tables (suggestion)
   C6  parse_er, load_er, compare_er                        (Mermaid erDiagram vs. the schema)
 
 Thresholds and lists come from rubric.json (relational / thresholds.data_model); nothing is hard-coded here.
@@ -243,15 +243,37 @@ def tables_without_pk(schema):
     return sorted(n for n, t in schema["tables"].items() if not t["primary_key"])
 
 
+POLY_SUFFIXES = ("", "_type", "_table", "_kind", "_model", "_name")
+
+
+def polymorphic_references(schema):
+    """`<x>_id` columns of a polymorphic association: the table also has a discriminator (`<x>`, `<x>_type`, `<x>_table`…) and no
+    table is named `<x>`. They point at a different table on each row, so no foreign key can be declared (an audit log's
+    `entity` + `entity_id`): they are not implicit relations."""
+    names = {fold(singular(n)) for n in schema["tables"]} | {fold(n) for n in schema["tables"]}
+    out = []
+    for n, t in schema["tables"].items():
+        cols = {fold(c) for c in t["columns"]}
+        for c in t["columns"]:
+            m = re.match(r"^(.+?)(?:_id|Id|ID)$", c)
+            if not m or fold(m.group(1)) in names:
+                continue
+            if any(fold(m.group(1) + s) in cols for s in POLY_SUFFIXES):
+                out.append(f"{n}.{c}")
+    return sorted(out)
+
+
 def implicit_relations(schema, R):
-    """Columns named like a reference (`*_id`, `*Id`) that are neither a foreign key nor the table's own single-column primary key."""
+    """Columns named like a reference (`*_id`, `*Id`) that are neither a foreign key, the table's own single-column primary key nor
+    the id of a polymorphic association (see polymorphic_references)."""
     pats = [re.compile(p) for p in R["implicit_fk_patterns"]]
+    poly = set(polymorphic_references(schema))
     out = []
     for n, t in schema["tables"].items():
         fkcols = {c for fk in t["foreign_keys"] for c in fk["columns"]}
         own = t["primary_key"][0] if len(t["primary_key"]) == 1 else None
         for c in t["columns"]:
-            if c not in fkcols and c != own and any(p.search(c) for p in pats):
+            if c not in fkcols and c != own and f"{n}.{c}" not in poly and any(p.search(c) for p in pats):
                 out.append(f"{n}.{c}")
     return sorted(out)
 

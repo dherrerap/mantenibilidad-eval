@@ -24,7 +24,7 @@ expressed as a **range** until a person completes it.
 | DV8 (optional) | For DL and PC. Without it those criteria stay pending. Set `DV8_CONSOLE` if it is not at the default path. |
 | Network (optional) | npm versions and release dates, vulnerabilities (OSV, api.osv.dev) and the PostgreSQL/Node/React/Express support dates of endoflife.date, all as of `--as-of` (default today). Without a network use `--offline`. |
 | Docker + Docker Compose (optional) | Only for the acceptance gate of `run_experiment.py`, which starts PostgreSQL from each app's own `docker-compose.yml`. Without Docker the gate is skipped with a message. |
-| PostgreSQL server (optional) | Only for `--postgres`: a role with `CREATEDB` in `PG_ADMIN_URL`. Without it the data model is evaluated from the code (SQL files, Sequelize migrations and models). |
+| PostgreSQL (optional) | Only for `--postgres` (acceptance gate, contract conformance and live database analysis): either the server binaries installed locally, from which a temporary server is started and deleted (`pg_temp.py`; `PG_BIN` if they are not found), or a role with `CREATEDB` in `PG_ADMIN_URL`. Without it the data model is evaluated from the code (SQL files, Sequelize migrations and models) and the gate does not run. |
 
 ```
 npm install
@@ -100,7 +100,8 @@ Details in [docs/manual-review.md](docs/manual-review.md).
 | `dv8_metrics.py` | Computes DL and PC with DV8 from the dependency graph. |
 | `manual_template.py` | Generates the guide and draft for the manual review. |
 | `relational_schema.py`, `relational_analysis.py` | Extract the relational schema from SQL files and Sequelize migrations/models, and measure the data model criteria (including the ER comparison). |
-| `pg_analysis.py`, `pg_schema.js`, `pg_seed.py`, `pg_runtime.py` | Analyze the data model on a real PostgreSQL database: `--postgres` in `cli.py evaluate` (needs `PG_ADMIN_URL`). See `docs/methodology.md`. |
+| `pg_analysis.py`, `pg_schema.js`, `pg_seed.py`, `pg_runtime.py` | Analyze the data model on a real PostgreSQL database: `--postgres` in `cli.py evaluate` (`PG_ADMIN_URL`, or a temporary server). See `docs/methodology.md`. |
+| `pg_temp.py` | Disposable PostgreSQL server for `--postgres` without `PG_ADMIN_URL`: a cluster in a temporary folder, on 127.0.0.1 and a free port, deleted at the end. `python pg_temp.py` checks it. |
 | `token_usage.py` | Records the tokens the generator agent consumed per app and phase (initial, r2) from Claude Code / Codex transcripts or outputs, in `token-usage/<app>.json`. See `docs/generating-apps.md`. |
 | `judge.py` | A model different from the generator decides the pending design-judgment criteria (`--judge` in `cli.py evaluate`). See `docs/manual-review.md`. |
 | `rubric.json` | **All the framework's thresholds, weights and lists** (including the input-artifact table and the dashboard cut-offs). Adjust it here, not in the code. |

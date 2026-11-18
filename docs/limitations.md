@@ -10,7 +10,8 @@ What the framework does **not** guarantee. Cite them alongside any result.
 - **It does not evaluate whether the application works.** Without the acceptance gate a high score may correspond to a broken app. The gate
   (`acceptance_check.py`) runs in two ways: `run_experiment.py` starts PostgreSQL from the app's `docker-compose.yml` (needs Docker and Docker
   Compose v2; without them it is skipped and says so), and `cli.py evaluate --postgres` runs it against a disposable database of the server in
-  `PG_ADMIN_URL`. Without either, nothing in the profile tells whether the app works. It is a maintainability measure, not a correctness one.
+  `PG_ADMIN_URL` or, without it, of a temporary server started from the local PostgreSQL binaries (`pg_temp.py`). Without either, nothing in the
+  profile tells whether the app works. It is a maintainability measure, not a correctness one.
 - **The gate covers the original requirements only** (`requirements-ecommerce.md` or `requirements-cinema.md`, chosen by the domain).
   The additional requirements of phase r2 change some of its rules (prices, shipping, roles), so `run_experiment.py` runs it right
   after phase initial and skips it on a project that already implements r2. There is no acceptance suite for r2 yet. The 5-minute
@@ -23,7 +24,9 @@ What the framework does **not** guarantee. Cite them alongside any result.
 
 - **Layers by directory name.** It is a heuristic (names in `default_layers` of `rubric.json`; an app can ship a `.layers.json`). An app that organizes its layers with other names, or that connects them
   through dependency injection, gets "pending" and not an automatic result. Ambiguous directories (`domain`, `core`,
-  `entities`) also leave the criterion under review.
+  `entities`) also leave the criterion under review, except when the module depended on uses nothing of the presentation or data layers
+  (a shared core, not counted as a violation). That rule is structural: a "domain" module with no outer dependencies that still holds
+  business logic a data module should not call is not detected.
 - **DL and PC on a derived matrix.** DV8 does not analyze JavaScript or TypeScript. The matrix comes from the `dependency-cruiser`
   graph, with a single dependency type (`Import`), and the values may differ from those of a native analysis.
   With projects of fewer than 100 files they are sensitive to each dependency.
@@ -61,7 +64,11 @@ What the framework does **not** guarantee. Cite them alongside any result.
   then such a devDependency counts as used when its binary has the package's name.
 - **Data model C2/C5 suggestions and contracts C4** are heuristics over the code and schema text (repeating groups, columns that copy a
   column of the referenced table, type names, validation middleware names). C2 does not verify third normal form: it only looks for the symptoms listed
-  in `docs/methodology.md`. They do not compare the schema with the contract field by field.
+  in `docs/methodology.md`. They do not compare the schema with the contract field by field. C5 is decided automatically only when column types
+  conflict; a justified or unjustified redundancy stays a judgment.
+- **Cohesion C3 measured findings are proxies.** "Routes and queries in one module" sees SQL strings and ORM calls, not a query hidden behind a helper
+  in another file; "component over 200 LOC" uses the length of a function that returns JSX. A long component that is still cohesive is reported as
+  a finding: override it in `manual_review.json` if so.
 - **Supplementary indicators** are heuristics over the code text and are not scored. "Without assertions" only recognizes
   `assert`, `expect` and `should`; credential detection looks at the variable name; the SQL check only sees a template
   literal with `${}` or a `+` concatenation passed as the first argument of `query`, `raw`, `execute` or `unsafe`, and ignores interpolated constants
@@ -130,7 +137,8 @@ What the framework does **not** guarantee. Cite them alongside any result.
   `NOT NULL`, `UNIQUE`, `CHECK` and foreign keys as constraints; a money-like column is recognized by name (`relational.money_name_pattern`) and only
   floating-point types are flagged, so `price TEXT` is not.
 - **Implicit relations are recognized by name** (`*_id`, `*Id`): a join column named otherwise (`product_ref`) is not detected, and a `*_id` column that
-  intentionally holds an external identifier is reported as an implicit relation.
+  intentionally holds an external identifier is reported as an implicit relation. A polymorphic association is recognized only by its discriminator
+  column (`<x>`, `<x>_type`, `<x>_table`, `<x>_kind`, `<x>_model`, `<x>_name`) and only when no table is named `<x>`.
 - **The ER comparison is tolerant on names, strict on structure.** Entity names are compared ignoring case, `_` and plurals; attributes ignoring case and `_`.
   Differences in attribute types and in optionality (zero vs. one) are listed but do not fail C6. A many-to-many line drawn between two entities when the
   schema has a join table counts as a mismatch. Mermaid syntax beyond entities, attributes with `PK`/`FK`/`UK`, and relationship lines is ignored.
@@ -162,7 +170,12 @@ What the framework does **not** guarantee. Cite them alongside any result.
   (Opus judging Sonnet) are allowed: choose with that criterion in mind.
 - **Non-deterministic.** Two runs may differ. The 3 votes with a majority reduce this, they do not eliminate it. Keep `judge.json` with the
   results: it is what allows the decision to be reproduced without querying again.
-- **It sees an excerpt.** It receives the evidence that `judge.py` builds (first lines of the relevant files), not the whole application.
+- **It sees an excerpt.** It receives the evidence that `judge.py` builds, not the whole application: for the data model the schema files (up to
+  400 lines each), the ER document and the design documents that mention snapshots or denormalization go in whole; the README, the queries and
+  the routes fill the rest of a 60 000-character budget. When something is cut the prompt says so and the judge is told to answer "I don't know"
+  if the decision depends on it.
+- **One prompt per point.** The pending criteria of a point are asked together, with one policy for what counts as a justified copy, so that C2
+  and C5 cannot decide the same column differently. Judge decisions made before this change (one prompt per criterion) are not comparable.
 - **Uncalibrated.** Its agreement with human reviewers has not been measured. Until that is done, audit the sample that `judge.json` flags.
 
 ## Experiment

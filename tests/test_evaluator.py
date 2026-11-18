@@ -2599,3 +2599,213 @@ class TestMutation(unittest.TestCase):
         # unitPrice is tested, shipping is not: every surviving mutant is in shipping (lines 10-11)
         self.assertTrue(0 < r["score"] < 100, r["score"])
         self.assertTrue(all(re.search(r"src/price\.js:1[01] ", s) for s in r["packages"][0]["survivors"]), r["packages"][0]["survivors"])
+
+
+import pg_temp  # noqa: E402
+from evaluator.points import cohesion as _cohesion  # noqa: E402
+
+
+class TestJudgeEvidencePriority(unittest.TestCase):
+    """The evidence is assembled by priority and says when it is incomplete; the criteria of a point are asked together."""
+
+    def test_essential_parts_go_whole_and_what_is_cut_is_listed(self):
+        text = judge.assemble([("### schema\n" + "x" * 500, True), ("### README\n" + "r" * 800, False), ("### routes\n" + "y" * 50, False)], limit=900)
+        self.assertIn("x" * 500, text)  # essential, whole
+        self.assertIn("THE EVIDENCE IS INCOMPLETE", text); self.assertIn("### README (cut)", text); self.assertIn("### routes (left out)", text)
+        self.assertNotIn("INCOMPLETE", judge.assemble([("a", True), ("b", False)], limit=100))
+
+    def test_data_model_evidence_shows_long_schema_files_whole_and_the_design_documents(self):
+        with tempfile.TemporaryDirectory() as t:
+            app, res = Path(t) / "app", Path(t) / "res"; (app / "docs" / "R2").mkdir(parents=True); res.mkdir()
+            (res / "metrics.json").write_text("{}", encoding="utf-8")
+            (app / "schema.sql").write_text("\n".join(f"-- line {i}" for i in range(150)) + "\nCREATE TABLE last_one (id INT);", encoding="utf-8")
+            (app / "docs" / "R2" / "README.md").write_text("orders.coupon_code is a snapshot of the code at checkout.", encoding="utf-8")
+            (app / "docs" / "R2" / "deploy.md").write_text("How to deploy.", encoding="utf-8")
+            m = {"app": str(app), "readme": "", "er": {"found": False, "text": ""}, "ast": {"queryFields": [], "routes": []},
+                 "schema": {"tables": {"last_one": {"file": "schema.sql:151", "source": "sql", "columns": {}, "primary_key": [], "foreign_keys": [],
+                                                     "unique": [], "checks": [], "indexes": []}}}}
+            text = judge.evidence("data_model", ["C2", "C5"], res, m, {"finding": "f", "evidence": []})
+        self.assertIn("CREATE TABLE last_one", text)  # beyond the 90 lines the evidence used to show
+        self.assertIn("coupon_code is a snapshot", text); self.assertNotIn("How to deploy", text)
+
+    def test_one_prompt_per_point_with_a_shared_justification_policy(self):
+        p = judge.build_prompt("data_model", ["C2", "C5"], {"C2": "normalized", "C5": "no redundancy"}, "EV")
+        self.assertIn("data_model.C2: normalized", p); self.assertIn("data_model.C5: no redundancy", p)
+        self.assertIn("judge it the same way in all of them", p); self.assertIn('"C2": {"ok"', p); self.assertIn('"C5": {"ok"', p)
+        self.assertEqual(p.count(judge.JUSTIFIED), 2)  # C2 and C5 decide "justified" with the same words
+        self.assertIn("answer null", p)
+
+    def test_parse_reads_one_vote_per_criterion(self):
+        r = judge.parse('ok: {"C2": {"ok": false, "justification": "a.sql:3", "confidence": "high"}, "C5": {"ok": true}}', ["C2", "C5"])
+        self.assertEqual((r["C2"]["ok"], r["C2"]["confidence"], r["C5"]["ok"]), (False, "high", True))
+        self.assertIsNone(judge.parse('{"C2": {"ok": true}}', ["C2", "C5"])["C5"])
+        self.assertTrue(judge.parse('{"ok": true}', ["C3"])["C3"]["ok"])  # a flat vote when a single criterion was asked
+        self.assertIsNone(judge.parse("no json", ["C3"]))
+
+    def test_main_asks_the_criteria_of_a_point_in_one_prompt(self):
+        prompts = []
+
+        def fake_query(cmd, prompt, timeout):
+            prompts.append(prompt)
+            return 0, '{"C2": {"ok": false, "justification": "j"}, "C5": {"ok": true, "justification": "k"}}', ""
+        point = {"id": "data_model", "finding": "f", "evidence": [], "criteria": {"C2": {"desc": "two"}, "C5": {"desc": "five"}}}
+        with tempfile.TemporaryDirectory() as t:
+            res = Path(t)
+            (res / "meta.json").write_text(json.dumps({"model": "gpt-x"}), encoding="utf-8")
+            (res / "metrics.json").write_text(json.dumps({"app": t}), encoding="utf-8")
+            with mock.patch.object(judge, "pending", return_value=[(point, "C2"), (point, "C5")]), mock.patch.object(judge, "evidence", return_value="EV"), \
+                    mock.patch.object(judge, "query", side_effect=fake_query), mock.patch.object(sys, "argv", ["judge.py", t, "--model", "claude-opus-5-5"]):
+                judge.main()
+            out = json.loads((res / "judge.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(prompts), 3)  # 3 votes, one prompt each for both criteria
+        self.assertEqual((out["decisions"]["data_model"]["C2"]["ok"], out["decisions"]["data_model"]["C5"]["ok"]), (False, True))
+
+    def test_the_default_command_finds_the_cli_bundled_with_the_editor(self):
+        name = "claude.exe" if os.name == "nt" else "claude"
+        with tempfile.TemporaryDirectory() as t:
+            for v in ("2.1.9", "2.1.10"):
+                d = Path(t) / ".vscode" / "extensions" / f"anthropic.claude-code-{v}-x" / "resources" / "native-binary"; d.mkdir(parents=True)
+                (d / name).write_text("", encoding="utf-8")
+            with mock.patch.object(judge.shutil, "which", return_value=None), mock.patch.object(judge.Path, "home", return_value=Path(t)):
+                cmd = judge.judge_command(judge.DEFAULT_CMD, "claude-opus-5-5")
+        self.assertIn("claude-code-2.1.10-x", cmd[0]); self.assertEqual(cmd[1:], ["-p", "--model", "claude-opus-5-5"])
+        self.assertEqual(judge.judge_command("my-judge {model}", "m"), ["my-judge", "m"])  # a custom command is left alone
+
+
+class TestDataModelPolymorphicAndTypes(unittest.TestCase):
+    def test_a_polymorphic_reference_is_not_an_implicit_relation(self):
+        sql = ("CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL UNIQUE);\n"
+               "CREATE TABLE audit_log (id SERIAL PRIMARY KEY, entity TEXT NOT NULL, entity_id INTEGER NOT NULL, user_id INTEGER REFERENCES users(id));")
+        s = rs.extract([("s.sql", sql)], {}, RUBRIC_REL)
+        self.assertEqual(ra.polymorphic_references(s), ["audit_log.entity_id"]); self.assertEqual(ra.implicit_relations(s, RUBRIC_REL), [])
+        c = ev.eval_data_model(dm_model(sql), {}, Opts())[0]["C1"]
+        self.assertTrue(c["ok"]); self.assertEqual(c["value"]["polymorphic_references"], ["audit_log.entity_id"])
+
+    def test_a_reference_to_an_existing_table_stays_implicit_even_with_a_type_column(self):
+        sql = ("CREATE TABLE products (id SERIAL PRIMARY KEY);\n"
+               "CREATE TABLE lines (id SERIAL PRIMARY KEY, product_id INTEGER NOT NULL, product_type TEXT);")
+        s = rs.extract([("s.sql", sql)], {}, RUBRIC_REL)
+        self.assertEqual(ra.polymorphic_references(s), []); self.assertEqual(ra.implicit_relations(s, RUBRIC_REL), ["lines.product_id"])
+
+    def test_inconsistent_types_decide_c5_and_otherwise_it_stays_a_suggestion(self):
+        bad = "CREATE TABLE a (id SERIAL PRIMARY KEY, code VARCHAR(10) NOT NULL);\nCREATE TABLE b (id SERIAL PRIMARY KEY, code INTEGER NOT NULL);"
+        c5 = ev.eval_data_model(dm_model(bad), {}, Opts())[0]["C5"]
+        self.assertFalse(c5["ok"]); self.assertTrue(c5["value"]["type_conflicts"]); self.assertTrue(c5["source"].startswith("auto"))
+        self.assertIsNone(ev.eval_data_model(dm_model(OK_SQL, ER_MATCH, GOOD_QUERIES), {}, Opts())[0]["C5"]["ok"])
+
+    def test_a_copy_justified_in_a_design_document_counts_as_justified(self):
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "docs" / "R2").mkdir(parents=True)
+            (Path(t) / "docs" / "R2" / "README.md").write_text("`orders.coupon_code` is an immutable snapshot taken at checkout.", encoding="utf-8")
+            sql = ("CREATE TABLE coupons (id SERIAL PRIMARY KEY, code VARCHAR(20) NOT NULL UNIQUE);\n"
+                   "CREATE TABLE orders (id SERIAL PRIMARY KEY, coupon_id INTEGER REFERENCES coupons(id), coupon_code VARCHAR(20));")
+            m = dm_model(sql); m["app"] = t
+            copies = ev.eval_data_model(m, {}, Opts())[0]["C2"]["value"]["denormalized_copies"]
+        self.assertEqual(copies, [{"copy": "orders.coupon_code", "of": "coupons.code", "justified": True}])
+
+
+class TestCohesionMeasuredFindings(unittest.TestCase):
+    def cohesion(self, **ast):
+        base = {"functions": [{"file": "a.js", "line": 1, "name": "f", "fanout": 0, "test": False}], "files": [{"path": "a.js", "loc": 50, "test": False}],
+                "classes": [], "routes": [], "sqlStrings": [], "queryFields": [], "components": []}
+        return ev.eval_cohesion({"ast": {**base, **ast}, "graph": {"modules": [], "cycles": []}}, {"dv8": {"DL": 0.9}}, Opts)[0]["C3"]
+
+    def test_routes_and_queries_in_the_same_module_fail_c3(self):
+        c3 = self.cohesion(routes=[{"file": "app.js", "line": 3, "method": "GET", "path": "/x"}],
+                           sqlStrings=[{"file": "app.js", "line": 4, "text": "SELECT 1", "migration": False}])
+        self.assertFalse(c3["ok"]); self.assertEqual(c3["value"]["routes_and_queries_in_one_file"], ["app.js"])
+
+    def test_routes_with_queries_in_a_repository_or_only_in_migrations_stay_a_suggestion(self):
+        c3 = self.cohesion(routes=[{"file": "http/app.js", "line": 3, "method": "GET", "path": "/x"}],
+                           sqlStrings=[{"file": "data/repo.js", "line": 4, "text": "SELECT 1", "migration": False},
+                                       {"file": "http/app.js", "line": 9, "text": "CREATE TABLE t (id INT)", "migration": True}])
+        self.assertIsNone(c3["ok"])
+
+    def test_a_component_over_the_threshold_fails_c3(self):
+        limit = ev.RUBRIC["thresholds"]["cohesion"]["component_loc_max"]
+        c3 = self.cohesion(components=[{"file": "App.jsx", "line": 8, "name": "App", "loc": limit + 1, "props": 0},
+                                        {"file": "Row.jsx", "line": 1, "name": "Row", "loc": limit, "props": 2}])
+        self.assertFalse(c3["ok"]); self.assertEqual(c3["value"][f"components_over_{limit}_loc"], [f"App.jsx:8 App ({limit + 1} LOC)"])
+        self.assertEqual(_cohesion.oversized_components({"components": []}, limit), [])
+
+
+class TestLayersSharedCore(unittest.TestCase):
+    def layers(self, core_deps):
+        layers = {"p/c.js": "presentation", "s/svc.js": "business", "d/repo.js": "data", "domain/errors.js": "business"}
+        origin = {"p/c.js": "controllers", "s/svc.js": "services", "d/repo.js": "data", "domain/errors.js": "domain"}
+        mods = [module("p/c.js", ["s/svc.js"] * 9), module("s/svc.js", ["d/repo.js"]), module("d/repo.js", ["domain/errors.js"]),
+                module("domain/errors.js", core_deps)]
+        return ev.eval_layers({"layers": layers, "layers_origin": origin, "graph": {"modules": mods}}, {}, Opts)
+
+    def test_a_dependency_on_a_domain_module_without_outer_dependencies_is_not_a_violation(self):
+        _, met, _, finding, forced = self.layers([])
+        self.assertEqual(forced, ("Meets",) * 3); self.assertEqual(met["violations"], 0)
+        self.assertEqual(met["shared_core_dependencies"], ["d/repo.js (data) → domain/errors.js (shared core)"]); self.assertIn("shared core", finding)
+
+    def test_a_domain_module_that_reaches_the_data_layer_stays_doubtful(self):
+        _, met, _, _, forced = self.layers(["d/repo.js"])
+        self.assertEqual(met["doubtful_violations"], 1); self.assertIsNone(forced[0])
+
+
+class TestPgTemp(unittest.TestCase):
+    def test_find_bin_uses_pg_bin(self):
+        exe = ".exe" if os.name == "nt" else ""
+        with tempfile.TemporaryDirectory() as t:
+            for b in ("initdb", "pg_ctl"):
+                (Path(t) / f"{b}{exe}").write_text("", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"PG_BIN": t}):
+                self.assertEqual(pg_temp.find_bin(), Path(t))
+
+    def test_without_binaries_the_server_is_none(self):
+        with mock.patch.object(pg_temp, "find_bin", return_value=None), pg_temp.server() as url:
+            self.assertIsNone(url)
+
+    @unittest.skipUnless(pg_temp.find_bin(), "no PostgreSQL server binaries")
+    def test_a_real_temporary_server_accepts_connections_and_is_deleted(self):
+        before = set(Path(tempfile.gettempdir()).glob("eval-pg-*"))
+        with pg_temp.server() as url:
+            self.assertRegex(url, r"^postgres://evaluator:[\w-]+@127\.0\.0\.1:\d+/postgres$")
+            port = int(url.rsplit(":", 1)[1].split("/")[0])
+            with socket.create_connection(("127.0.0.1", port), timeout=5):
+                pass
+            created = set(Path(tempfile.gettempdir()).glob("eval-pg-*")) - before
+            self.assertEqual(len(created), 1)
+        self.assertFalse(next(iter(created)).exists())
+
+
+class TestBackendSecrets(unittest.TestCase):
+    def test_random_secrets_for_jwt_and_the_secrets_of_env_example_only(self):
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / ".env.example").write_text("PORT=3001\nexport SESSION_SECRET=x\nJWT_SECRET=short\nREPLICA_DATABASE_URL=postgres://r@h/db\n", encoding="utf-8")
+            s = pg_runtime.backend_secrets(t, {"PORT": "1"})
+            self.assertEqual(sorted(s), ["JWT_SECRET", "SESSION_SECRET"]); self.assertTrue(all(len(v) >= 32 for v in s.values()))
+            self.assertNotIn("JWT_SECRET", pg_runtime.backend_secrets(t, {"JWT_SECRET": "given-by-the-user"}))
+        self.assertEqual(list(pg_runtime.backend_secrets(Path(t) / "missing")), ["JWT_SECRET"])
+
+
+class TestCliTemporaryPostgres(unittest.TestCase):
+    def test_postgres_without_admin_url_uses_a_temporary_server_for_the_batch(self):
+        seen = []
+
+        @contextlib.contextmanager
+        def fake_server():
+            yield "postgres://evaluator:pw@127.0.0.1:5999/postgres"
+
+        def fake_evaluate(app, o_, dv8):
+            seen.append(cli.UTF8.get("PG_ADMIN_URL"))
+            return "r", "ok"
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "codex-n1").mkdir()
+            o = {"apps": [str(Path(t) / "codex-n1")], "apps_dir": t, "results": str(Path(t) / "res"), "model": "m", "allow_missing_model": False,
+                 "skip_dv8": True, "rescore_only": False, "postgres": True}
+            env = {k: v for k, v in os.environ.items() if k != "PG_ADMIN_URL"}
+            with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(cli, "options", return_value=o), \
+                    mock.patch.object(cli, "record_environment"), mock.patch.object(cli.pg_temp, "server", fake_server), \
+                    mock.patch.object(cli, "evaluate_app", side_effect=fake_evaluate), \
+                    mock.patch.object(cli, "execute", return_value=(0, "")), mock.patch.object(cli, "write_report", return_value="report.md"), \
+                    contextlib.redirect_stdout(io.StringIO()) as out:
+                cli.UTF8.pop("PG_ADMIN_URL", None)
+                self.assertEqual(cli.cmd_evaluate(argparse.Namespace()), 0)
+        self.assertEqual(seen, ["postgres://evaluator:pw@127.0.0.1:5999/postgres"])
+        self.assertNotIn("PG_ADMIN_URL", cli.UTF8)  # nothing after the batch points at the stopped server
+        self.assertIn("temporary server on 127.0.0.1:5999", out.getvalue())

@@ -24,7 +24,7 @@ manual_review.json, fill in ok=true/false and run `evaluate --rescore`: it is re
 Collection happens once per app: after DV8, the live database and the judge the run is re-scored from metrics.json
 (evaluate.py rescore), not evaluated again.
 """
-import argparse, datetime, json, os, platform, re, shutil, socket, subprocess, sys
+import argparse, contextlib, datetime, json, os, platform, re, shutil, socket, subprocess, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -33,6 +33,7 @@ UTF8 = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 sys.path.insert(0, str(HERE))
 from dv8_metrics import DV8_DEFAULT  # noqa: E402
 import pg_runtime  # noqa: E402
+import pg_temp  # noqa: E402
 import evaluate as ev  # noqa: E402
 import token_usage as tu  # noqa: E402
 
@@ -107,9 +108,12 @@ def cmd_doctor(a):
         "Without Prism the runtime conformance to the OpenAPI contract is not measured during the acceptance gate; without StrykerJS "
         f"--mutation is not available. Run 'npm install' in {HERE}.", required=False)
     pg = (HERE / "node_modules" / "pg" / "package.json").exists()
-    add(pg and bool(os.environ.get("PG_ADMIN_URL")), "PostgreSQL analysis (optional: --postgres)",
-        ("pg installed" if pg else "pg missing") + ("; PG_ADMIN_URL set" if os.environ.get("PG_ADMIN_URL") else "; PG_ADMIN_URL not set"),
-        "Without it the data model is evaluated from the code only. Run 'npm install' and set PG_ADMIN_URL (a role with CREATEDB).", required=False)
+    pg_bin = pg_temp.find_bin()
+    server_txt = "; PG_ADMIN_URL set" if os.environ.get("PG_ADMIN_URL") else (f"; temporary server from {pg_bin}" if pg_bin else "; no PG_ADMIN_URL and no PostgreSQL binaries")
+    add(pg and bool(os.environ.get("PG_ADMIN_URL") or pg_bin), "PostgreSQL analysis and acceptance gate (optional: --postgres)",
+        ("pg installed" if pg else "pg missing") + server_txt,
+        "Without it the data model is evaluated from the code only and the acceptance gate does not run. Run 'npm install' and either install "
+        "PostgreSQL (a temporary server is started from its initdb/pg_ctl; PG_BIN if they are not found) or set PG_ADMIN_URL (a role with CREATEDB).", required=False)
     try:
         json.loads((HERE / "rubric.json").read_text(encoding="utf-8")); rub = True
     except (OSError, ValueError):
@@ -245,9 +249,9 @@ def post_collection_steps(out, o, dv8):
         else:
             warnings.append("DV8 failed: " + (last_line(s2, r"\S") or ""))
     execute([PY, str(HERE / "manual_template.py"), str(out)])
-    if o["postgres"]:  # real database: catalog of a disposable eval_<run> database (PG_ADMIN_URL; see pg_analysis.py)
-        if not os.environ.get("PG_ADMIN_URL"):
-            warnings.append("--postgres requested but the PG_ADMIN_URL environment variable is missing: database analysis skipped")
+    if o["postgres"]:  # real database: catalog of a disposable eval_<run> database (PG_ADMIN_URL or a pg_temp server; see pg_analysis.py)
+        if not UTF8.get("PG_ADMIN_URL"):
+            warnings.append("--postgres requested but there is no PG_ADMIN_URL and no PostgreSQL binaries for a temporary server: database analysis skipped")
         else:
             rcp, sp = execute([PY, str(HERE / "pg_analysis.py"), str(out)])
             warnings.append("postgres: " + (last_line(sp, r"Acceptance|ERROR") or "no output") if rcp == 0 else "postgres failed: " + (last_line(sp, r"\S") or ""))
@@ -311,11 +315,24 @@ def cmd_evaluate(a):
     if not o["rescore_only"]:  # environment.json describes the collection; re-scoring keeps it
         record_environment(o, dv8, apps)
     errors = 0
-    for i, app in enumerate(apps, 1):
-        print(f"[{i}/{len(apps)}] {app.name} …", flush=True)
-        run_id, summary = evaluate_app(app, o, dv8)
-        errors += summary.startswith("ERROR")
-        print(f"      {summary}")
+    with contextlib.ExitStack() as stack:
+        if o["postgres"] and not o["rescore_only"] and not UTF8.get("PG_ADMIN_URL"):
+            # No server given: a disposable one (pg_temp.py) for the whole batch, stopped and deleted at the end
+            try:
+                url = stack.enter_context(pg_temp.server())
+            except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+                url = None
+                print(f"Warning: the temporary PostgreSQL server could not start ({e}).")
+            if url:
+                UTF8["PG_ADMIN_URL"] = url  # only for the evaluator's child processes; pg_analysis.py does not pass it to the backend
+                print(f"PostgreSQL: temporary server on 127.0.0.1:{url.rsplit(':', 1)[1].split('/')[0]} (no PG_ADMIN_URL set).")
+        for i, app in enumerate(apps, 1):
+            print(f"[{i}/{len(apps)}] {app.name} …", flush=True)
+            run_id, summary = evaluate_app(app, o, dv8)
+            errors += summary.startswith("ERROR")
+            print(f"      {summary}")
+        if not os.environ.get("PG_ADMIN_URL"):
+            UTF8.pop("PG_ADMIN_URL", None)  # the temporary server stops here: nothing after the batch may point at it
     rc, output = execute([PY, str(HERE / "evaluate.py"), "aggregate", str(Path(o["results"]).resolve())])
     if rc != 0:
         print("Error while aggregating:\n" + output[-600:]); return 1
@@ -513,7 +530,7 @@ def main():
     e.add_argument("--judge", help="judge model that decides the design-judgment criteria (must differ from the generator)")
     e.add_argument("--judge-votes", type=int, dest="judge_votes"); e.add_argument("--judge-cmd", dest="judge_cmd")
     e.add_argument("--allow-same-model", action="store_true", default=None)
-    e.add_argument("--postgres", action="store_true", default=None, help="analyze the real database with pg_analysis.py (requires PG_ADMIN_URL)")
+    e.add_argument("--postgres", action="store_true", default=None, help="acceptance gate and real-database analysis (pg_analysis.py) on PG_ADMIN_URL, or on a temporary server started from the local PostgreSQL binaries")
     e.add_argument("--mutation", action="store_true", default=None, help="mutation testing with StrykerJS on the apps' own tests (slow: up to "
                                                                        "rubric.json mutation.max_minutes_per_package per package; informational; not with --skip-tests)")
     e.add_argument("--usage-dir", dest="usage_dir", help="folder of the token records written by token_usage.py (default token-usage)")

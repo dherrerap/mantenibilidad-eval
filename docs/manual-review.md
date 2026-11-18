@@ -59,8 +59,11 @@ python judge.py results/<run> --model claude-opus-5-5   # separately, on an alre
   `profile.md` lists the criteria the judge decided and the range that would result without them.
 - **Audit.** `judge.json` flags in `audit` the decisions a person must review: a sample (20%) and, always, those that
   were not unanimous or had low confidence. If you disagree, write it in `manual_review.json`: it wins over the judge.
-- **Command.** By default it uses the Claude Code CLI (`claude -p --model {model}`, the prompt goes in through stdin). With `--cmd` you can
-  use another (any program that reads the prompt from stdin and writes the answer to stdout).
+- **Command.** By default it uses the Claude Code CLI (`claude -p --model {model}`, the prompt goes in through stdin): `claude` on the PATH or,
+  if it is not there, the binary an editor extension installs (`~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary`, the newest
+  version). With `--cmd` you can use another (any program that reads the prompt from stdin and writes the answer to stdout).
+- **One prompt per point.** The pending criteria of a point (for example data model C2 and C5) are asked in one prompt and decided
+  consistently; each criterion still takes its own majority of the votes.
 
 The judge does not decide what depends on a missing measurement: DL/PC (DV8), versions and vulnerabilities (network), tests (`--run-tests`),
 duplicated literals (ESLint), unused dependencies and dead files (Knip) and duplication (jscpd). If those remain pending, the result will still

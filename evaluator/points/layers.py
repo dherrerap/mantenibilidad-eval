@@ -1,4 +1,8 @@
 """Decision point *Layers* (Modularity): C1 identifiable layers, C2 violations of the allowed inter-layer dependencies.
+
+Shared core: a dependency on a module of an ambiguous directory (domain, core, entities) that itself depends on no module of the
+presentation or data layers is not a violation. That module is the core of a hexagonal or clean architecture (domain errors,
+entities, policies), which every layer may use; only a "domain" that reaches into the outer layers stays a doubtful case.
 """
 
 from evaluator.common import RUBRIC, pct
@@ -11,7 +15,15 @@ def eval_layers(m, manual, opts):
     layers, origin = m["layers"], m.get("layers_origin", {})
     main = {"presentation", "business", "data"}
     ident = sorted(set(layers.values()) & main)
-    cross = viol = doubtful = 0; ev = []
+    cross = viol = doubtful = 0; ev = []; core = []
+    mods = {mod["source"]: mod for mod in m["graph"].get("modules", [])}
+
+    def shared_core(f):
+        """A module of an ambiguous directory that uses nothing of the presentation or data layers."""
+        if origin.get(f, "").lower() not in amb:
+            return False
+        deps = (mods.get(f) or {}).get("deps", [])
+        return not any(d["local"] and layers.get(d["to"]) in ("presentation", "data") for d in deps)
     for mod in m["graph"].get("modules", []):
         a = layers.get(mod["source"])
         if a not in main:
@@ -20,7 +32,10 @@ def eval_layers(m, manual, opts):
             b = layers.get(d["to"]) if d["local"] else None
             if b in main and a != b:
                 cross += 1
-                if [a, b] not in P:
+                if [a, b] not in P and shared_core(d["to"]):
+                    if len(core) < 8:
+                        core.append(f"{mod['source']} ({a}) → {d['to']} (shared core)")
+                elif [a, b] not in P:
                     viol += 1
                     # doubtful classification: one end was assigned through an ambiguous directory (e.g. domain)
                     dbt = (origin.get(mod["source"], "").lower() in amb) or (origin.get(d["to"], "").lower() in amb)
@@ -59,5 +74,8 @@ def eval_layers(m, manual, opts):
         crit["C2"] = C(n_all != "Fails", desc2, f"{viol}/{cross} = {vpct:.1f}%")
         forced = (n_all,) * 3
         finding = f"Layers detected: {', '.join(ident)}; {viol} of {cross} inter-layer dependencies break the rule."
+    if core:
+        finding += f" {len(core)} dependency(ies) on a shared core module (domain without outer-layer dependencies) not counted as violations."
+        ev += core[:3]
     return crit, {"layers": ident, "inter_layer_dependencies": cross, "violations": viol, "doubtful_violations": doubtful,
-                  "violations_pct": vpct}, ev, finding, forced
+                  "violations_pct": vpct, "shared_core_dependencies": core}, ev, finding, forced

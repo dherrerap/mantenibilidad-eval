@@ -119,11 +119,11 @@ or completes) or **manual**.
 |---|---|---|---|
 | **Layers** | Modularity | C1 at least 2 identifiable layers · C2 violations ≤ 5% of inter-layer dependencies (Meets at 0%, Partial up to 5%). Only presentation→business and business→data are allowed. | auto, with review if the evidence is ambiguous |
 | **Cyclomatic complexity** | Modularity, Modifiability | C1 X ≥ 0.95 · C2 X ≥ 0.98, where X = 1 − (functions with CC > 20)/(total) · C3 ≤ 10% duplicated lines (CWE-1041). | auto |
-| **Cohesion** | Modularity, Modifiability | C1 ≤ 5% of functions with fan-out > 5 · C2 DL (DV8) ≥ 60% · C3 checklist with no findings ("god" module, mixed responsibilities, fragmentation) · C4 0 production files over 1000 LOC (CWE-1080). | mixed |
+| **Cohesion** | Modularity, Modifiability | C1 ≤ 5% of functions with fan-out > 5 · C2 DL (DV8) ≥ 60% · C3 checklist with no findings ("god" module, mixed responsibilities, fragmentation; not met when a module both defines routes and queries the database, or a frontend component exceeds 200 LOC) · C4 0 production files over 1000 LOC (CWE-1080). | mixed |
 | **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. | auto |
 | **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime, framework and PostgreSQL supported (endoflife.date; table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (OSV). On the resolved versions and as of the reference date `--as-of`; dependency age in libyears is informational. Queries the npm registry and OSV. | auto with network |
 | **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (Knip) · C5 0 production files unreachable from every entry point (Knip, CWE-561). | auto |
-| **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 and C5 are suggestions |
+| **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 a suggestion; C5 not met when column types are inconsistent, a suggestion otherwise |
 | **Contracts** | Modularity, Testability | C1 machine-readable contract (OpenAPI…) · C2 0 Spectral errors · C3 contract covers ≥ 90% of routes · C4 input validation consistent with the contract. Informational: runtime conformance of the responses to the contract (Prism, during the acceptance gate). | mixed |
 | **Observability** | Analyzability | C1 ≥ 80% of critical events logged (approximated with `catch` blocks that log or delegate to a handler that logs, plus authentication and write functions that log or are covered by a request logger) · C2 structured logger and no `console.*` · C3 centralized error handling · C4 health check, metrics or traces (a parameterless route whose last segment is `health`, `ready`, `live`, `ping`, `status`, `metrics`…, so that `PATCH /orders/:id/status` does not count). | mixed |
 | **Tests** | Testability | C1 0 CWE-478/484/1075 violations · C2 tests exist and pass · C3 line coverage ≥ 70% · C4 branch coverage ≥ 50% (not applicable, and left out, when the coverage report has no branches). Informational, with `--mutation`: mutation score (StrykerJS). | auto (requires running the tests) |
@@ -135,7 +135,14 @@ or completes) or **manual**.
   table in `rubric.json`. It can be replaced by a `.layers.json` inside the app. Two situations do not resolve themselves and
   leave C2 pending: **(a)** zero inter-layer dependencies (typical with dependency injection: nothing imports anything, so
   there is no structural evidence) and **(b)** a violation that depends on an ambiguous directory such as `domain` or `core`, which
-  depending on the architecture may be business logic or the application core.
+  depending on the architecture may be business logic or the application core. A dependency on a module of such a directory that itself
+  uses nothing of the presentation or data layers (domain errors, entities, policies) is a **shared core**, which every layer may use in a
+  hexagonal or clean architecture: it is not a violation and is listed as `shared_core_dependencies`; only a "domain" module that reaches
+  into the outer layers stays doubtful.
+- **Cohesion C3.** A measured finding decides it as not met: a production module that defines HTTP routes and also runs database queries
+  itself (SQL strings outside migrations or ORM calls; `routes_and_queries_in_one_file`), or a frontend component longer than
+  `thresholds.cohesion.component_loc_max` (200, the default of SonarJS S138). Without them the program only suggests a value from the
+  "god" module and fragmentation heuristics, because mixed responsibilities in general need reading the code.
 - **Configuration C2.** Uses SonarQube rule S1192 (`no-duplicate-string` in `eslint-plugin-sonarjs`): threshold of 3
   repetitions, minimum length of 10, no literals made only of word characters and no `application/json`. The rule itself runs
   (`lint_metrics.js`, over the production files) and counts the repetitions **per file**, like SonarQube. A reported literal fails
@@ -211,10 +218,12 @@ or completes) or **manual**.
   the normalized schema records its `source`; lower sources only add tables the higher ones do not mention. If no relational schema is found
   the *Data model schema* artifact is missing and the point is **not evaluable**. The criteria:
   - **C1** (automatic). Every table has a primary key, and no column named like a reference (`*_id`, `*Id`) lacks a foreign key. Such columns are reported
-    as *implicit relations*; a table's own single-column primary key is not one.
+    as *implicit relations*; a table's own single-column primary key is not one, and neither is the id of a polymorphic association: a
+    `<x>_id` next to a discriminator (`<x>`, `<x>_type`, `<x>_table`…) where no table is named `<x>`, such as the `entity` + `entity_id` of an
+    audit log, which points at a different table on each row and admits no foreign key (`polymorphic_references`).
   - **C2** (suggestion). Normalization up to 3NF consistent with how the code accesses the data. The program suggests `true` when there are no repeating
-    groups (`phone1`, `phone2`), no denormalized copies of a referenced column (`product_name` next to `product_id`) that the README or the ER document
-    leaves unjustified (a word such as *snapshot* or *denormalized* near the column name, list in `relational.denormalization_words`), and no
+    groups (`phone1`, `phone2`), no denormalized copies of a referenced column (`product_name` next to `product_id`) that the README, the ER document
+    and the design documents (`docs/**/*.md`) leave unjustified (a word such as *snapshot* or *denormalized* near the column name, list in `relational.denormalization_words`), and no
     reads inside loops (N+1). 3NF itself is not verified: a person decides.
   - **C3** (automatic). At least `thresholds.data_model.constraints_min_pct` of the non-primary-key columns declare some constraint (`NOT NULL`, `UNIQUE`,
     `CHECK` or `FOREIGN KEY`), and no money-like column (name matches `relational.money_name_pattern`) uses a floating-point type (`FLOAT`, `REAL`,
@@ -225,8 +234,9 @@ or completes) or **manual**.
     of the filtered fields. Filters come from the AST (`where` of Sequelize `findOne`, `findAll`, `findAndCountAll`, `count`, `update`, `destroy`…, including
     `Op.or` / `Op.and` branches) and from the `WHERE` clause of raw SQL strings. Filters by the primary key alone are not counted. A filter whose model or
     table cannot be resolved, or that is built dynamically, is not counted (`queries_unresolved`, `dynamic_queries` in the metrics).
-  - **C5** (suggestion). The same column name (ignoring case and `_`) never has different type families in different tables, there are no tables with
-    identical columns and the naming convention is not mixed (snake_case with camelCase).
+  - **C5** (automatic when it fails, suggestion otherwise). The same column name (ignoring case and `_`) with different type families in different
+    tables is measured and decides C5 as not met (`type_conflicts`). Otherwise the program suggests `true` when there are no tables with identical
+    columns and the naming convention is not mixed (snake_case with camelCase); whether a redundancy is justified is decided by a person or the judge.
   - **C6** (automatic). The Mermaid `erDiagram` of the ER model matches the schema. The model is the one of the latest documentation set
     (`docs/R2/entity-relationship-model.md`, or another `.md` of `docs/R2/` with an `erDiagram`; labels in `relational.doc_versions`), else
     `docs/entity-relationship-model.md`; the README is chosen the same way (`docs/R2/README.md` before the root one). It must match: the same entities (names compared ignoring case,
@@ -255,13 +265,20 @@ or completes) or **manual**.
 
 ## Data model on a real database
 
-With `--postgres` (environment variable `PG_ADMIN_URL`, the connection string of a role that can create databases) `pg_analysis.py` creates a
+With `--postgres` (environment variable `PG_ADMIN_URL`, the connection string of a role that can create databases; without it, a disposable server
+that `pg_temp.py` starts for the whole batch from the local PostgreSQL binaries, see below) `pg_analysis.py` creates a
 database `eval_<run>`, starts the backend against it (`DATABASE_URL`, `PORT`), exercises it with the acceptance gate and with `pg_seed.py` (the same 25
 users and their orders or seat purchases in all the apps of a domain; the gate is skipped on an app that already implements
 `r2-additional-requirements.md`, because its suites cover the original requirements), reads its catalog with `pg_schema.js` through the `pg` package (`information_schema` for tables and columns;
 `pg_catalog` for constraints, foreign keys, indexes and `pg_stat_user_indexes` for index usage) and drops the database. `pg_schema.js` refuses to
 create, read or drop any database whose name does not match `eval_[a-z0-9_]+`, and `PG_ADMIN_URL` itself is not passed to the evaluated backend. The
 catalog is saved in `results/<run>/pg_schema.json` and replaces the static schema for these criteria:
+
+*Temporary server.* When `PG_ADMIN_URL` is not set, `cli.py evaluate --postgres` looks for `initdb` and `pg_ctl` (`PG_BIN`, the `PATH`, then the usual
+install folders, highest major first), creates a cluster in a new temporary folder, starts it on `127.0.0.1` and a free port with a superuser
+`evaluator` whose random password exists only in memory (scram-sha-256), uses it for every app of the batch and stops and deletes it at the end.
+Docker is not needed and no existing server or database is touched. `python pg_temp.py` checks that it can start one.
+
 
 - **C1** counts tables without primary key and `*_id` columns without a foreign key in the real database.
 - **C3** counts the constraints that PostgreSQL actually has (`NOT NULL`, `UNIQUE`, `CHECK`, foreign keys) and the column types.
@@ -324,7 +341,7 @@ In addition to the dashboard above, to see at a glance where maintainability is 
 
 ## Heuristics
 
-Some criteria come with an automatic suggestion (data model C2 and C5, cohesion C3), described above. They **do not count** as a
+Some criteria come with an automatic suggestion (data model C2 and C5, cohesion C3; C5 and C3 only when no measured finding decides them), described above. They **do not count** as a
 result unless `--accept-heuristics` is passed; by default they only guide the person doing the review.
 
 Data model C1, C3, C4 and C6 are verifiable over the schema and count without accepting heuristics. Contracts C4 is

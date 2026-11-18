@@ -85,6 +85,7 @@ def analyze(res, admin_url, app=None, skip_seed=False, keep=False, wait=90):
     url, port = rt.db_url(admin_url, db), rt.free_port()
     env = {k: v for k, v in os.environ.items() if k != "PG_ADMIN_URL"}
     env.update({"PORT": str(port), "DATABASE_URL": url})
+    env.update(rt.backend_secrets(be, env))  # random JWT_SECRET & co., or a backend that validates them does not start
     print(f"Database {db}; backend on port {port} …")
     rc, out = node_pg(["create", db], admin_url)
     print(out)

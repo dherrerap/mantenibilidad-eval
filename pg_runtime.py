@@ -5,7 +5,7 @@ free ports, readiness, killing a process tree on Windows and Linux, database nam
 
 Python standard library only. Nothing here is shell-specific: processes are started without a shell.
 """
-import json, os, re, shutil, signal, socket, subprocess, time
+import json, os, re, secrets, shutil, signal, socket, subprocess, time
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
@@ -53,6 +53,25 @@ def kill_tree(proc):
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+
+
+SECRET_NAME = re.compile(r"(SECRET|SIGNING_KEY|JWT_KEY)", re.I)
+
+
+def backend_secrets(backend, env=None):
+    """Random values for the secrets the backend needs to start: JWT_SECRET always, plus every variable of its .env.example whose
+    name says it is a secret (SESSION_SECRET, COOKIE_SECRET…), unless the environment already sets it. 64 characters, so that a
+    minimum length check (`JWT_SECRET must contain at least 32 characters`) passes. Nothing else of .env.example is copied: its
+    other URLs (replicas, other databases) would point the backend at services that do not exist here."""
+    env = env or {}
+    names = {"JWT_SECRET"}
+    ex = Path(backend) / ".env.example"
+    if ex.exists():
+        for line in ex.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = re.match(r"\s*(?:export\s+)?([A-Za-z_]\w*)\s*=", line)
+            if m and SECRET_NAME.search(m.group(1)):
+                names.add(m.group(1))
+    return {n: secrets.token_hex(32) for n in sorted(names) if not env.get(n)}
 
 
 def eval_db_name(run_id):

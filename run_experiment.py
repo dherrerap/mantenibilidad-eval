@@ -206,6 +206,7 @@ def acceptance(project, expdir, run_id, wait=90, domain="ecommerce"):
         backend_port = rt.free_port()
         env = {k: v for k, v in os.environ.items() if k != "PG_ADMIN_URL"}
         env.update({"PORT": str(backend_port), "DATABASE_URL": rt.build_url(user, password, "127.0.0.1", port, name)})
+        env.update(rt.backend_secrets(be, env))  # random JWT_SECRET & co., or a backend that validates them does not start
         result = run_backend_gate(be, env, backend_port, expdir, wait, domain)
         log = expdir / "backend.log"
         if log.exists():
