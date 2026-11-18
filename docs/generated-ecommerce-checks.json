@@ -1,0 +1,266 @@
+[
+  {
+    "level": "n1",
+    "base": "http://127.0.0.1:53117",
+    "passed": 20,
+    "total": 20,
+    "checks": [
+      {
+        "name": "catalog and initial PostgreSQL seed",
+        "ok": true
+      },
+      {
+        "name": "register two independent users",
+        "ok": true
+      },
+      {
+        "name": "duplicate registration returns 409",
+        "ok": true
+      },
+      {
+        "name": "incorrect credentials return 401",
+        "ok": true
+      },
+      {
+        "name": "login returns bearer tokens",
+        "ok": true
+      },
+      {
+        "name": "protected endpoints reject missing session",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 2 T-shirt totals 20",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 3 T-shirt totals 27",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 5 T-shirt totals 45",
+        "ok": true
+      },
+      {
+        "name": "combined quote totals 47",
+        "ok": true
+      },
+      {
+        "name": "invalid negative quantities rejected",
+        "ok": true
+      },
+      {
+        "name": "insufficient stock rolls back every product",
+        "ok": true
+      },
+      {
+        "name": "checkout persists pending order and discounts",
+        "ok": true
+      },
+      {
+        "name": "orders belong to authenticated user only",
+        "ok": true
+      },
+      {
+        "name": "state machine refuses skipping pending to shipped",
+        "ok": true
+      },
+      {
+        "name": "state machine advances pending to paid",
+        "ok": true
+      },
+      {
+        "name": "state machine refuses going back to pending",
+        "ok": true
+      },
+      {
+        "name": "state machine advances paid to shipped and persists",
+        "ok": true
+      },
+      {
+        "name": "buying the last two mugs leaves zero stock",
+        "ok": true
+      },
+      {
+        "name": "concurrent purchases cannot oversell",
+        "ok": true
+      }
+    ]
+  },
+  {
+    "level": "n2",
+    "base": "http://127.0.0.1:53149",
+    "passed": 20,
+    "total": 20,
+    "checks": [
+      {
+        "name": "catalog and initial PostgreSQL seed",
+        "ok": true
+      },
+      {
+        "name": "register two independent users",
+        "ok": true
+      },
+      {
+        "name": "duplicate registration returns 409",
+        "ok": true
+      },
+      {
+        "name": "incorrect credentials return 401",
+        "ok": true
+      },
+      {
+        "name": "login returns bearer tokens",
+        "ok": true
+      },
+      {
+        "name": "protected endpoints reject missing session",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 2 T-shirt totals 20",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 3 T-shirt totals 27",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 5 T-shirt totals 45",
+        "ok": true
+      },
+      {
+        "name": "combined quote totals 47",
+        "ok": true
+      },
+      {
+        "name": "invalid negative quantities rejected",
+        "ok": true
+      },
+      {
+        "name": "insufficient stock rolls back every product",
+        "ok": true
+      },
+      {
+        "name": "checkout persists pending order and discounts",
+        "ok": true
+      },
+      {
+        "name": "orders belong to authenticated user only",
+        "ok": true
+      },
+      {
+        "name": "state machine refuses skipping pending to shipped",
+        "ok": true
+      },
+      {
+        "name": "state machine advances pending to paid",
+        "ok": true
+      },
+      {
+        "name": "state machine refuses going back to pending",
+        "ok": true
+      },
+      {
+        "name": "state machine advances paid to shipped and persists",
+        "ok": true
+      },
+      {
+        "name": "buying the last two mugs leaves zero stock",
+        "ok": true
+      },
+      {
+        "name": "concurrent purchases cannot oversell",
+        "ok": true
+      }
+    ]
+  },
+  {
+    "level": "n3",
+    "base": "http://127.0.0.1:53184",
+    "passed": 20,
+    "total": 20,
+    "checks": [
+      {
+        "name": "catalog and initial PostgreSQL seed",
+        "ok": true
+      },
+      {
+        "name": "register two independent users",
+        "ok": true
+      },
+      {
+        "name": "duplicate registration returns 409",
+        "ok": true
+      },
+      {
+        "name": "incorrect credentials return 401",
+        "ok": true
+      },
+      {
+        "name": "login returns bearer tokens",
+        "ok": true
+      },
+      {
+        "name": "protected endpoints reject missing session",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 2 T-shirt totals 20",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 3 T-shirt totals 27",
+        "ok": true
+      },
+      {
+        "name": "volume discount: 5 T-shirt totals 45",
+        "ok": true
+      },
+      {
+        "name": "combined quote totals 47",
+        "ok": true
+      },
+      {
+        "name": "invalid negative quantities rejected",
+        "ok": true
+      },
+      {
+        "name": "insufficient stock rolls back every product",
+        "ok": true
+      },
+      {
+        "name": "checkout persists pending order and discounts",
+        "ok": true
+      },
+      {
+        "name": "orders belong to authenticated user only",
+        "ok": true
+      },
+      {
+        "name": "state machine refuses skipping pending to shipped",
+        "ok": true
+      },
+      {
+        "name": "state machine advances pending to paid",
+        "ok": true
+      },
+      {
+        "name": "state machine refuses going back to pending",
+        "ok": true
+      },
+      {
+        "name": "state machine advances paid to shipped and persists",
+        "ok": true
+      },
+      {
+        "name": "buying the last two mugs leaves zero stock",
+        "ok": true
+      },
+      {
+        "name": "concurrent purchases cannot oversell",
+        "ok": true
+      }
+    ]
+  }
+]
