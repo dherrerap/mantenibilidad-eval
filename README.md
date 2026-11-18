@@ -101,6 +101,7 @@ Details in [docs/manual-review.md](docs/manual-review.md).
 | `manual_template.py` | Generates the guide and draft for the manual review. |
 | `relational_schema.py`, `relational_analysis.py` | Extract the relational schema from SQL files and Sequelize migrations/models, and measure the data model criteria (including the ER comparison). |
 | `pg_analysis.py`, `pg_schema.js`, `pg_seed.py`, `pg_runtime.py` | Analyze the data model on a real PostgreSQL database: `--postgres` in `cli.py evaluate` (`PG_ADMIN_URL`, or a temporary server). See `docs/methodology.md`. |
+| `js/`, `tests/js/`, `tests/golden/` | JavaScript port in progress (see `docs/js-migration.md`): the relational modules, checked call by call against the Python version (`npm run test:js`). Not used by the evaluator yet. |
 | `pg_temp.py` | Disposable PostgreSQL server for `--postgres` without `PG_ADMIN_URL`: a cluster in a temporary folder, on 127.0.0.1 and a free port, deleted at the end. `python pg_temp.py` checks it. |
 | `token_usage.py` | Records the tokens the generator agent consumed per app and phase (initial, r2) from Claude Code / Codex transcripts or outputs, in `token-usage/<app>.json`. See `docs/generating-apps.md`. |
 | `judge.py` | A model different from the generator decides the pending design-judgment criteria (`--judge` in `cli.py evaluate`). See `docs/manual-review.md`. |
