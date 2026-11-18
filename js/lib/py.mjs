@@ -2,11 +2,23 @@
 // Python one: truthiness, str()/repr(), round() (half to even on the exact binary value), ordering of mixed values, re.match
 // (anchored at the start), re.findall, and a cache of compiled regular expressions.
 
-/** A plain object (Python dict), not an array or null. */
-export const isDict = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+/** A Python float. JSON and JavaScript numbers do not tell 1.0 from 1, but Python prints them differently ("1.0" vs "1"), so a value
+ *  that is a float in Python and is printed with str()/repr() is wrapped in PyFloat (F(x)). It serializes to JSON as a number. */
+export class PyFloat extends Number {}
+export const F = (x) => (x === null || x === undefined ? null : x instanceof PyFloat ? x : new PyFloat(Number(x)));
+/** The primitive value of a number that may be a PyFloat. */
+export const num = (x) => (x instanceof Number ? x.valueOf() : x);
+
+/** json.loads: like JSON.parse, but a number written with a decimal point or an exponent becomes a PyFloat, as Python's json makes it
+ *  a float (so 5.0 in rubric.json prints "5.0" and 5 prints "5"). Uses the source text of each value (Node.js ≥ 21). */
+export const loadJson = (text) => JSON.parse(text, (k, v, ctx) => (typeof v === "number" && ctx && /[.eE]/.test(ctx.source) ? new PyFloat(v) : v));
+
+/** A plain object (Python dict), not an array, a PyFloat or null. */
+export const isDict = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && !(v instanceof Number);
 
 /** Python truthiness: None, False, 0, "", [] and {} are false. */
 export function truthy(v) {
+  if (v instanceof Number) v = v.valueOf();
   if (v === null || v === undefined || v === false || v === 0 || v === "" || Number.isNaN(v)) return false;
   if (Array.isArray(v)) return v.length > 0;
   if (isDict(v)) return Object.keys(v).length > 0;
@@ -36,6 +48,13 @@ function reprStr(s) {
   return q + out + q;
 }
 
+/** repr() of a Python float: 1.0, 0.5, 1e-05, 1e+16. */
+export function floatRepr(n) {
+  n = num(n);
+  if (Number.isInteger(n) && Math.abs(n) < 1e16) return String(n) + ".0";
+  return reprNum(n);
+}
+
 function reprNum(n) {
   if (Number.isInteger(n) && Math.abs(n) < 1e16) return String(n);
   if (n === Infinity) return "inf";
@@ -58,6 +77,7 @@ export function repr(v) {
   if (v === null || v === undefined) return "None";
   if (v === true) return "True";
   if (v === false) return "False";
+  if (v instanceof Number) return floatRepr(v);  // a PyFloat (or a copy of one that lost its class)
   if (typeof v === "number") return reprNum(v);
   if (typeof v === "string") return reprStr(v);
   if (Array.isArray(v)) return "[" + v.map(repr).join(", ") + "]";
@@ -81,17 +101,56 @@ function exactDecimal(x) {
   return [mant * 5n ** BigInt(-e), -e];
 }
 
+function roundScaled(x, n) {
+  const [D, k] = exactDecimal(x);
+  if (k <= n) return D * 10n ** BigInt(n - k);
+  const p = 10n ** BigInt(k - n), r = D % p, half = p / 2n;
+  let q = D / p;
+  if (r > half || (r === half && q % 2n === 1n)) q += 1n;
+  return q;
+}
+
+/** format(x, ".nf"): fixed notation, half to even on the exact binary value (Python), not toFixed's "larger on a tie". */
+export function fixed(x, n) {
+  x = num(x);
+  if (Number.isNaN(x)) return "nan";
+  if (!Number.isFinite(x)) return x > 0 ? "inf" : "-inf";
+  const neg = x < 0 || Object.is(x, -0);
+  const q = x === 0 ? 0n : roundScaled(Math.abs(x), n);
+  const s = q.toString().padStart(n + 1, "0");
+  const out = n ? s.slice(0, s.length - n) + "." + s.slice(s.length - n) : s;
+  return (neg ? "-" : "") + out;
+}
+
+/** format(x, "g"): 6 significant digits, trailing zeros removed, scientific below 1e-4 and from 1e6. */
+export function gfmt(x) {
+  x = num(x);
+  if (x === 0) return Object.is(x, -0) ? "-0" : "0";
+  if (!Number.isFinite(x)) return Number.isNaN(x) ? "nan" : x > 0 ? "inf" : "-inf";
+  const [m, e] = x.toExponential(5).split("e");
+  const exp = Number(e);
+  const strip = (t) => (t.includes(".") ? t.replace(/0+$/, "").replace(/\.$/, "") : t);
+  if (exp >= -4 && exp < 6) return strip(fixed(x, 5 - exp));
+  return strip(m) + "e" + (exp < 0 ? "-" : "+") + String(Math.abs(exp)).padStart(2, "0");
+}
+
+/** str.format for the templates of rubric.json: {name} and {name:.Nf} / {name:g}. */
+export function format(tpl, vars) {
+  return tpl.replace(/\{(\w+)(?::([^}]*))?\}/g, (_, k, spec) => {
+    const v = vars[k];
+    if (!spec) return str(v);
+    const f = /^\.(\d+)f$/.exec(spec);
+    if (f) return fixed(v, Number(f[1]));
+    if (spec === "g") return gfmt(v);
+    throw new Error(`format spec not supported: ${spec}`);
+  });
+}
+
 /** Python round(x, n): half to even on the exact binary value of x (round(0.125, 2) == 0.12, round(2.675, 2) == 2.67). */
 export function pyRound(x, n = 0) {
+  x = num(x);
   if (!Number.isFinite(x) || x === 0) return x;
-  const [D, k] = exactDecimal(x);
-  let q = D;
-  if (k > n) {
-    const p = 10n ** BigInt(k - n), r = D % p, half = p / 2n;
-    q = D / p;
-    if (r > half || (r === half && q % 2n === 1n)) q += 1n;
-  } else q = D * 10n ** BigInt(n - k);
-  const v = Number(`${q}e-${n}`);
+  const v = Number(`${roundScaled(Math.abs(x), n)}e-${n}`);
   return x < 0 ? -v : v;
 }
 
@@ -107,6 +166,7 @@ export function cmp(a, b) {
     }
     return a.length - b.length;
   }
+  a = num(a); b = num(b);
   if (typeof a === "number" && typeof b === "number") return a < b ? -1 : a > b ? 1 : 0;
   if (typeof a === "boolean" || typeof b === "boolean") return cmp(Number(a), Number(b));
   const sa = String(a), sb = String(b);

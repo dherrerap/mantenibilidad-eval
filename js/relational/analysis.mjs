@@ -9,7 +9,7 @@
 //   C6  parseEr, loadEr, compareEr                         (Mermaid erDiagram vs. the schema)
 import fs from "node:fs";
 import path from "node:path";
-import { cmp, finditer, get, match, pyRound, search, setEq, sorted, splitlines, str, truthy } from "../lib/py.mjs";
+import { F, cmp, finditer, get, match, pyRound, search, setEq, sorted, splitlines, str, truthy } from "../lib/py.mjs";
 import { IDENT, QNAME, fold, identName, qnameTable, singular, tableForModel, typeFamily } from "./schema.mjs";
 
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -300,7 +300,7 @@ export function constraintStats(schema, R) {
       if (nat.has(name.toLowerCase()) && !uniq.has(name)) naturalKeys.push(`${n}.${name}`);
     }
   }
-  return { total, constrained, pct: total ? (100.0 * constrained) / total : 0.0, float_money: sortStr(floatMoney), natural_keys_without_unique: sortStr(naturalKeys) };
+  return { total, constrained, pct: F(total ? (100.0 * constrained) / total : 0.0), float_money: sortStr(floatMoney), natural_keys_without_unique: sortStr(naturalKeys) };
 }
 
 /** Column lists an index can serve, in index order: primary key, unique constraints and indexes. */
@@ -393,7 +393,7 @@ export function indexAnalysis(schema, queries, maxUnindexedPct, modelTables = nu
         if (a !== b && !truthy(ua) && ka.length < kb.length && ka.every((x, i) => kb[i] === x)) redundant.push(`${n}: ${a} is a prefix of ${b}`);
   }
   const unused = Object.entries(T).flatMap(([n, t]) => t.indexes.filter((i) => get(i, "scans") === 0 && !truthy(get(i, "unique"))).map((i) => `${n}.${i.name}`));
-  return { fks_without_index: sortStr(fkUnindexed), unindexed_queries: unindexed, distinct_queries: shapes.size, unindexed_queries_pct: pyRound(pctUn, 1),
+  return { fks_without_index: sortStr(fkUnindexed), unindexed_queries: unindexed, distinct_queries: shapes.size, unindexed_queries_pct: F(pyRound(pctUn, 1)),
     unresolved_queries: unresolved, dynamic_queries: dynamic, redundant, unused, ok: !fkUnindexed.length && pctUn <= maxUnindexedPct };
 }
 

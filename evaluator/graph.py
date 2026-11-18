@@ -17,7 +17,9 @@ def cliques(m):
     of size ≥ 2), computed on the import graph. Compared against the cycles reported by dependency-cruiser."""
     g = {}
     for mod in m["graph"].get("modules", []):
-        g.setdefault(mod["source"], set()).update(d["to"] for d in mod["deps"] if d["local"] and d["to"] != mod["source"])
+        # neighbours in import order (a dict, not a set: a set of strings iterates in a hash order that changes between runs, and the
+        # order in which Tarjan's algorithm visits them decides the order of the cliques)
+        g.setdefault(mod["source"], {}).update(dict.fromkeys(d["to"] for d in mod["deps"] if d["local"] and d["to"] != mod["source"]))
     idx, low, onst, st, out, n = {}, {}, set(), [], [], [0]
 
     def sc(v):

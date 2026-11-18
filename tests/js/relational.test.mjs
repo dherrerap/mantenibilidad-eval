@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as rs from "../../js/relational/schema.mjs";
 import * as ra from "../../js/relational/analysis.mjs";
-import { pyRound, repr } from "../../js/lib/py.mjs";
+import { isDict, loadJson, num, pyRound, repr } from "../../js/lib/py.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FN = {
@@ -40,14 +40,14 @@ function sameJson(a, b, where = "$") {
     assert.ok(Array.isArray(a) && Array.isArray(b), `${where}: array vs non-array`);
     assert.equal(a.length, b.length, `${where}: length ${a.length} vs ${b.length}`);
     a.forEach((x, i) => sameJson(x, b[i], `${where}[${i}]`));
-  } else if (a && typeof a === "object" && b && typeof b === "object") {
+  } else if (isDict(a) && isDict(b)) {
     assert.deepEqual(Object.keys(a), Object.keys(b), `${where}: keys`);
     for (const k of Object.keys(a)) sameJson(a[k], b[k], `${where}.${k}`);
-  } else assert.equal(a, b, `${where}`);
+  } else assert.equal(num(a), num(b), `${where}`);  // a PyFloat of the recorded result is compared by value
 }
 
 function run(file) {
-  const g = JSON.parse(fs.readFileSync(file, "utf8"));
+  const g = loadJson(fs.readFileSync(file, "utf8"));  // the arguments keep Python's int/float distinction
   const fix = (v) => (v && typeof v === "object" && !Array.isArray(v) && v.$R ? g.R : Array.isArray(v) ? v.map(fix) : v);
   for (const [i, c] of g.calls.entries()) {
     const fn = FN[c.fn];
