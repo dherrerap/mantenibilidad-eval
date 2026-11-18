@@ -68,13 +68,15 @@ def run_package(d, files, work, test_cmd=None):
         why = "time limit reached" if rc == 124 else ((se or so).strip()[-400:] or f"exit {rc}")
         return {"ok": False, "error": why}
     r = json.loads(report.read_text(encoding="utf-8"))
-    counts = Counter(); survivors = []
+    counts = Counter(); undetected = []
     for fname, f in (r.get("files") or {}).items():
         for mu in f.get("mutants", []):
             counts[mu["status"]] += 1
-            if mu["status"] in UNDETECTED and len(survivors) < 20:
+            if mu["status"] in UNDETECTED:
                 line = ((mu.get("location") or {}).get("start") or {}).get("line")
-                survivors.append(f"{fname}:{line} {mu.get('mutatorName')} ({mu['status']})")
+                undetected.append((fname, line or 0, str(mu.get("mutatorName")), mu["status"], line))
+    # the report lists the mutants in the order the workers finished them, which changes between runs: sorted, so the 20 kept are stable
+    survivors = [f"{fn}:{line} {mut} ({st})" for fn, _, mut, st, line in sorted(undetected)[:20]]
     return {"ok": True, "mutants": sum(counts.values()), "statuses": dict(counts), "score": score(counts), "survivors": survivors}
 
 

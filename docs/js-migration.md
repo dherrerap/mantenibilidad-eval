@@ -23,6 +23,15 @@ the same JSON as the Python one**, so that results stay comparable across the mi
    because Python dicts are ordered and the reports are built from them.
 3. When the Python code changes, record again, then fix the port until the JavaScript tests pass.
 
+The collectors are checked end to end instead, because they run tools. `python tests/golden/record_collect.py` runs Python's
+`collect()` on every app of `apps/` and on the fixture apps, with the reference date fixed. It records the `metrics.json` it
+produced and every network answer it received: `npm view`, the lockfile npm resolved, OSV and endoflife.date.
+`npm run test:js:collect` then runs the JavaScript `collect()` on the same apps with those answers replayed. The tools run again:
+ast_metrics.js, dependency-cruiser, jscpd, Spectral, Knip and ESLint, plus c8 and StrykerJS on the fixture whose tests run. The
+resulting metrics must be the same field by field: same keys in the same order, same values, and the same int/float kind. Only the
+time of the run and the test runner's raw output (it carries durations) are left out. It is slow, so it is not part of
+`npm run test:js`. Its records stay in `results/_golden/collect/`, since they hold absolute paths and the generated apps.
+
 `js/lib/py.mjs` holds the Python semantics the port relies on:
 - truthiness (`[]` and `{}` are false);
 - the int/float distinction, which JSON and JavaScript numbers lose but Python prints (`50.0` against `50`). A float that Python
@@ -33,7 +42,10 @@ the same JSON as the Python one**, so that results stay comparable across the mi
 - `str()` and `repr()` (`True`, `None`, `1e-05`);
 - `round()`, which rounds half to even on the exact binary value;
 - ordering of mixed values;
-- `re.match` (anchored at the start), `re.findall` and `splitlines`.
+- `re.match` (anchored at the start), `re.findall` and `splitlines`;
+- `read_text` (`readText`), which reads in text mode: `
+` becomes `
+`. Two of the ecommerce apps have documents with CRLF.
 
 The port also sorts folder listings without regard to case on Windows, as `WindowsPath` does.
 
@@ -46,19 +58,26 @@ The port also sorts folder listings without regard to case on Windows, as `Windo
 | `evaluator/points/*` (the 11 points) | `js/evaluator/points/*.mjs` | ✔ every recorded call of each point. |
 | `evaluator/criteria.py`, `scoring.py`, `ascmm.py` (profile), `supplementary.py`, `graph.py`, `routes.py` | `js/evaluator/*.mjs` | ✔ `evaluate_profile` and `risk_summary` on the 3 ecommerce apps, plus every call from the test suite. |
 | `evaluator/outputs.py`, `dashboard.py`, `sensitivity.py`, the Markdown of `ascmm.py`, the summary part of `token_usage.py` | `js/evaluator/{outputs,dashboard,sensitivity,ascmm,tokens}.mjs` | ✔ the 11 files of every recorded `write_outputs`, the same text as Python's. On the 3 ecommerce apps the files also come out the same from `metrics.json` through the JS scoring. Also every recorded call of the sensitivity and the ASCMM comparison. |
-| `evaluator/collectors/*` (tools run as subprocesses) | — | pending |
+| `evaluator/collectors/*` (ast, schema, ER, dependency graph, packages with npm/OSV/endoflife, contract and Spectral, tests and coverage, mutation, jscpd, Knip, ESLint, layers, README, artifacts) | `js/evaluator/collectors/*.mjs`, `js/evaluator/sys.mjs` | ✔ the same `metrics.json` as Python on the 3 ecommerce apps and the 6 fixture apps. That includes `--run-tests --mutation` on `mutation_app`, run on a fresh copy, because the tests write into the app. |
 | `evaluate.py`, `cli.py`, `manual_template.py`, `judge.py`, `token_usage.py` | — | pending |
 | `pg_*.py`, `acceptance_check.py`, `contract_conformance.py`, `run_experiment.py` | — | pending |
 
 **Newlines.** Python's `Path.write_text` turns `
-` into `
+` into `
+
 ` on Windows, so profile.md and the JSON files have CRLF there. The
-JavaScript version writes LF on every platform. The CSV files keep their `
+JavaScript version writes LF on every platform. The CSV files keep their `
+
 ` in both, because Python opens them with `newline=""`.
 
-**One change to Python came out of the port.** `graph.cliques` visited each module's neighbours from a `set`. The order of a set of
-strings is a hash order that changes between runs, so the order of the cliques in the evidence was not reproducible. The neighbours
-now keep their import order in both versions.
+**Two changes to Python came out of the port**, both for reproducibility:
+- `graph.cliques` visited each module's neighbours from a `set`. The order of a set of strings is a hash order that changes
+  between runs, so the order of the cliques in the evidence was not reproducible. The neighbours now keep their import order.
+- StrykerJS lists the mutants in the order its workers finished them, so the 20 surviving mutants kept as evidence changed between
+  runs. They are now sorted by file, line and mutator before being cut.
+
+**Test runner.** The JavaScript `sh` does not pass `NODE_TEST_CONTEXT` on to the commands it runs. Under `node --test`, that variable
+made the app's own `node --test` report to the evaluator's runner, without running its suite or writing coverage.
 
 The Python evaluator does not call the ported modules yet. Each one is switched over once everything that depends on it has
 been ported as well.

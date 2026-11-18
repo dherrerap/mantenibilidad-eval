@@ -1,3 +1,4 @@
+import { readFileSync as fsRead } from "node:fs";
 // py.mjs — The few Python semantics the port must reproduce exactly, so that the JavaScript evaluator returns the same JSON as the
 // Python one: truthiness, str()/repr(), round() (half to even on the exact binary value), ordering of mixed values, re.match
 // (anchored at the start), re.findall, and a cache of compiled regular expressions.
@@ -263,3 +264,6 @@ export function csvRow(fields) {
   if (out.length === 1 && out[0] === "") out[0] = '""';  // csv writes a lone empty field as "" so the row is not blank
   return out.join(",") + "\r\n";
 }
+
+/** Path.read_text(encoding="utf-8"): text mode, so "\r\n" and "\r" become "\n" (universal newlines), as Python reads every file. */
+export const readText = (p) => fsRead(p, "utf8").replace(/\r\n?/g, "\n");

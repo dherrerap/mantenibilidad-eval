@@ -4,7 +4,8 @@
 	"private": true,
 	"description": "Automation of the maintainability evaluation framework",
 	"scripts": {
-		"test:js": "node --test \"tests/js/*.test.mjs\""
+		"test:js": "node --test \"tests/js/*.test.mjs\"",
+		"test:js:collect": "node --test tests/js/collect.slow.mjs"
 	},
 	"dependencies": {
 		"@stoplight/prism-cli": "5.14.2",

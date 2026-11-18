@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { F, floatRepr, loadJson, num, sorted, str } from "../lib/py.mjs";
+import { readText, F, floatRepr, loadJson, num, sorted, str } from "../lib/py.mjs";
 
 export const HERE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");  // repository root
 export const RUBRIC = loadJson(fs.readFileSync(path.join(HERE, "rubric.json"), "utf8"));  // floats stay floats, as in Python
@@ -25,7 +25,7 @@ export const fstr = (x) => (x === null || x === undefined ? "None" : typeof x ==
 /** File helpers the points need (the error middleware's file, the design documents). The differential test replaces them with
  *  what the Python run read, since the apps of the test suite live in temporary folders. */
 export const appFs = {
-  readText(app, rel) { return fs.readFileSync(path.join(app, rel), "utf8"); },
+  readText(app, rel) { return readText(path.join(app, rel)); },
   designText(app) {
     if (!app) return "";
     const docs = path.join(app, "docs");
@@ -42,7 +42,7 @@ export const appFs = {
     try { if (!fs.statSync(app).isDirectory()) return ""; } catch { return ""; }
     walk(docs);
     const key = (p) => path.relative(app, p).split(path.sep).map((x) => (process.platform === "win32" ? x.toLowerCase() : x));
-    return sorted(out, key).map((p) => { try { return fs.readFileSync(p, "utf8"); } catch { return null; } }).filter((t) => t !== null).join("\n");
+    return sorted(out, key).map((p) => { try { return readText(p); } catch { return null; } }).filter((t) => t !== null).join("\n");
   },
 };
 

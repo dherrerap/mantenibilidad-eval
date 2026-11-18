@@ -9,7 +9,7 @@
 //   C6  parseEr, loadEr, compareEr                         (Mermaid erDiagram vs. the schema)
 import fs from "node:fs";
 import path from "node:path";
-import { F, cmp, finditer, get, match, pyRound, search, setEq, sorted, splitlines, str, truthy } from "../lib/py.mjs";
+import { F, cmp, finditer, readText, get, match, pyRound, search, setEq, sorted, splitlines, str, truthy } from "../lib/py.mjs";
 import { IDENT, QNAME, fold, identName, qnameTable, singular, tableForModel, typeFamily } from "./schema.mjs";
 
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -93,7 +93,6 @@ const sortNames = (names) => sorted(names, (n) => (WIN ? n.toLowerCase() : n));
 const listDir = (d) => { try { return sortNames(fs.readdirSync(d)); } catch { return []; } };
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
-const readText = (p) => fs.readFileSync(p, "utf8");
 
 /** docs/<label> of the app, matched case-insensitively (docs/R2, docs/r2), or null. */
 export function versionDir(app, label, docs = "docs") {
