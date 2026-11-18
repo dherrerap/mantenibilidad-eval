@@ -37,6 +37,20 @@ runs on one copy and the JavaScript one on the other, and every file they write 
 `evaluate rescore`, `manual_template`, `dv8_metrics` (when DV8 is installed), `evaluate aggregate` (comparison.csv, comparison.md,
 sensitivity.json) and `evaluate run --offline` on a fixture app. Only the time of the run is aligned before the comparison.
 
+`npm run test:js:cli` does the same for the rest of the command line:
+- `cli report`;
+- `cli evaluate --rescore` on the whole batch, which also runs rescore, aggregate and report;
+- `cli evaluate` from scratch on a fixture app;
+- the judge, on every run;
+- `token_usage scan`, `show` and `record`.
+
+The judge runs with a deterministic stand-in model (`tests/js/fake_judge.mjs`). Its answers depend on the SHA-256 of each prompt and
+on how many times that prompt was asked, so both versions get the same votes only if they send the same prompts in the same order.
+`judge.json` must then be identical, except its date: the prompts' SHA-256, the decisions (non-unanimous ones and "I don't know"
+votes included) and the audit sample. Python picks that sample with `random.Random(seed).shuffle`, so `js/lib/pyrandom.mjs`
+reimplements CPython's Mersenne Twister, its str seeding and its `shuffle`. Python's `report.md` is compared without its
+"Generated:" line and its Environment section, which name the moment and the interpreter.
+
 `js/lib/py.mjs` holds the Python semantics the port relies on:
 - truthiness (`[]` and `{}` are false);
 - the int/float distinction, which JSON and JavaScript numbers lose but Python prints (`50.0` against `50`). A float that Python
@@ -67,7 +81,7 @@ The port also sorts folder listings without regard to case on Windows, as `Windo
 | `evaluator/outputs.py`, `dashboard.py`, `sensitivity.py`, the Markdown of `ascmm.py`, the summary part of `token_usage.py` | `js/evaluator/{outputs,dashboard,sensitivity,ascmm,tokens}.mjs` | ✔ the 11 files of every recorded `write_outputs`, the same text as Python's. On the 3 ecommerce apps the files also come out the same from `metrics.json` through the JS scoring. Also every recorded call of the sensitivity and the ASCMM comparison. |
 | `evaluator/collectors/*` (ast, schema, ER, dependency graph, packages with npm/OSV/endoflife, contract and Spectral, tests and coverage, mutation, jscpd, Knip, ESLint, layers, README, artifacts) | `js/evaluator/collectors/*.mjs`, `js/evaluator/sys.mjs` | ✔ the same `metrics.json` as Python on the 3 ecommerce apps and the 6 fixture apps. That includes `--run-tests --mutation` on `mutation_app`, run on a fresh copy, because the tests write into the app. |
 | `evaluate.py` (run, rescore, aggregate), `evaluator/pipeline.py`, `manual_template.py`, `dv8_metrics.py` | `js/evaluate.mjs`, `js/evaluator/pipeline.mjs`, `js/manual_template.mjs`, `js/dv8_metrics.mjs` | ✔ the same files as Python on every run of `results/` (rescore, manual review templates, DV8, comparison) and for `run --offline` on a fixture app. |
-| `cli.py`, `judge.py`, `token_usage.py` | — | pending |
+| `cli.py` (doctor, evaluate, report), `judge.py`, `token_usage.py`, `pg_temp.py` | `js/cli.mjs`, `js/judge.mjs`, `js/token_usage.mjs`, `js/pg_temp.mjs` | ✔ the same files and judge.json as Python (see `npm run test:js:cli`). `js/cli.mjs` still runs `pg_analysis.py` for `--postgres` until it is ported. |
 | `pg_*.py`, `acceptance_check.py`, `contract_conformance.py`, `run_experiment.py` | — | pending |
 
 **Newlines.** Python's `Path.write_text` turns `
@@ -83,6 +97,10 @@ JavaScript version writes LF on every platform. The CSV files keep their `
   between runs, so the order of the cliques in the evidence was not reproducible. The neighbours now keep their import order.
 - StrykerJS lists the mutants in the order its workers finished them, so the 20 surviving mutants kept as evidence changed between
   runs. They are now sorted by file, line and mutator before being cut.
+
+**A third change to Python**: `judge.py` passed `--cmd` through `shlex.split(posix=False)`, which keeps the quotes of a quoted path.
+A `--cmd` such as `"C:\Program Files\nodejs\node.exe" judge.mjs` therefore reached Windows with its quotes and failed ("Access is
+denied"). The quotes are now removed, as the JavaScript version does, and a test covers it.
 
 **Test runner.** The JavaScript `sh` does not pass `NODE_TEST_CONTEXT` on to the commands it runs. Under `node --test`, that variable
 made the app's own `node --test` report to the evaluator's runner, without running its suite or writing coverage.

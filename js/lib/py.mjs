@@ -272,3 +272,12 @@ export function csvRow(fields) {
 
 /** Path.read_text(encoding="utf-8"): text mode, so "\r\n" and "\r" become "\n" (universal newlines), as Python reads every file. */
 export const readText = (p) => fsRead(p, "utf8").replace(/\r\n?/g, "\n");
+
+/** len(s) of a Python str: code points, not UTF-16 units (an emoji counts 1, not 2). */
+export const pyLen = (s) => { let n = 0; for (const _ of s) n++; return n; };
+/** s[a:b] of a Python str (code points; b may be omitted). Plain slice when the string has no astral characters. */
+export function pySlice(s, a, b) {
+  if (!/[\ud800-\udfff]/.test(s)) return s.slice(a, b);
+  const cps = Array.from(s);
+  return cps.slice(a, b).join("");
+}

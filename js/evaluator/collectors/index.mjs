@@ -5,18 +5,14 @@ import path from "node:path";
 import { get, truthy } from "../../lib/py.mjs";
 import * as ra from "../../relational/analysis.mjs";
 import * as rs from "../../relational/schema.mjs";
-import { RUBRIC } from "../common.mjs";
+import { RUBRIC, nowIso } from "../common.mjs";
+
+export { nowIso };
 import { rel, walk } from "../sys.mjs";
 import { classifyLayers, inventoryArtifacts, readSqlFiles, readmeText } from "./docs.mjs";
 import { analyzePackages, fetchEol, postgresImages } from "./packages.mjs";
 import { runMutation, runTests, staticTests } from "./testing.mjs";
 import { findContracts, runAst, runContract, runDepcruise, runDuplication, runKnip, runLint } from "./tools.mjs";
-
-/** Local ISO date and time to the second, as Python's datetime.now().isoformat(timespec="seconds"). */
-export function nowIso(d = new Date()) {
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
 
 /** opts: {as_of, offline, run_tests, test_cmd, mutation, layers}. */
 export async function collect(app, out, opts) {

@@ -51,3 +51,10 @@ export const MODEL_WARNING = "The generator model was not recorded (`--model`). 
   "a model, compared with other models or reproduced.";
 /** True when the generator model was not given (null, empty, n/a, unknown…). */
 export const modelMissing = (model) => model === null || model === undefined || MISSING_MODEL_VALUES.has(str(model).trim().toLowerCase());
+
+/** Local ISO date and time to the second, as Python's datetime.now().isoformat(timespec="seconds"). */
+export function nowIso(d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+

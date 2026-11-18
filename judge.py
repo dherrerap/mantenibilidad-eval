@@ -78,7 +78,9 @@ def find_claude():
 
 def judge_command(cmd_text, model):
     """argv of the judge command. The default command is resolved to the CLI that find_claude locates."""
-    cmd = [x.replace("{model}", model) for x in shlex.split(cmd_text, posix=False)]
+    # posix=False keeps a Windows path's backslashes but also its quotes: "C:\Program Files\…\node.exe" must reach the OS unquoted
+    unquote = lambda t: t[1:-1] if len(t) > 1 and t[0] == t[-1] and t[0] in "\"'" else t  # noqa: E731
+    cmd = [unquote(x).replace("{model}", model) for x in shlex.split(cmd_text, posix=False)]
     if cmd_text == DEFAULT_CMD and not shutil.which(cmd[0]):
         exe = find_claude()
         if exe:

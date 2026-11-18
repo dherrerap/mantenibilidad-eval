@@ -2670,6 +2670,9 @@ class TestJudgeEvidencePriority(unittest.TestCase):
                 cmd = judge.judge_command(judge.DEFAULT_CMD, "claude-opus-5-5")
         self.assertIn("claude-code-2.1.10-x", cmd[0]); self.assertEqual(cmd[1:], ["-p", "--model", "claude-opus-5-5"])
         self.assertEqual(judge.judge_command("my-judge {model}", "m"), ["my-judge", "m"])  # a custom command is left alone
+        # a quoted Windows path reaches the OS without its quotes (shlex posix=False keeps them, and CreateProcess then fails)
+        self.assertEqual(judge.judge_command(r'"C:\Program Files\nodejs\node.exe" j.mjs --model {model}', "m"),
+                         [r"C:\Program Files\nodejs\node.exe", "j.mjs", "--model", "m"])
 
 
 class TestDataModelPolymorphicAndTypes(unittest.TestCase):
