@@ -31,8 +31,8 @@ Normalization (so that Claude and Codex are comparable):
 USAGE
   python token_usage.py scan [--apps-dir apps]          lists the agent sessions found on this machine, the app and phase
                                                         each one seems to belong to, and the `record` command to save it
-  python token_usage.py record apps/claude-n1 --phase initial --from <transcript.jsonl> [<more files> …] [--with-subagents]
-  python token_usage.py record apps/claude-n1 --phase r2 --input 1200000 --output 45000 --note "from /cost"
+  node js/token_usage.mjs record apps/claude-n1 --phase initial --from <transcript.jsonl> [<more files> …] [--with-subagents]
+  node js/token_usage.mjs record apps/claude-n1 --phase r2 --input 1200000 --output 45000 --note "from /cost"
   python token_usage.py show [apps/claude-n1 …]
 """
 import argparse, datetime, json, os, re, sys
@@ -360,7 +360,7 @@ def cmd_scan(a):
         if app:
             groups.setdefault((app, phase), []).append(s["file"])
     for (app, phase), fs in sorted(groups.items()):
-        print(f'python token_usage.py record {Path(a.apps_dir) / app} --phase {phase} --from ' + " ".join(f'"{f}"' for f in fs))
+        print(f'node js/token_usage.mjs record {Path(a.apps_dir) / app} --phase {phase} --from ' + " ".join(f'"{f}"' for f in fs))
     return 0
 
 

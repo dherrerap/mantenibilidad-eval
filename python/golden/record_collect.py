@@ -4,7 +4,7 @@ record_collect.py — Golden cases for the JavaScript port of the collectors: th
 app, plus every network answer it received (npm registry, the lockfile npm resolved, OSV, endoflife.date), so that the JavaScript
 collect() can run on the same app with the same answers and be compared field by field.
 
-  python tests/golden/record_collect.py [app …]      (default: every folder of apps/ and the fixture apps of tests/fixtures/)
+  python python/golden/record_collect.py [app …]      (default: every folder of apps/ and the fixture apps of tests/fixtures/)
 
 Writes results/_golden/collect/<name>.json (local only: absolute paths, and the generated apps are not versioned). The tools
 themselves (ast_metrics.js, dependency-cruiser, jscpd, Spectral, Knip, ESLint) are run again by the JavaScript side: they are
@@ -15,7 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 HERE = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE / "python"))
 os.chdir(HERE)
 import evaluator.collectors as col  # noqa: E402
 from evaluator.collectors import packages as pk, osv  # noqa: E402

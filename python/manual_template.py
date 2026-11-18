@@ -20,7 +20,7 @@ MODEL_LINES = 70  # lines of each model file that are copied into the guide
 
 def load(res):
     m = json.loads((res / "metrics.json").read_text(encoding="utf-8"))
-    rub = json.loads((Path(__file__).resolve().parent / "rubric.json").read_text(encoding="utf-8"))
+    rub = json.loads((Path(__file__).resolve().parent.parent / "rubric.json").read_text(encoding="utf-8"))
     return m, rub
 
 

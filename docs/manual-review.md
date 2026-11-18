@@ -16,7 +16,7 @@ resolves them. This page explains how to do it and how the sources are combined.
 
 ## Procedure
 
-1. Run `python cli.py evaluate`. For each app the following are created in `results/<app>/`:
+1. Run `node js/cli.mjs evaluate`. For each app the following are created in `results/<app>/`:
    - `manual_review.md`: statement, evidence (tables, functions with high fan-out, model code) and a suggestion
      per criterion.
    - `manual_review.draft.json`: the same structure with `ok: null`.
@@ -24,7 +24,7 @@ resolves them. This page explains how to do it and how the sources are combined.
    could not see because the foreign key is created in a raw SQL string built at run time).
 3. Copy the draft to `manual_review.json` in the same folder and replace `ok` with `true` or `false`. The `note` field
    is recorded as the criterion's value: use it to justify.
-4. Run `python cli.py evaluate --rescore` (or `python evaluate.py rescore results/<run>`). It does not collect again: it re-scores
+4. Run `node js/cli.mjs evaluate --rescore` (or `node js/evaluate.mjs rescore results/<run>`). It does not collect again: it re-scores
    from `metrics.json` with the review, and the range narrows or closes. The report lists what remains.
 
 Example `manual_review.json`:
@@ -45,11 +45,11 @@ To get a result and not a range without reviewing each criterion by hand, a lang
 criteria: layers C2, cohesion C3, data model C1 to C6 and contracts C4 (only those that remain pending).
 
 ```
-python cli.py evaluate --judge claude-opus-5-5          # inside the flow
-python judge.py results/<run> --model claude-opus-5-5   # separately, on an already evaluated run
+node js/cli.mjs evaluate --judge claude-opus-5-5          # inside the flow
+node js/judge.mjs results/<run> --model claude-opus-5-5   # separately, on an already evaluated run
 ```
 
-- **A model different from the generator.** `judge.py` refuses to run if the judge is the same model that generated the app (`meta.json`;
+- **A model different from the generator.** `js/judge.mjs` refuses to run if the judge is the same model that generated the app (`meta.json`;
   names compared without provider prefix, date or bracket suffixes, and an alias such as `sonnet` matches any Sonnet), and also when the
   generator model was not recorded, because then it cannot be checked. `--allow-same-model` overrides both and it is recorded in `judge.json`.
 - **Votes.** Each criterion is asked `--votes` times (3 by default) and the majority wins. An "I don't know" does not count; with no majority the
@@ -71,7 +71,7 @@ be a range, but a narrower one.
 
 ## Where values are read from (priority)
 
-Manual review: `--manual` given to `evaluate.py` > `<app>/manual.json` > `results/<app>/manual_review.json`.
+Manual review: `--manual` given to `js/evaluate.mjs` > `<app>/manual.json` > `results/<app>/manual_review.json`.
 
 DV8 values (`dv8.DL`, `dv8.PC`, `dv8.unhealthy_inheritance`): the explicit value in the manual > `results/<app>/dv8/dv8_manual.json`
 (human review, which no run overwrites) > `results/<app>/dv8/dv8_metrics.json` (computed). Use

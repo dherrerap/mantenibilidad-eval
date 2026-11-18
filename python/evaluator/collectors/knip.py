@@ -43,7 +43,7 @@ def run_knip(app, out):
         req.write_text(json.dumps({"dir": str(d), "root": str(app), "nested": nested, "entry": entry_globs(),
                                    "config_file": str(work / f"{tag}.knip.json")}), encoding="utf-8")
         # the wrapper also runs under the guard: it calls the plugins' isEnabled() on the package
-        rc, so, se = sh(["node", "--import", (HERE / "no_exec_guard.mjs").as_uri(), str(HERE / "knip_metrics.js"), str(req), str(raw)],
+        rc, so, se = sh(["node", "--import", (HERE / "js" / "tools" / "no_exec_guard.mjs").as_uri(), str(HERE / "js" / "tools" / "knip_metrics.js"), str(req), str(raw)],
                         timeout=900, env=env)
         try:
             r = json.loads(raw.read_text(encoding="utf-8"))

@@ -3,7 +3,7 @@ node_modules/
 __pycache__/
 *.pyc
 
-# Evaluated applications and the results of each run (regenerated; the example report is in example/)
+# Evaluated applications and the results of each run (regenerated)
 apps/
 results/
 experiments/
@@ -19,7 +19,7 @@ lcov.info
 # Extra result folders (e.g. results-pern/)
 results-*/
 
-# Token records of the generator agent per app and phase (token_usage.py)
+# Token records of the generator agent per app and phase (js/token_usage.mjs)
 token-usage/
 
 # Local logs of evaluation runs

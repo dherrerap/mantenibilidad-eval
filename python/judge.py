@@ -27,8 +27,9 @@ extension installs (~/.vscode/extensions/anthropic.claude-code-*/resources/nativ
 import argparse, datetime, glob, hashlib, json, os, random, re, shlex, shutil, subprocess, sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+SRC = Path(__file__).resolve().parent  # python/: this reference implementation
+HERE = SRC.parent  # repository root: rubric.json, specs/, node_modules/, js/tools/
+sys.path.insert(0, str(SRC))
 import manual_template as mt  # noqa: E402
 
 DEFAULT_CMD = "claude -p --model {model}"

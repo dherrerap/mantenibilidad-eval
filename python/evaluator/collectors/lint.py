@@ -60,7 +60,7 @@ def run_lint(app, out, files):
     rules, cwe = lint_rules()
     req = out / "lint_request.json"; raw = out / "lint_raw.json"
     req.write_text(json.dumps({"files": files, "rules": rules}), encoding="utf-8")
-    rc, so, se = sh(["node", str(HERE / "lint_metrics.js"), str(app), str(req), str(raw)], timeout=900)
+    rc, so, se = sh(["node", str(HERE / "js" / "tools" / "lint_metrics.js"), str(app), str(req), str(raw)], timeout=900)
     try:
         r = json.loads(raw.read_text(encoding="utf-8"))
     except (OSError, ValueError):

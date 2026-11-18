@@ -1,12 +1,22 @@
 # Migration to JavaScript
 
-The evaluator is being ported from Python to JavaScript (Node.js ≥ 20.19, ES modules, no build step), so that it needs a single
-runtime. Python stays the reference until every module is ported. The rule is that **the JavaScript version must return exactly
-the same JSON as the Python one**, so that results stay comparable across the migration.
+The evaluator was ported from Python to JavaScript (Node.js ≥ 20.19, ES modules, no build step), so that it needs a single
+runtime. The rule was that **the JavaScript version must return exactly the same JSON as the Python one**, so that results stay
+comparable across the migration.
+
+**v0.5.0:** the JavaScript version (`js/`) is the one documented and maintained. The Python one moved to `python/` as a deprecated
+reference, and it will be removed in v0.6.0, after a real experiment has been run with the JavaScript version. The layout:
+
+| Folder | Contents |
+|---|---|
+| `js/` | The evaluator: command line (`cli.mjs`, `evaluate.mjs`, `judge.mjs`, …), `evaluator/`, `relational/`, `lib/` (Python semantics) |
+| `js/tools/` | The helpers both versions run as processes: `ast_metrics.js`, `lint_metrics.js`, `knip_metrics.js`, `no_exec_guard*.mjs`, `pg_schema.js`, `dv8/` |
+| `python/` | The deprecated reference: its scripts, `evaluator/`, `tests/` (its 244 tests) and `golden/` (the recorders of the golden cases) |
+| `tests/js/`, `tests/golden/`, `tests/fixtures/` | The JavaScript tests, the recorded cases they replay, the fixture apps |
 
 ## How equivalence is checked
 
-1. `python tests/golden/record_relational.py`, `record_scoring.py` and `record_outputs.py` wrap the public functions of the Python modules and run the
+1. `python python/golden/record_relational.py`, `record_scoring.py` and `record_outputs.py` wrap the public functions of the Python modules and run the
    whole Python test suite.
    It also evaluates the apps in `apps/`, when there are any. Every distinct call is recorded as `{fn, args, result}`:
    - `tests/golden/*.json` holds the test suite and fixture calls. It is committed. Absolute paths are replaced.
@@ -23,7 +33,7 @@ the same JSON as the Python one**, so that results stay comparable across the mi
    because Python dicts are ordered and the reports are built from them.
 3. When the Python code changes, record again, then fix the port until the JavaScript tests pass.
 
-The collectors are checked end to end instead, because they run tools. `python tests/golden/record_collect.py` runs Python's
+The collectors are checked end to end instead, because they run tools. `python python/golden/record_collect.py` runs Python's
 `collect()` on every app of `apps/` and on the fixture apps, with the reference date fixed. It records the `metrics.json` it
 produced and every network answer it received: `npm view`, the lockfile npm resolved, OSV and endoflife.date.
 `npm run test:js:collect` then runs the JavaScript `collect()` on the same apps with those answers replayed. The tools run again:
@@ -118,8 +128,11 @@ denied"). The quotes are now removed, as the JavaScript version does, and a test
 **Test runner.** The JavaScript `sh` does not pass `NODE_TEST_CONTEXT` on to the commands it runs. Under `node --test`, that variable
 made the app's own `node --test` report to the evaluator's runner, without running its suite or writing coverage.
 
-Every module now has a JavaScript version checked against Python, and the JavaScript command line (`node js/cli.mjs`,
-`node js/evaluate.mjs`, …) runs without Python. Python is still in the repository as the reference until it is retired.
+Every module has a JavaScript version checked against Python, and the JavaScript command line (`node js/cli.mjs`,
+`node js/evaluate.mjs`, …) runs without Python.
+
+**The commands the programs suggest** (in `manual.template.json`, `profile.md`, `report.md`, `token_usage scan`…) are the
+JavaScript ones in both versions since v0.5.0, so that their outputs stay comparable.
 
 ## Order
 
@@ -129,4 +142,9 @@ Every module now has a JavaScript version checked against Python, and the JavaSc
    where the tool offers an API.
 3. **Entry points.** These are `evaluate`, `cli`, the judge, tokens and the acceptance gate. Here the check is end to end: the
    `metrics.json`, `scorecard.json` and `profile.json` of every app must be identical to Python's.
-4. **Retire Python** once those three files match for every app, and remove the Python tests that have a JavaScript equivalent.
+4. **Retire Python (v0.6.0).** Every comparison above holds on the 3 ecommerce apps and the fixtures. What is left before
+   `python/` is removed:
+   - run a real experiment with the JavaScript version, generating with an agent and with the Docker gate (both untested here);
+   - replace the slow comparisons with Python (`tests/js/*.slow.mjs`) by checks that stand alone. For example, keep the outputs of
+     the last Python run of each app as the expected ones;
+   - keep the recorded golden cases (`tests/golden/*.json`) as they are: they no longer need Python to be replayed.

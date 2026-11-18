@@ -3,7 +3,7 @@
 record_outputs.py — Golden cases for the JavaScript port of the outputs: the files write_outputs writes for a run (scorecard,
 profile, dashboard, CSVs, manual template), the weight sensitivity and the ASCMM comparison.
 
-  python tests/golden/record_outputs.py
+  python python/golden/record_outputs.py
 
 Records, from the Python test suite, every top-level call of write_outputs (its arguments and the content of every file it wrote),
 sensitivity, sensitivity_md, ascmm_comparison_md and ascmm_columns. On every evaluated run in results*/ it records the same with the
@@ -16,7 +16,7 @@ import copy, functools, hashlib, json, os, sys, tempfile, unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE / "tests")); sys.path.insert(0, str(HERE / "tests" / "golden"))
+sys.path.insert(0, str(HERE / "python")); sys.path.insert(0, str(HERE / "python" / "tests")); sys.path.insert(0, str(HERE / "python" / "golden"))
 os.chdir(HERE)
 import evaluate as ev  # noqa: E402,F401
 from record_relational import to_json  # noqa: E402

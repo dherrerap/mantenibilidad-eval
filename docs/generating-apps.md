@@ -44,15 +44,15 @@ Each application is generated **with no context from the others**, so that one l
 
 ## Options for generating
 
-**With an agent's CLI (recommended: it measures the tokens by itself).** `run_experiment.py` creates the folder, copies the specifications,
+**With an agent's CLI (recommended: it measures the tokens by itself).** `js/run_experiment.mjs` creates the folder, copies the specifications,
 writes the prompt, launches the agent (`claude` or `codex` must be installed) with its machine-readable output and records the tokens of each
 phase in `token-usage/<run_id>.json`:
 
 ```
-python run_experiment.py --agent claude --level N1 --domain cinema --phase initial --model claude-sonnet-5-5 --skip-acceptance --skip-tests
-python run_experiment.py --agent claude --level N1 --domain cinema --phase r2      --model claude-sonnet-5-5 --skip-acceptance --skip-tests
+node js/run_experiment.mjs --agent claude --level N1 --domain cinema --phase initial --model claude-sonnet-5-5 --skip-acceptance --skip-tests
+node js/run_experiment.mjs --agent claude --level N1 --domain cinema --phase r2      --model claude-sonnet-5-5 --skip-acceptance --skip-tests
 # or both phases in one go (each one in its own agent session)
-python run_experiment.py --agent claude --level N1,N2,N3 --domain cinema --phase initial,r2 --model claude-sonnet-5-5
+node js/run_experiment.mjs --agent claude --level N1,N2,N3 --domain cinema --phase initial,r2 --model claude-sonnet-5-5
 ```
 
 On Windows the script resolves `claude.cmd` / `codex.cmd` through `PATH` and sends the prompt on standard input (a multi-line argument
@@ -74,23 +74,23 @@ For each application <app> (folder apps/<app>) and phase <phase> (initial or r2)
 1. Launch a new subagent with the text of PROMPT.md (initial) or PROMPT-R2.md (r2) of that folder as its only instruction, working
    only inside apps/<app>. Do not add anything to the prompt and do not mention tokens, the evaluation or the rubric.
 2. When it finishes, record its tokens from its own transcript (never from what the subagent says):
-       python token_usage.py record apps/<app> --phase <phase> --from <transcript of that subagent>
+       node js/token_usage.mjs record apps/<app> --phase <phase> --from <transcript of that subagent>
    If you cannot locate the transcript, record the usage your environment reported for that subagent:
-       python token_usage.py record apps/<app> --phase <phase> --input <N> --output <N> --note "reported by the orchestrator"
+       node js/token_usage.mjs record apps/<app> --phase <phase> --input <N> --output <N> --note "reported by the orchestrator"
 3. Do not write any token file inside apps/: the records live in token-usage/, which the agent of phase r2 never sees.
-At the end, run `python token_usage.py show` and check that every app has its phases.
+At the end, run `node js/token_usage.mjs show` and check that every app has its phases.
 ```
 
-`python cli.py evaluate` then copies each record to the results and shows it in every `profile.md`, in `report.md` and in the comparison.
+`node js/cli.mjs evaluate` then copies each record to the results and shows it in every `profile.md`, in `report.md` and in the comparison.
 
 ## Measuring the tokens
 
-The tokens are taken from the agents' own usage records, never from what the agent says about itself. `token_usage.py` reads them and
+The tokens are taken from the agents' own usage records, never from what the agent says about itself. `js/token_usage.mjs` reads them and
 normalizes them so that Claude and Codex are comparable (input includes the prompt-cache reads and writes; output includes reasoning):
 
 | Source | Where it is | How it is recorded |
 |---|---|---|
-| `run_experiment.py` | `experiments/<run>/agent.log` and `agent-r2.log` | automatically |
+| `js/run_experiment.mjs` | `experiments/<run>/agent.log` and `agent-r2.log` | automatically |
 | Claude Code session or subagent | `~/.claude/projects/<project>/<session>.jsonl`, subagents in `<session>/subagents/agent-*.jsonl` | `scan` + `record --from` |
 | Codex session or subagent | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `scan` + `record --from` |
 | `claude -p --output-format json` / `codex exec --json` run by hand | the output you saved | `record --from` |
@@ -98,19 +98,19 @@ normalizes them so that Claude and Codex are comparable (input includes the prom
 
 Steps, after generating (and again after phase r2):
 
-1. `python token_usage.py scan` lists the Claude Code and Codex sessions on this machine that mention each app, with the phase it seems to
+1. `node js/token_usage.mjs scan` lists the Claude Code and Codex sessions on this machine that mention each app, with the phase it seems to
    belong to (r2 when the session works on `r2-additional-requirements.md`) and the suggested `record` commands. **Check each one**: a session
    that orchestrated several apps is shown as AMBIGUOUS and must not be recorded for any of them.
 2. Record each phase of each app, for example:
 
    ```
-   python token_usage.py record apps/claude-cinema-n1 --phase initial --from <transcript of the initial session>
-   python token_usage.py record apps/claude-cinema-n1 --phase r2      --from <transcript of the r2 session>
+   node js/token_usage.mjs record apps/claude-cinema-n1 --phase initial --from <transcript of the initial session>
+   node js/token_usage.mjs record apps/claude-cinema-n1 --phase r2      --from <transcript of the r2 session>
    ```
 
    Pass several files when a phase took more than one session (a resumed session, a retry), or `--with-subagents` when you pass the transcript of a Claude Code session devoted to that
    app that delegated work to subagents. Recording a phase again replaces it (`--append` adds to it).
-3. `python token_usage.py show` prints the table; `python cli.py evaluate` copies each record to `results/<run>/token_usage.json` and the
+3. `node js/token_usage.mjs show` prints the table; `node js/cli.mjs evaluate` copies each record to `results/<run>/token_usage.json` and the
    report shows the section *AI token consumption* (initial, R2 and the R2 / initial ratio). The comparison (`results/_comparison/`) adds the
    columns `tokens_initial_*`, `tokens_r2_*` and `tokens_r2_vs_initial`.
 
@@ -131,15 +131,15 @@ schema, the *Data model design* point is not evaluable.
 
 1. Note the **model** that generated the applications: `--model` is required (the evaluator refuses to run without it unless you pass
    `--allow-missing-model`, in which case the reports carry a warning).
-2. Check that the tokens of both phases are recorded (`python token_usage.py show`); `cli.py evaluate` warns about every app that lacks one.
-3. Run `python cli.py doctor` and then `python cli.py evaluate`. The evaluation measures the state of the code when it runs: to keep the
+2. Check that the tokens of both phases are recorded (`node js/token_usage.mjs show`); `js/cli.mjs evaluate` warns about every app that lacks one.
+3. Run `node js/cli.mjs doctor` and then `node js/cli.mjs evaluate`. The evaluation measures the state of the code when it runs: to keep the
    evaluation of the state after phase initial, evaluate before phase r2 with another `--results` folder.
-4. Optional: to know whether the application really works, use the acceptance gate. `run_experiment.py` starts PostgreSQL from the
+4. Optional: to know whether the application really works, use the acceptance gate. `js/run_experiment.mjs` starts PostgreSQL from the
    application's own `docker-compose.yml` (project and disposable database `eval_<run>`, removed afterwards), runs the backend with
-   `DATABASE_URL` and `PORT`, and checks the minimum HTTP interface of the domain with `acceptance_check.py --domain <domain>`:
+   `DATABASE_URL` and `PORT`, and checks the minimum HTTP interface of the domain with `js/acceptance_check.mjs --domain <domain>`:
    e-commerce (money as JSON numbers, opaque ids, the volume-discount examples, the stock rules, the order statuses) or cinema (the seed
    screenings and prices, the seat map, locks between users, sold seats, isolation of purchases). The suites cover the **original**
    requirements, so the gate runs right after phase initial, before r2; on a project that already implements r2 it is skipped and
-   the earlier result is kept. It needs Docker; without it the gate is skipped and says so. Without Docker, `cli.py evaluate --postgres`
+   the earlier result is kept. It needs Docker; without it the gate is skipped and says so. Without Docker, `js/cli.mjs evaluate --postgres`
    runs the same gate against a disposable database of a PostgreSQL server (`PG_ADMIN_URL`). In both, the suite also goes through a Prism
    proxy that checks the responses against `docs/openapi.yaml` (`contract_conformance.json`). Or test the application by hand.

@@ -22,18 +22,18 @@ test("phase inputs and agent command: the same as Python", () => {
   for (const [level, domain] of [["N1", "ecommerce"], ["N3", "cinema"]]) {
     const pj = path.join(tmp, `prep-js-${level}`), pp = path.join(tmp, `prep-py-${level}`);
     preparePhase("initial", level, domain, pj);
-    const r = py(`import run_experiment as r; from pathlib import Path; r.prepare_phase("initial", "${level}", "${domain}", Path(r"${pp}"))`);
+    const r = py(`import sys; sys.path.insert(0, "python"); import run_experiment as r; from pathlib import Path; r.prepare_phase("initial", "${level}", "${domain}", Path(r"${pp}"))`);
     assert.equal(r.status, 0, r.stderr);
     for (const d of [pj, pp]) fs.mkdirSync(path.join(d, "backend"), { recursive: true });
     preparePhase("r2", level, domain, pj);
-    assert.equal(py(`import run_experiment as r; from pathlib import Path; r.prepare_phase("r2", "${level}", "${domain}", Path(r"${pp}"))`).status, 0);
+    assert.equal(py(`import sys; sys.path.insert(0, "python"); import run_experiment as r; from pathlib import Path; r.prepare_phase("r2", "${level}", "${domain}", Path(r"${pp}"))`).status, 0);
     assert.deepEqual(listFiles(pj).sort(), listFiles(pp).sort());
     const lf = (t) => t.replaceAll("\r\n", "\n");  // Python's write_text turns \n into \r\n on Windows; the specs are copied as they are
     for (const f of listFiles(pp)) assert.equal(lf(fs.readFileSync(path.join(pj, f), "utf8")), lf(fs.readFileSync(path.join(pp, f), "utf8")), f);
   }
   for (const [agent, agentCmd, model] of [["claude", null, "claude-sonnet-5-5"], ["codex", null, null], ["claude", 'my-agent --run "{prompt}" --x', "m"]]) {
     const js = agentCommand(agent, { agent_cmd: agentCmd, model }, "PROMPT TEXT");
-    const r = py(`import json, run_experiment as r; from types import SimpleNamespace as N; print(json.dumps(r.agent_command(${JSON.stringify(agent)}, N(agent_cmd=${agentCmd ? JSON.stringify(agentCmd) : "None"}, model=${model ? JSON.stringify(model) : "None"}), "PROMPT TEXT")))`);
+    const r = py(`import sys, json; sys.path.insert(0, "python"); import run_experiment as r; from types import SimpleNamespace as N; print(json.dumps(r.agent_command(${JSON.stringify(agent)}, N(agent_cmd=${agentCmd ? JSON.stringify(agentCmd) : "None"}, model=${model ? JSON.stringify(model) : "None"}), "PROMPT TEXT")))`);
     assert.deepEqual(js, JSON.parse(r.stdout), `${agent} ${agentCmd}`);
   }
 });
@@ -45,7 +45,7 @@ test("run_experiment --existing-app --phase none --skip-acceptance: the same res
     fs.cpSync(path.join(ROOT, "tests", "fixtures", "sequelize_app"), app, { recursive: true });
     const args = ["--agent", "codex", "--level", "N1", "--existing-app", app, "--skip-acceptance", "--skip-tests", "--offline", "--as-of", "2026-11-16",
       "--model", "gpt-x", "--exp", path.join(tmp, `exp-${s}`), "--results", path.join(tmp, `res-${s}`), "--usage-dir", path.join(tmp, "no-usage")];
-    const p = s === "py" ? spawnSync("python", ["run_experiment.py", ...args], { cwd: ROOT, encoding: "utf8", env: { ...process.env, PYTHONIOENCODING: "utf-8" }, timeout: 3600000 })
+    const p = s === "py" ? spawnSync("python", ["python/run_experiment.py", ...args], { cwd: ROOT, encoding: "utf8", env: { ...process.env, PYTHONIOENCODING: "utf-8" }, timeout: 3600000 })
       : spawnSync(process.execPath, [path.join(ROOT, "js", "run_experiment.mjs"), ...args], { cwd: ROOT, encoding: "utf8", env: { ...process.env, NODE_TEST_CONTEXT: "" }, timeout: 3600000 });
     assert.equal(p.status, 0, (p.stdout || "") + (p.stderr || ""));
     out[s] = { res: path.join(tmp, `res-${s}`), exp: path.join(tmp, `exp-${s}`), app };

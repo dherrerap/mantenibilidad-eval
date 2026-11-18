@@ -21,7 +21,8 @@ path. Standard library only; Prism and the `yaml` package come from this folder'
 import json, os, socket, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+SRC = Path(__file__).resolve().parent  # python/: this reference implementation
+HERE = SRC.parent  # repository root: rubric.json, specs/, node_modules/, js/tools/
 PRISM = HERE / "node_modules" / "@stoplight" / "prism-cli" / "dist" / "index.js"
 RESULT_FILE = "contract_conformance.json"
 

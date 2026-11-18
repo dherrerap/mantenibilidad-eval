@@ -16,7 +16,7 @@ const readJson = (p) => loadJson(fs.readFileSync(p, "utf8"));
 
 /** pg_schema.js; [returncode, masked output]. */
 export function nodePg(args, adminUrl, timeout = 300) {
-  const p = spawnSync(process.execPath, [path.join(HERE, "pg_schema.js"), ...args], { env: { ...process.env, PG_ADMIN_URL: adminUrl }, encoding: "utf8", timeout: timeout * 1000 });
+  const p = spawnSync(process.execPath, [path.join(HERE, "js", "tools", "pg_schema.js"), ...args], { env: { ...process.env, PG_ADMIN_URL: adminUrl }, encoding: "utf8", timeout: timeout * 1000 });
   return [p.status ?? 1, rt.mask(((p.stdout || "") + (p.stderr || "")).trim(), adminUrl)];
 }
 
@@ -103,7 +103,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     if (k === "skip_seed" || k === "keep") o[k] = true; else o[k] = args[++i];
   }
   const admin = process.env.PG_ADMIN_URL;
-  if (!admin) { console.error("Set the PG_ADMIN_URL environment variable (connection string of a role that can create databases). See pg_analysis.py -h"); process.exit(1); }
+  if (!admin) { console.error("Set the PG_ADMIN_URL environment variable (connection string of a role that can create databases). See the header of js/pg_analysis.mjs"); process.exit(1); }
   if (!res) { console.error("usage: node js/pg_analysis.mjs results/<run> [--app dir] [--skip-seed] [--keep] [--wait 90]"); process.exit(2); }
   const [error] = await analyze(res, admin, o.app, Boolean(o.skip_seed), Boolean(o.keep), Number.parseInt(o.wait, 10));
   if (error) { console.log("ERROR:", error); process.exitCode = 1; }

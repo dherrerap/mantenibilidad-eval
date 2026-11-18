@@ -5,15 +5,15 @@ What the framework does **not** guarantee. Cite them alongside any result.
 ## Scope
 
 - **PERN applications only** (PostgreSQL, Express, React, Node) with `backend/` and `frontend/` folders, each with its own `package.json`. Other
-  structures require adjusting `ast_metrics.js` and the package detection. Results from the MERN pilot (EXP-01, tag `v0.1.0-mern`) were measured with
+  structures require adjusting `js/tools/ast_metrics.js` and the package detection. Results from the MERN pilot (EXP-01, tag `v0.1.0-mern`) were measured with
   a different data model rubric and are not comparable with PERN results criterion by criterion.
 - **It does not evaluate whether the application works.** Without the acceptance gate a high score may correspond to a broken app. The gate
-  (`acceptance_check.py`) runs in two ways: `run_experiment.py` starts PostgreSQL from the app's `docker-compose.yml` (needs Docker and Docker
-  Compose v2; without them it is skipped and says so), and `cli.py evaluate --postgres` runs it against a disposable database of the server in
-  `PG_ADMIN_URL` or, without it, of a temporary server started from the local PostgreSQL binaries (`pg_temp.py`). Without either, nothing in the
+  (`js/acceptance_check.mjs`) runs in two ways: `js/run_experiment.mjs` starts PostgreSQL from the app's `docker-compose.yml` (needs Docker and Docker
+  Compose v2; without them it is skipped and says so), and `js/cli.mjs evaluate --postgres` runs it against a disposable database of the server in
+  `PG_ADMIN_URL` or, without it, of a temporary server started from the local PostgreSQL binaries (`js/pg_temp.mjs`). Without either, nothing in the
   profile tells whether the app works. It is a maintainability measure, not a correctness one.
 - **The gate covers the original requirements only** (`requirements-ecommerce.md` or `requirements-cinema.md`, chosen by the domain).
-  The additional requirements of phase r2 change some of its rules (prices, shipping, roles), so `run_experiment.py` runs it right
+  The additional requirements of phase r2 change some of its rules (prices, shipping, roles), so `js/run_experiment.mjs` runs it right
   after phase initial and skips it on a project that already implements r2. There is no acceptance suite for r2 yet. The 5-minute
   expiry of the cinema seat locks is not checked (it would take 5 minutes).
 - **A single run per combination.** With one run per level there is no statistical basis to claim that one level beats
@@ -57,7 +57,7 @@ What the framework does **not** guarantee. Cite them alongside any result.
   A file is only reachable through an entry point Knip knows (package.json `main`, `bin` and scripts, the tools it recognizes, and the
   `entry_points` / `entry_globs` of `rubric.json`): a file run only from a Dockerfile, a Procfile or a tool Knip does not recognize is
   counted as dead until it is added to `entry_globs`. Files outside every package directory are not analyzed.
-- **Knip reads the tools' JS/TS configuration files as source, without running them** (`knip_metrics.js`, `no_exec_guard.mjs`): their
+- **Knip reads the tools' JS/TS configuration files as source, without running them** (`js/tools/knip_metrics.js`, `js/tools/no_exec_guard.mjs`): their
   imports count, but whatever a configuration computes at run time (entries built in a loop, a Jest `projects` list returned by a
   function) is not seen. Without the app's `node_modules` (`--skip-tests`) Knip cannot map a binary to its package, so it reports a
   devDependency that a script runs (`jest`, `vite`) as unused. This only matters with `include_devdependencies` on (off by default):
@@ -89,7 +89,7 @@ What the framework does **not** guarantee. Cite them alongside any result.
   the score, which is why it does not score.
 - **Runtime contract conformance only sees what the acceptance suite calls.** The suite covers the original requirements of the domain,
   not every endpoint, so a route it does not call is neither confirmed nor refuted; and it only runs with the gate (`--postgres` or
-  `run_experiment.py` with Docker). Prism 5.14 (the last one that runs on Node 22) validates against OpenAPI 3.0/3.1 and Swagger 2.
+  `js/run_experiment.mjs` with Docker). Prism 5.14 (the last one that runs on Node 22) validates against OpenAPI 3.0/3.1 and Swagger 2.
 - **Technologies** is fixed at the reference date `as_of` (resolved versions, latest version, advisories, supported runtimes), with three
   exceptions that are today's data: the **deprecation** of a version (npm does not date it), the **severity** of an advisory (OSV keeps the
   current one, which GitHub may have revised) and the advisories OSV did not have when it was queried. An advisory counts from the later of
@@ -146,7 +146,7 @@ What the framework does **not** guarantee. Cite them alongside any result.
 
 ## Real database
 
-- **Synthetic and few data.** The 25 users and their orders come from `pg_seed.py`, not from real traffic. They serve to compare apps
+- **Synthetic and few data.** The 25 users and their orders come from `js/pg_seed.mjs`, not from real traffic. They serve to compare apps
   with each other, not to predict production behavior: index usage (`pg_stat_user_indexes`) with so few rows is not representative (which is
   why it is reported but not used as a criterion).
 - **It depends on an external PostgreSQL** and on the app creating its schema when it starts (`npm start`). If the app does not start, or the database has
@@ -157,7 +157,7 @@ What the framework does **not** guarantee. Cite them alongside any result.
 - **Security:** it runs code generated by a model with the credentials of `PG_ADMIN_URL`' role (the app connects with the same role; the admin URL variable itself is
   not passed on). PostgreSQL cannot restrict a role to databases by name pattern: use a role with `CREATEDB` and no superuser rights, on a disposable server,
   so that it can only drop databases it owns. The scripts themselves only create, read and drop `eval_*` databases.
-- **Create/drop were not run against a real server in development.** `pg_schema.js dump` was verified against PostgreSQL 18.6 (PGlite, over the wire protocol);
+- **Create/drop were not run against a real server in development.** `js/tools/pg_schema.js dump` was verified against PostgreSQL 18.6 (PGlite, over the wire protocol);
   `CREATE DATABASE` / `DROP DATABASE` (PGlite has a single database) were not.
 
 ## The judge
@@ -170,7 +170,7 @@ What the framework does **not** guarantee. Cite them alongside any result.
   (Opus judging Sonnet) are allowed: choose with that criterion in mind.
 - **Non-deterministic.** Two runs may differ. The 3 votes with a majority reduce this, they do not eliminate it. Keep `judge.json` with the
   results: it is what allows the decision to be reproduced without querying again.
-- **It sees an excerpt.** It receives the evidence that `judge.py` builds, not the whole application: for the data model the schema files (up to
+- **It sees an excerpt.** It receives the evidence that `js/judge.mjs` builds, not the whole application: for the data model the schema files (up to
   400 lines each), the ER document and the design documents that mention snapshots or denormalization go in whole; the README, the queries and
   the routes fill the rest of a 60 000-character budget. When something is cut the prompt says so and the judge is told to answer "I don't know"
   if the decision depends on it.
@@ -180,8 +180,8 @@ What the framework does **not** guarantee. Cite them alongside any result.
 
 ## Experiment
 
-- **The generator model is a variable.** If the model changes, the result changes. Always record `--model`: `cli.py evaluate`, `evaluate.py run` and
-  `run_experiment.py` refuse to run without it (`--allow-missing-model` overrides this and `profile.md` / `report.md` then say so), and it is recorded in
+- **The generator model is a variable.** If the model changes, the result changes. Always record `--model`: `js/cli.mjs evaluate`, `js/evaluate.mjs run` and
+  `js/run_experiment.mjs` refuse to run without it (`--allow-missing-model` overrides this and `profile.md` / `report.md` then say so), and it is recorded in
   `results/environment.json`. The
   applications in the example run were generated with subagents whose model was assumed to be the same as the session's. The pilot's
   `experimentos/*/meta.json` files have `"modelo": null`: the model was not recorded and cannot be reconstructed from this repository.
@@ -189,11 +189,11 @@ What the framework does **not** guarantee. Cite them alongside any result.
   guidelines). A difference between levels cannot be attributed to just one of those variables.
 - **Tokens depend on the agent, not only on the code.** The same model with another CLI version, other system instructions, other tools or
   another effort level consumes different tokens for the same task. Compare tokens only between runs with the same agent, version and
-  configuration, and record them (`agent_version` in `meta.json` with `run_experiment.py`).
+  configuration, and record them (`agent_version` in `meta.json` with `js/run_experiment.mjs`).
 - **Tokens are not cost.** `total_tokens` adds cache reads, which are billed at a fraction of a fresh input token, to everything else. Two
   agents with similar totals can have very different costs; look at `cache_read_tokens` and `output_tokens`, and at `cost_usd` when the
   source reports it (Claude `-p --output-format json`).
-- **Attribution of sessions.** `token_usage.py scan` guesses the app and the phase of each session from its prompt (or, for Codex subagents,
+- **Attribution of sessions.** `js/token_usage.mjs scan` guesses the app and the phase of each session from its prompt (or, for Codex subagents,
   from the whole transcript) and must be checked before recording. Work done in a session that orchestrated several apps is not
   attributed to any of them, so the recorded figure is a lower bound of the real effort when the orchestrator did part of the work.
   The Claude Code transcripts de-duplicate messages by id; a transcript cut off by a crash or rotated by the client undercounts.

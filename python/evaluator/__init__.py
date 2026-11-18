@@ -22,5 +22,5 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:  # relational_schema, relational_analysis, pg_runtime and token_usage live at the repository root
+if str(ROOT) not in sys.path:  # relational_schema, relational_analysis, pg_runtime and token_usage live next to this package, in python/
     sys.path.insert(0, str(ROOT))

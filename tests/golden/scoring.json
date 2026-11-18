@@ -14874,8 +14874,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-17T19:53:05",
-"as_of": "2026-11-17",
+"date": "2026-11-18T13:06:25",
+"as_of": "2026-11-18",
 "ast": {
 "root": "<app>",
 "files": [
@@ -15947,7 +15947,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-17",
+"as_of": "2026-11-18",
 "npm": {
 "ok": false,
 "items": []
@@ -15955,7 +15955,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-17"
+"as_of": "2026-11-18"
 }
 },
 "contract": {
@@ -18351,8 +18351,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-17T19:53:05",
-"as_of": "2026-11-17",
+"date": "2026-11-18T13:06:25",
+"as_of": "2026-11-18",
 "ast": {
 "root": "<app>",
 "files": [
@@ -19424,7 +19424,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-17",
+"as_of": "2026-11-18",
 "npm": {
 "ok": false,
 "items": []
@@ -19432,7 +19432,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-17"
+"as_of": "2026-11-18"
 }
 },
 "contract": {
@@ -19885,8 +19885,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-17T19:53:10",
-"as_of": "2026-11-17",
+"date": "2026-11-18T13:06:29",
+"as_of": "2026-11-18",
 "ast": {
 "root": "<app>",
 "files": [
@@ -20958,7 +20958,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-17",
+"as_of": "2026-11-18",
 "npm": {
 "ok": false,
 "items": []
@@ -20966,7 +20966,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-17"
+"as_of": "2026-11-18"
 }
 },
 "contract": {
@@ -22429,8 +22429,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-17T19:53:10",
-"as_of": "2026-11-17",
+"date": "2026-11-18T13:06:29",
+"as_of": "2026-11-18",
 "ast": {
 "root": "<app>",
 "files": [
@@ -23502,7 +23502,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-17",
+"as_of": "2026-11-18",
 "npm": {
 "ok": false,
 "items": []
@@ -23510,7 +23510,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-17"
+"as_of": "2026-11-18"
 }
 },
 "contract": {
@@ -30154,8 +30154,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-17T19:53:38",
-"as_of": "2026-11-17",
+"date": "2026-11-18T13:06:55",
+"as_of": "2026-11-18",
 "ast": {
 "root": "<app>",
 "files": [
@@ -31227,7 +31227,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-17",
+"as_of": "2026-11-18",
 "npm": {
 "ok": false,
 "items": []
@@ -31235,7 +31235,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-17"
+"as_of": "2026-11-18"
 }
 },
 "contract": {
@@ -32698,8 +32698,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-17T19:53:38",
-"as_of": "2026-11-17",
+"date": "2026-11-18T13:06:55",
+"as_of": "2026-11-18",
 "ast": {
 "root": "<app>",
 "files": [
@@ -33771,7 +33771,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-17",
+"as_of": "2026-11-18",
 "npm": {
 "ok": false,
 "items": []
@@ -33779,7 +33779,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-17"
+"as_of": "2026-11-18"
 }
 },
 "contract": {
@@ -34232,8 +34232,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-17T19:53:38",
-"as_of": "2026-11-17",
+"date": "2026-11-18T13:06:55",
+"as_of": "2026-11-18",
 "ast": {
 "root": "<app>",
 "files": [
@@ -35305,7 +35305,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-17",
+"as_of": "2026-11-18",
 "npm": {
 "ok": false,
 "items": []
@@ -35313,7 +35313,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-17"
+"as_of": "2026-11-18"
 }
 },
 "contract": {

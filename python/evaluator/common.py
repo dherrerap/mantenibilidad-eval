@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 
 
-HERE = Path(__file__).resolve().parent.parent  # repository root (rubric.json, ast_metrics.js, node_modules)
+HERE = Path(__file__).resolve().parent.parent.parent  # repository root (rubric.json, js/tools/, node_modules)
 
 
 BIN = HERE / "node_modules" / ".bin"

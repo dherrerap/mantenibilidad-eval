@@ -20,7 +20,8 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const { pathToFileURL } = require("url");
 
-const HERE = __dirname;
+const TOOLS = __dirname;  // js/tools/: no_exec_guard.mjs
+const HERE = path.resolve(__dirname, "..", "..");  // repository root: node_modules/
 const EXTS = "js,mjs,cjs,jsx,ts,tsx,mts,cts";
 const UNSAFE = /\.(c|m)?[jt]sx?$/; // configuration files that Knip would execute
 
@@ -69,7 +70,7 @@ async function main() {
   fs.writeFileSync(req.config_file, JSON.stringify(config, null, 1));
   const knip = path.join(HERE, "node_modules/knip/bin/knip.js");
   const r = spawnSync(process.execPath,
-    ["--import", pathToFileURL(path.join(HERE, "no_exec_guard.mjs")).href, knip, "-c", req.config_file, "--directory", dir,
+    ["--import", pathToFileURL(path.join(TOOLS, "no_exec_guard.mjs")).href, knip, "-c", req.config_file, "--directory", dir,
       "--reporter", "json", "--no-exit-code", "--no-progress", "--no-config-hints"],
     { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, env: { ...process.env, NO_EXEC_ROOT: path.resolve(req.root) }, timeout: 600000 });
   let report;

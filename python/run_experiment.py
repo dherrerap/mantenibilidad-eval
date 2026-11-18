@@ -47,8 +47,9 @@ disposable container or VM.
 import argparse, datetime, itertools, json, os, shlex, shutil, subprocess, sys, time
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+SRC = Path(__file__).resolve().parent  # python/: this reference implementation
+HERE = SRC.parent  # repository root: rubric.json, specs/, node_modules/, js/tools/
+sys.path.insert(0, str(SRC))
 import pg_runtime as rt  # noqa: E402
 import evaluate as ev  # noqa: E402
 import token_usage as tu  # noqa: E402
@@ -145,7 +146,7 @@ def record_tokens(run_id, phase, log_file, usage_dir):
         session = tu.parse_file(log_file)
     except (ValueError, OSError):
         return None
-    data = tu.record_phase(tu.usage_path(run_id, usage_dir), run_id, phase, [session], note=f"run_experiment.py ({Path(log_file).name})")
+    data = tu.record_phase(tu.usage_path(run_id, usage_dir), run_id, phase, [session], note=f"run_experiment ({Path(log_file).name})")
     return data["phases"][phase]["totals"]
 
 
@@ -160,7 +161,7 @@ def run_backend_gate(be, env, port, expdir, wait=90, domain="ecommerce"):
                 return {"error": f"the backend did not open the port within {wait} s (see backend.log)"}
             time.sleep(2)  # margin for the schema creation and the initial data
             # --app: also through Prism against the app's OpenAPI contract (contract_conformance.json, informational)
-            sh([sys.executable, str(HERE / "acceptance_check.py"), "--base", f"http://127.0.0.1:{port}", "--domain", domain,
+            sh([sys.executable, str(SRC / "acceptance_check.py"), "--base", f"http://127.0.0.1:{port}", "--domain", domain,
                 "--out", str(expdir / ACCEPTANCE_FILE), "--app", str(be.parent)], log=log)
         finally:
             rt.kill_tree(proc)
@@ -233,7 +234,7 @@ def run_phases(phases, agent, level, a, expdir, project, meta, usage_key, after_
         if tok:
             print(f"  tokens: {tu.fmt(tok['total_tokens'])} (input {tu.fmt(tok['input_tokens'])}, output {tu.fmt(tok['output_tokens'])})")
         else:
-            print(f"  WARNING: the agent's output carries no token usage; record it by hand: python token_usage.py record {usage_key} --phase {phase} …")
+            print(f"  WARNING: the agent's output carries no token usage; record it by hand: node js/token_usage.mjs record {usage_key} --phase {phase} …")
         if after_phase:
             after_phase(phase)
 
@@ -270,7 +271,7 @@ def gate_after_phases(phases, project, expdir, run_id, a, meta):
 def evaluate_run(project, res, run_id, agent, level, a):
     """Maintainability evaluation of the project (plus DV8 when requested) into `res`."""
     print("[evaluation] measuring maintainability …")
-    cmd = [sys.executable, str(HERE / "evaluate.py"), "run", str(project), "--out", str(res),
+    cmd = [sys.executable, str(SRC / "evaluate.py"), "run", str(project), "--out", str(res),
            "--agent", agent, "--model", a.model or "n/a", "--level", level, "--domain", a.domain, "--run-id", run_id]
     if ev.model_missing(a.model): cmd.append("--allow-missing-model")
     if not a.skip_tests: cmd.append("--run-tests")
@@ -281,8 +282,8 @@ def evaluate_run(project, res, run_id, agent, level, a):
     sh(cmd, log=sys.stdout)
     if a.dv8:  # DL/PC with DV8, then a re-score (no new collection) to bring them into the profile
         print("[dv8] computing DL and PC …")
-        if sh([sys.executable, str(HERE / "dv8_metrics.py"), str(res)], log=sys.stdout) == 0:
-            sh([sys.executable, str(HERE / "evaluate.py"), "rescore", str(res)], log=sys.stdout)
+        if sh([sys.executable, str(SRC / "dv8_metrics.py"), str(res)], log=sys.stdout) == 0:
+            sh([sys.executable, str(SRC / "evaluate.py"), "rescore", str(res)], log=sys.stdout)
 
 
 def main():
@@ -350,7 +351,7 @@ def main():
         if tu.usage_path(usage_key, a.usage_dir).exists():
             shutil.copy(tu.usage_path(usage_key, a.usage_dir), res_root / run_id / tu.RESULT_FILE)
     print("\n=== comparison ===")
-    sh([sys.executable, str(HERE / "evaluate.py"), "aggregate", str(res_root)], log=sys.stdout)
+    sh([sys.executable, str(SRC / "evaluate.py"), "aggregate", str(res_root)], log=sys.stdout)
 
 
 if __name__ == "__main__":

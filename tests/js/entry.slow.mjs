@@ -52,8 +52,8 @@ for (const r of runs) { copyRun(path.join(RESULTS, r), path.join(PY, r)); copyRu
 
 test("evaluate rescore + manual_template: the same files as Python", { skip: !runs.length && "no evaluated runs in results/" }, () => {
   for (const r of runs) {
-    py(["evaluate.py", "rescore", path.join(PY, r)]);
-    py(["manual_template.py", path.join(PY, r)]);
+    py(["python/evaluate.py", "rescore", path.join(PY, r)]);
+    py(["python/manual_template.py", path.join(PY, r)]);
     cmdRescore({ res: [path.join(JS, r)] });
     writeTemplates(path.join(JS, r));
     sameTree(path.join(JS, r), path.join(PY, r));
@@ -62,7 +62,7 @@ test("evaluate rescore + manual_template: the same files as Python", { skip: !ru
 
 test("dv8_metrics: the same matrix and values as Python", { skip: (!runs.length || !fs.existsSync(findDv8())) && "DV8 not installed" }, () => {
   for (const r of runs) {
-    py(["dv8_metrics.py", path.join(PY, r)]);
+    py(["python/dv8_metrics.py", path.join(PY, r)]);
     dv8Metrics(path.join(JS, r));
     for (const f of ["matrix.json", "dv8_metrics.json"]) {
       const n = (d) => fs.readFileSync(path.join(d, r, "dv8", f), "utf8").replaceAll("\r\n", "\n");
@@ -72,7 +72,7 @@ test("dv8_metrics: the same matrix and values as Python", { skip: (!runs.length 
 });
 
 test("evaluate aggregate: the same comparison as Python", { skip: !runs.length && "no evaluated runs in results/" }, () => {
-  py(["evaluate.py", "aggregate", PY]);
+  py(["python/evaluate.py", "aggregate", PY]);
   cmdAggregate({ dir: JS });
   sameTree(JS, PY, (f) => f.includes("/dv8/") && !/dv8_metrics\.json$|matrix\.json$/.test(f));  // DV8's own scratch files
 });
@@ -80,7 +80,7 @@ test("evaluate aggregate: the same comparison as Python", { skip: !runs.length &
 test("evaluate run (offline): the same evaluation of an app as Python", { timeout: 1800000 }, async () => {
   const app = path.join(ROOT, "tests", "fixtures", "sequelize_app");
   const a = { app, agent: "codex", model: "gpt-x", level: "N1", domain: "ecommerce", offline: true, as_of: "2026-11-16", run_id: "sequelize-app-r1" };
-  py(["evaluate.py", "run", app, "--out", path.join(tmp, "run-py"), "--agent", a.agent, "--model", a.model, "--level", a.level, "--domain", a.domain, "--offline", "--as-of", a.as_of, "--run-id", a.run_id]);
+  py(["python/evaluate.py", "run", app, "--out", path.join(tmp, "run-py"), "--agent", a.agent, "--model", a.model, "--level", a.level, "--domain", a.domain, "--offline", "--as-of", a.as_of, "--run-id", a.run_id]);
   await cmdRun({ ...a, out: path.join(tmp, "run-js") });
   const date = (d) => JSON.parse(fs.readFileSync(path.join(tmp, d, "meta.json"), "utf8")).date;
   // the time of the run is the only expected difference: put the Python one in the JavaScript files before comparing

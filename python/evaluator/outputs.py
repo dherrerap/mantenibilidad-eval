@@ -32,7 +32,7 @@ def token_markdown(run_dir):
     sm = tu.summary(tu.load(run_dir / tu.RESULT_FILE))
     L = ["## AI token consumption", ""]
     if not sm or not sm["phases"]:
-        return L + ["No token record for this run (see `token_usage.py` and docs/generating-apps.md).", ""]
+        return L + ["No token record for this run (see `js/token_usage.mjs` and docs/generating-apps.md).", ""]
     L += ["Tokens the generator agent used to create the application (**initial**) and to implement the additional requirements (**R2**). "
           "Input includes the prompt-cache reads and writes; output includes reasoning. Not part of the maintainability score.", "",
           "| Phase | Input | Output | **Total** | Requests |", "|---|---|---|---|---|"]
@@ -99,8 +99,8 @@ def write_outputs(out, meta, points, prof, m):
         L += ["", "## Declarative gaps (README vs. structure)"] + [f"- {p['name']}: {p['declarative_gap']}" for p in gaps]
     (out / "profile.md").write_text("\n".join(L) + "\n", encoding="utf-8")
     tpl = {"_instructions": "Every pending criterion of this run. Fill in ok=true/false (and note), save it as manual_review.json in this folder and "
-                            "run `python cli.py evaluate --rescore` (or `python evaluate.py rescore <this folder>`). DV8 values go in 'dv8'. "
-                            "manual_review.draft.json (manual_template.py) has the same criteria with evidence and suggestions.",
+                            "run `node js/cli.mjs evaluate --rescore` (or `node js/evaluate.mjs rescore <this folder>`). DV8 values go in 'dv8'. "
+                            "manual_review.draft.json (js/manual_template.mjs) has the same criteria with evidence and suggestions.",
            "dv8": {"DL": None, "PC": None, "unhealthy_inheritance": None}}
     for p in points:
         pend = {k: {"ok": None, "suggested": v["suggested"], "note": ""} for k, v in p["criteria"].items() if v["ok"] is None}

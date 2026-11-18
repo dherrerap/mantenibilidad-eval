@@ -116,7 +116,7 @@ export function cmdDoctor() {
     "Without DV8, DL and PC stay pending; use --skip-dv8 or install DV8 and set DV8_CONSOLE.", false);
   const [compose, why] = dockerStatus();
   add(compose !== null, "Docker + Compose (optional: acceptance gate)", compose ? compose.join(" ") : why,
-    "Without Docker, run_experiment.py skips the acceptance gate (the apps are not checked against PostgreSQL).", false);
+    "Without Docker, js/run_experiment.mjs skips the acceptance gate (the apps are not checked against PostgreSQL).", false);
   const online = canConnect("registry.npmjs.org", 443, 5000);
   add(online, "Network access to the npm registry (optional)", online ? "reachable" : "no access", "Without a network, use --offline: versions and vulnerabilities stay pending.", false);
   const apps = path.join(HERE, "apps");
@@ -168,7 +168,7 @@ function finalSummary(out) {
 function copyTokenUsage(app, out, usageDir) {
   const src = tu.usagePath(app, usageDir), dst = path.join(out, tu.RESULT_FILE);
   fs.mkdirSync(out, { recursive: true });
-  if (!exists(src)) { fs.rmSync(dst, { force: true }); return "tokens not recorded (see token_usage.py)"; }
+  if (!exists(src)) { fs.rmSync(dst, { force: true }); return "tokens not recorded (see js/token_usage.mjs)"; }
   fs.copyFileSync(src, dst);
   const ph = get(tu.load(src) || {}, "phases", {});
   const missing = ["initial", "r2"].filter((p) => !(p in ph));
@@ -306,7 +306,7 @@ function nativeCoverageRuns(runs) {
 
 function tokenSection(runs) {
   const data = Object.fromEntries(runs.map(([d, pf]) => [pf.meta.run_id, tu.load(path.join(d, tu.RESULT_FILE))]));
-  if (!Object.values(data).some(Boolean)) return ["", "## AI token consumption", "", "Not recorded. Record the tokens of each phase with `python token_usage.py scan` and `record` " +
+  if (!Object.values(data).some(Boolean)) return ["", "## AI token consumption", "", "Not recorded. Record the tokens of each phase with `node js/token_usage.mjs scan` and `record` " +
     "(see docs/generating-apps.md) and run evaluate again."];
   const L = ["", "## AI token consumption", "",
     "Tokens the generator agent used to create the application (**initial**) and to implement the additional requirements (**R2**). " +

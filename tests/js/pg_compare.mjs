@@ -30,7 +30,7 @@ export function compare(run, app, work) {
   if (!srv) throw new Error("no PostgreSQL binaries");
   const out = {};
   try {
-    for (const [side, cmd] of [["py", ["python", path.join(ROOT, "pg_analysis.py")]], ["js", [process.execPath, path.join(ROOT, "js", "pg_analysis.mjs")]]]) {
+    for (const [side, cmd] of [["py", ["python", path.join(ROOT, "python", "pg_analysis.py")]], ["js", [process.execPath, path.join(ROOT, "js", "pg_analysis.mjs")]]]) {
       const res = path.join(work, side);
       fs.mkdirSync(res, { recursive: true });
       for (const f of ["metrics.json", "meta.json"]) fs.copyFileSync(path.join(run, f), path.join(res, f));

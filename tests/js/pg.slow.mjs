@@ -40,7 +40,7 @@ async function withMock(fn) {
 
 test("acceptance_check cinema: the same result as Python against a stand-in cinema API", { timeout: 600000 }, async () => {
   const out = {};
-  for (const [side, cmd] of [["py", ["python", path.join(ROOT, "acceptance_check.py")]], ["js", [process.execPath, path.join(ROOT, "js", "acceptance_check.mjs")]]]) {
+  for (const [side, cmd] of [["py", ["python", path.join(ROOT, "python", "acceptance_check.py")]], ["js", [process.execPath, path.join(ROOT, "js", "acceptance_check.mjs")]]]) {
     const f = path.join(tmp, `cinema-${side}.json`);
     await withMock(async (base) => {
       const p = spawnSync(cmd[0], [...cmd.slice(1), "--base", base, "--domain", "cinema", "--out", f], { encoding: "utf8", env: { ...process.env, PYTHONIOENCODING: "utf-8" } });

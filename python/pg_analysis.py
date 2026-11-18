@@ -25,14 +25,15 @@ a throwaway container) and a role without superuser rights; rotate the password 
 import argparse, json, os, subprocess, sys, time
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+SRC = Path(__file__).resolve().parent  # python/: this reference implementation
+HERE = SRC.parent  # repository root: rubric.json, specs/, node_modules/, js/tools/
+sys.path.insert(0, str(SRC))
 import pg_runtime as rt  # noqa: E402
 
 
 def node_pg(args, admin_url, timeout=300):
     """Runs pg_schema.js; returns (returncode, masked output)."""
-    p = subprocess.run(["node", str(HERE / "pg_schema.js")] + list(args), env={**os.environ, "PG_ADMIN_URL": admin_url},
+    p = subprocess.run(["node", str(HERE / "js" / "tools" / "pg_schema.js")] + list(args), env={**os.environ, "PG_ADMIN_URL": admin_url},
                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     return p.returncode, rt.mask((p.stdout + p.stderr).strip(), admin_url)
 
@@ -49,10 +50,10 @@ def exercise_backend(be, env, port, res, wait, skip_seed, log, domain="ecommerce
         base = f"http://127.0.0.1:{port}"
         if gate:
             # --app: the suite also runs through Prism against the app's OpenAPI contract (contract_conformance.json, informational)
-            subprocess.run([sys.executable, str(HERE / "acceptance_check.py"), "--base", base, "--domain", domain, "--out", str(res / "acceptance.json"),
+            subprocess.run([sys.executable, str(SRC / "acceptance_check.py"), "--base", base, "--domain", domain, "--out", str(res / "acceptance.json"),
                             "--app", str(be.parent)], stdout=log, stderr=subprocess.STDOUT, timeout=900)
         if not skip_seed:  # same users and orders in every app of the domain: the data left in the database is comparable
-            subprocess.run([sys.executable, str(HERE / "pg_seed.py"), "--base", base, "--domain", domain, "--output", str(res / "seed.json")],
+            subprocess.run([sys.executable, str(SRC / "pg_seed.py"), "--base", base, "--domain", domain, "--output", str(res / "seed.json")],
                            stdout=log, stderr=subprocess.STDOUT, timeout=600)
         time.sleep(2)  # let PostgreSQL report index usage before the catalog is read
         return None

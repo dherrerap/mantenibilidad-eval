@@ -319,7 +319,7 @@ function cmdScan(a) {
   }
   for (const [k, fs_] of sorted([...groups])) {
     const [app, phase] = JSON.parse(k);
-    console.log(`python token_usage.py record ${path.join(a.apps_dir, app)} --phase ${phase} --from ` + fs_.map((f) => `"${f}"`).join(" "));
+    console.log(`node js/token_usage.mjs record ${path.join(a.apps_dir, app)} --phase ${phase} --from ` + fs_.map((f) => `"${f}"`).join(" "));
   }
   return 0;
 }

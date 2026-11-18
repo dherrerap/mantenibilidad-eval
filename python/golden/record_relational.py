@@ -6,7 +6,7 @@ Wraps the public functions of both modules, runs the whole Python test suite and
 are any), and records every distinct call as {fn, args, result}. The JavaScript port must return exactly the same JSON for the same
 arguments (tests/js/relational.test.mjs).
 
-  python tests/golden/record_relational.py
+  python python/golden/record_relational.py
 
 Writes:
   tests/golden/relational.json         calls made by the test suite (committed: the fixtures are part of the repository)
@@ -18,7 +18,7 @@ import copy, functools, hashlib, json, os, sys, unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE / "tests"))
+sys.path.insert(0, str(HERE / "python")); sys.path.insert(0, str(HERE / "python" / "tests"))
 os.chdir(HERE)
 import relational_schema as rs  # noqa: E402
 import relational_analysis as ra  # noqa: E402

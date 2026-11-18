@@ -56,7 +56,7 @@ function unhealthyInheritance(res) {
 
 const pct = (txt) => F(pyRound(Number.parseFloat(str(txt).replace(/%+$/, "")) / 100.0, 4));
 
-export function dv8Metrics(res, dv8 = null, templatePath = path.join(HERE, "dv8", "matrix-template.json")) {
+export function dv8Metrics(res, dv8 = null, templatePath = path.join(HERE, "js", "tools", "dv8", "matrix-template.json")) {
   res = path.resolve(res);
   dv8 = findDv8(dv8);
   if (!fs.existsSync(dv8)) throw new Error(`dv8-console not found at ${dv8} (use --dv8 or the DV8_CONSOLE variable)`);

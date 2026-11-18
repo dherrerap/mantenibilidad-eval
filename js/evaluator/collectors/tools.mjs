@@ -17,7 +17,7 @@ const readJson = (p) => loadJson(fs.readFileSync(p, "utf8"));
 // ───────────────────────── AST (ast_metrics.js) ─────────────────────────
 export function runAst(app, out) {
   const f = path.join(out, "ast.json");
-  const [rc, so, se] = sh(["node", path.join(HERE, "ast_metrics.js"), app, f], { timeout: 600 });
+  const [rc, so, se] = sh(["node", path.join(HERE, "js", "tools", "ast_metrics.js"), app, f], { timeout: 600 });
   if (rc !== 0) throw new Error(`ast_metrics.js failed:\n${se || so}`);
   return readJson(f);
 }
@@ -131,7 +131,7 @@ export function runKnip(app, out) {
     const tag = rd.replace(/[^\w.-]/g, "_");
     const req = path.join(work, `${tag}.request.json`), raw = path.join(work, `${tag}.json`);
     fs.writeFileSync(req, JSON.stringify({ dir: String(d), root: String(app), nested, entry: entryGlobs(), config_file: path.join(work, `${tag}.knip.json`) }), "utf8");
-    const [rc, so, se] = sh(["node", "--import", pathToFileURL(path.join(HERE, "no_exec_guard.mjs")).href, path.join(HERE, "knip_metrics.js"), req, raw], { timeout: 900, env });
+    const [rc, so, se] = sh(["node", "--import", pathToFileURL(path.join(HERE, "js", "tools", "no_exec_guard.mjs")).href, path.join(HERE, "js", "tools", "knip_metrics.js"), req, raw], { timeout: 900, env });
     let r;
     try { r = readJson(raw); } catch { r = { ok: false, error: (se || so || `exit ${rc}`).slice(-2000) }; }
     res.packages.push({ dir: rd, ok: get(r, "ok", false), error: get(r, "error") });
@@ -167,7 +167,7 @@ export function runLint(app, out, files) {
   const [rules, cwe] = lintRules();
   const req = path.join(out, "lint_request.json"), raw = path.join(out, "lint_raw.json");
   fs.writeFileSync(req, JSON.stringify({ files, rules }), "utf8");
-  const [rc, so, se] = sh(["node", path.join(HERE, "lint_metrics.js"), app, req, raw], { timeout: 900 });
+  const [rc, so, se] = sh(["node", path.join(HERE, "js", "tools", "lint_metrics.js"), app, req, raw], { timeout: 900 });
   let r;
   try { r = readJson(raw); } catch { r = { ok: false, error: (se || so || `exit ${rc}`).slice(-2000) }; }
   if (!get(r, "ok")) return { ok: false, error: or(get(r, "error"), "").slice(-2000) };

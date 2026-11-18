@@ -27,10 +27,11 @@ Collection happens once per app: after DV8, the live database and the judge the 
 import argparse, contextlib, datetime, json, os, platform, re, shutil, socket, subprocess, sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+SRC = Path(__file__).resolve().parent  # python/: this reference implementation
+HERE = SRC.parent  # repository root: rubric.json, specs/, node_modules/, js/tools/
 PY = sys.executable
 UTF8 = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(SRC))
 from dv8_metrics import DV8_DEFAULT  # noqa: E402
 import pg_runtime  # noqa: E402
 import pg_temp  # noqa: E402
@@ -131,7 +132,7 @@ def cmd_doctor(a):
         "Without DV8, DL and PC stay pending; use --skip-dv8 or install DV8 and set DV8_CONSOLE.", required=False)
     compose, why = pg_runtime.docker_status()
     add(compose is not None, "Docker + Compose (optional: acceptance gate)", " ".join(compose) if compose else why,
-        "Without Docker, run_experiment.py skips the acceptance gate (the apps are not checked against PostgreSQL).", required=False)
+        "Without Docker, js/run_experiment.mjs skips the acceptance gate (the apps are not checked against PostgreSQL).", required=False)
     try:
         socket.create_connection(("registry.npmjs.org", 443), timeout=5).close(); online = True
     except OSError:
@@ -197,7 +198,7 @@ def evaluate_app(app, o, dv8):
     # the domain is not repeated when the folder name already carries it: claude-cinema-n1 -> claude-cinema-n1-r1
     run_id = f"{app.name}-r{o['rep']}" if named_domain else f"{app.name}-{domain}-r{o['rep']}"
     out = Path(o["results"]).resolve() / run_id
-    cmd = [PY, str(HERE / "evaluate.py"), "run", str(app), "--out", str(out), "--agent", agent, "--model", o["model"] or "n/a",
+    cmd = [PY, str(SRC / "evaluate.py"), "run", str(app), "--out", str(out), "--agent", agent, "--model", o["model"] or "n/a",
            "--level", level, "--domain", domain, "--run-id", run_id]
     if ev.model_missing(o["model"]): cmd.append("--allow-missing-model")  # cmd_evaluate already refused unless it was allowed
     if not o["skip_tests"]: cmd.append("--run-tests")
@@ -221,7 +222,7 @@ def evaluate_app(app, o, dv8):
 
 
 def rescore_cmd(out):
-    return [PY, str(HERE / "evaluate.py"), "rescore", str(out)]
+    return [PY, str(SRC / "evaluate.py"), "rescore", str(out)]
 
 
 def final_summary(out):
@@ -243,21 +244,21 @@ def post_collection_steps(out, o, dv8):
         if rc != 0:
             warnings.append(f"re-scoring after {after} failed: " + (last_line(s, r"\S") or ""))
     if dv8:
-        rc2, s2 = execute([PY, str(HERE / "dv8_metrics.py"), str(out)] + ([] if dv8 == DV8_DEFAULT else ["--dv8", dv8]))
+        rc2, s2 = execute([PY, str(SRC / "dv8_metrics.py"), str(out)] + ([] if dv8 == DV8_DEFAULT else ["--dv8", dv8]))
         if rc2 == 0:
             rescore("DV8")  # brings DL/PC into the profile
         else:
             warnings.append("DV8 failed: " + (last_line(s2, r"\S") or ""))
-    execute([PY, str(HERE / "manual_template.py"), str(out)])
+    execute([PY, str(SRC / "manual_template.py"), str(out)])
     if o["postgres"]:  # real database: catalog of a disposable eval_<run> database (PG_ADMIN_URL or a pg_temp server; see pg_analysis.py)
         if not UTF8.get("PG_ADMIN_URL"):
             warnings.append("--postgres requested but there is no PG_ADMIN_URL and no PostgreSQL binaries for a temporary server: database analysis skipped")
         else:
-            rcp, sp = execute([PY, str(HERE / "pg_analysis.py"), str(out)])
+            rcp, sp = execute([PY, str(SRC / "pg_analysis.py"), str(out)])
             warnings.append("postgres: " + (last_line(sp, r"Acceptance|ERROR") or "no output") if rcp == 0 else "postgres failed: " + (last_line(sp, r"\S") or ""))
             rescore("the live database")  # brings the real database into the profile and the scorecard the judge reads
     if o["judge"]:  # the judge decides what is still pending on design judgment and the run is re-scored with its decisions
-        jcmd = [PY, str(HERE / "judge.py"), str(out), "--model", o["judge"], "--votes", str(o["judge_votes"])]
+        jcmd = [PY, str(SRC / "judge.py"), str(out), "--model", o["judge"], "--votes", str(o["judge_votes"])]
         if o["judge_cmd"]: jcmd += ["--cmd", o["judge_cmd"]]
         if o["allow_same_model"]: jcmd.append("--allow-same-model")
         rcj, sj = execute(jcmd)
@@ -275,7 +276,7 @@ def copy_token_usage(app, out, usage_dir):
     out.mkdir(parents=True, exist_ok=True)
     if not src.exists():
         dst.unlink(missing_ok=True)
-        return "tokens not recorded (see token_usage.py)"
+        return "tokens not recorded (see js/token_usage.mjs)"
     shutil.copy(src, dst)
     missing = [p for p in ("initial", "r2") if p not in (tu.load(src) or {}).get("phases", {})]
     return f"tokens of phase {', '.join(missing)} not recorded" if missing else None
@@ -333,7 +334,7 @@ def cmd_evaluate(a):
             print(f"      {summary}")
         if not os.environ.get("PG_ADMIN_URL"):
             UTF8.pop("PG_ADMIN_URL", None)  # the temporary server stops here: nothing after the batch may point at it
-    rc, output = execute([PY, str(HERE / "evaluate.py"), "aggregate", str(Path(o["results"]).resolve())])
+    rc, output = execute([PY, str(SRC / "evaluate.py"), "aggregate", str(Path(o["results"]).resolve())])
     if rc != 0:
         print("Error while aggregating:\n" + output[-600:]); return 1
     path = write_report(Path(o["results"]).resolve())
@@ -487,7 +488,7 @@ def token_section(runs):
     """AI token consumption per application: creation (initial) and additional requirements (r2), from results/<run>/token_usage.json."""
     data = {pf["meta"]["run_id"]: tu.load(d / tu.RESULT_FILE) for d, pf, _ in runs}
     if not any(data.values()):
-        return ["", "## AI token consumption", "", "Not recorded. Record the tokens of each phase with `python token_usage.py scan` and `record` "
+        return ["", "## AI token consumption", "", "Not recorded. Record the tokens of each phase with `node js/token_usage.mjs scan` and `record` "
                 "(see docs/generating-apps.md) and run evaluate again."]
     L = ["", "## AI token consumption", "",
          "Tokens the generator agent used to create the application (**initial**) and to implement the additional requirements (**R2**). "

@@ -89,7 +89,7 @@ function generate(agent, level, a, expdir, project, phase = "initial") {
 function recordTokens(runId, phase, logFile, usageDir) {
   let session;
   try { session = tu.parseFile(logFile); } catch { return null; }
-  const data = tu.recordPhase(tu.usagePath(runId, usageDir), runId, phase, [session], `run_experiment.py (${path.basename(logFile)})`);
+  const data = tu.recordPhase(tu.usagePath(runId, usageDir), runId, phase, [session], `run_experiment (${path.basename(logFile)})`);
   return data.phases[phase].totals;
 }
 

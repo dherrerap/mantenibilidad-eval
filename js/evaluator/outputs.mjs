@@ -23,7 +23,7 @@ export function artifactsMarkdown(m) {
 export function tokenMarkdown(runDir) {
   const sm = tu.summary(tu.load(path.join(runDir, tu.RESULT_FILE)));
   const L = ["## AI token consumption", ""];
-  if (!sm || !Object.keys(sm.phases).length) return [...L, "No token record for this run (see `token_usage.py` and docs/generating-apps.md).", ""];
+  if (!sm || !Object.keys(sm.phases).length) return [...L, "No token record for this run (see `js/token_usage.mjs` and docs/generating-apps.md).", ""];
   L.push("Tokens the generator agent used to create the application (**initial**) and to implement the additional requirements (**R2**). " +
     "Input includes the prompt-cache reads and writes; output includes reasoning. Not part of the maintainability score.", "",
     "| Phase | Input | Output | **Total** | Requests |", "|---|---|---|---|---|");
@@ -94,8 +94,8 @@ export function writeOutputs(out, meta, points, prof, m) {
   if (gaps.length) L.push("", "## Declarative gaps (README vs. structure)", ...gaps.map((p) => `- ${p.name}: ${p.declarative_gap}`));
   write(out, "profile.md", L.join("\n") + "\n");
   const tpl = { _instructions: "Every pending criterion of this run. Fill in ok=true/false (and note), save it as manual_review.json in this folder and " +
-    "run `python cli.py evaluate --rescore` (or `python evaluate.py rescore <this folder>`). DV8 values go in 'dv8'. " +
-    "manual_review.draft.json (manual_template.py) has the same criteria with evidence and suggestions.",
+    "run `node js/cli.mjs evaluate --rescore` (or `node js/evaluate.mjs rescore <this folder>`). DV8 values go in 'dv8'. " +
+    "manual_review.draft.json (js/manual_template.mjs) has the same criteria with evidence and suggestions.",
   dv8: { DL: null, PC: null, unhealthy_inheritance: null } };
   for (const p of points) {
     const pend = Object.fromEntries(Object.entries(p.criteria).filter(([, v]) => v.ok === null).map(([k, v]) => [k, { ok: null, suggested: v.suggested, note: "" }]));

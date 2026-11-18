@@ -15,7 +15,8 @@ Unhealthy Inheritance is not computed here (it requires inheritance types that d
 import argparse, copy, json, os, shutil, subprocess, sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+SRC = Path(__file__).resolve().parent  # python/: this reference implementation
+HERE = SRC.parent  # repository root: rubric.json, specs/, node_modules/, js/tools/
 DV8_DEFAULT = r"C:\Program Files\DV8\bin\dv8-console.exe"
 DSM = "matrix.dv8-dsm"
 
@@ -66,7 +67,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("res", help="results folder of a run (with metrics.json)")
     ap.add_argument("--dv8", default=os.environ.get("DV8_CONSOLE") or shutil.which("dv8-console") or DV8_DEFAULT)
-    ap.add_argument("--template", default=str(HERE / "dv8" / "matrix-template.json"))
+    ap.add_argument("--template", default=str(HERE / "js" / "tools" / "dv8" / "matrix-template.json"))
     a = ap.parse_args()
 
     res = Path(a.res).resolve()

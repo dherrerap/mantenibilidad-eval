@@ -10,14 +10,14 @@ the same inputs `evaluate.py rescore` gives it: metrics.json, manual review, DV8
 Each record also keeps what the call read from disk (the error middleware's file, the design documents), so that the JavaScript
 replay does not depend on the temporary folders of the test suite.
 
-  python tests/golden/record_scoring.py
+  python python/golden/record_scoring.py
 Writes tests/golden/scoring.json (test suite, committed) and results/_golden/scoring-apps.json (generated apps, local only).
 """
 import copy, functools, hashlib, json, os, pathlib, sys, unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE / "tests")); sys.path.insert(0, str(HERE / "tests" / "golden"))
+sys.path.insert(0, str(HERE / "python")); sys.path.insert(0, str(HERE / "python" / "tests")); sys.path.insert(0, str(HERE / "python" / "golden"))
 os.chdir(HERE)
 import evaluate as ev  # noqa: E402,F401
 from record_relational import to_json  # noqa: E402

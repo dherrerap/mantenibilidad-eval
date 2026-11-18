@@ -1,4 +1,4 @@
-"""Tests of the evaluator itself:  python -m unittest discover -s tests -v
+"""Tests of the Python reference implementation:  python -m unittest discover -s python/tests -v
 
 They need Python and Node.js with this folder's node_modules (`npm install`); the tests that drive ESLint, Knip, Prism or StrykerJS
 are skipped when the tool is not installed. None needs Docker, DV8 or PostgreSQL; one queries endoflife.date and also passes
@@ -16,8 +16,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+SRC = Path(__file__).resolve().parent.parent  # python/
+ROOT = SRC.parent  # repository root: rubric.json, tests/fixtures, js/tools
+sys.path.insert(0, str(SRC))
 import evaluate as ev  # noqa: E402
 import relational_schema as rs  # noqa: E402
 import relational_analysis as ra  # noqa: E402
@@ -648,7 +649,7 @@ class TestPgRuntime(unittest.TestCase):
 
 class TestPgSchemaScript(unittest.TestCase):
     def node(self, code):
-        p = subprocess.run(["node", "-e", code], cwd=ROOT, capture_output=True, text=True, timeout=60)
+        p = subprocess.run(["node", "-e", code], cwd=ROOT / "js" / "tools", capture_output=True, text=True, timeout=60)
         self.assertEqual(p.returncode, 0, p.stderr)
         return json.loads(p.stdout)
 
@@ -661,7 +662,7 @@ class TestPgSchemaScript(unittest.TestCase):
 
     def test_the_cli_refuses_databases_that_are_not_eval(self):
         for cmd in ("create", "drop"):
-            p = subprocess.run(["node", "pg_schema.js", cmd, "production"], cwd=ROOT, capture_output=True, text=True, timeout=60,
+            p = subprocess.run(["node", "pg_schema.js", cmd, "production"], cwd=ROOT / "js" / "tools", capture_output=True, text=True, timeout=60,
                                env={**os.environ, "PG_ADMIN_URL": "postgres://u:p@127.0.0.1:1/postgres"})
             self.assertEqual(p.returncode, 2); self.assertIn("only databases named eval_", p.stderr)
 
@@ -1391,7 +1392,7 @@ class TestJudge(unittest.TestCase):
 
 class TestDV8(unittest.TestCase):
     def test_matrix_from_template(self):
-        template = json.loads((ROOT / "dv8" / "matrix-template.json").read_text(encoding="utf-8"))
+        template = json.loads((ROOT / "js" / "tools" / "dv8" / "matrix-template.json").read_text(encoding="utf-8"))
         graph = {"modules": [{"source": "b.js", "deps": [{"to": "a.js", "local": True}, {"to": "a.js", "local": True},
                                                           {"to": "express", "local": False}, {"to": "b.js", "local": True}]},
                              {"source": "a.js", "deps": []}]}
@@ -2061,7 +2062,7 @@ class TestRescore(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             ev.cmd_rescore(argparse.Namespace(res=[str(self.out)]))
         self.assertIn("Re-scored claude-n1-r1: Maintainability:", out.getvalue())
-        r = subprocess.run([sys.executable, str(ROOT / "evaluate.py"), "rescore", str(self.out)], capture_output=True, text=True, encoding="utf-8")
+        r = subprocess.run([sys.executable, str(SRC / "evaluate.py"), "rescore", str(self.out)], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stderr); self.assertIn("Re-scored", r.stdout)
 
 
@@ -2327,7 +2328,7 @@ class TestNoExecGuard(unittest.TestCase):
                 f"try {{ await import({json.dumps((root / 'a.mjs').as_uri())}); out.push('a ran'); }} catch (e) {{ out.push(e.code); }}",
                 f"try {{ createRequire(import.meta.url)({json.dumps(str(root / 'b.cjs'))}); out.push('b ran'); }} catch (e) {{ out.push(e.code); }}",
                 "console.log(out.join(','));"]), encoding="utf-8")
-            p = subprocess.run(["node", "--import", (ROOT / "no_exec_guard.mjs").as_uri(), str(probe)], capture_output=True, text=True,
+            p = subprocess.run(["node", "--import", (ROOT / "js" / "tools" / "no_exec_guard.mjs").as_uri(), str(probe)], capture_output=True, text=True,
                                env={**os.environ, "NO_EXEC_ROOT": str(root)}, timeout=60)
             self.assertEqual(p.stdout.strip(), "NO_EXEC_GUARD,NO_EXEC_GUARD", p.stderr)
             self.assertEqual(sorted(x.name for x in root.iterdir()), ["a.mjs", "b.cjs"])  # nothing was written

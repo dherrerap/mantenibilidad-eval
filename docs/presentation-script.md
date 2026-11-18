@@ -5,7 +5,7 @@ and, when useful, **what to avoid claiming**. Block 10 has no numbers on purpose
 experiment (`results/report.md`); the only report kept in `example/` belongs to the earlier MERN version and must not be shown as a
 result.
 
-Preparation before starting: terminal at the repository root, `python cli.py doctor` already run with no errors (Node.js 22 LTS,
+Preparation before starting: terminal at the repository root, `node js/cli.mjs doctor` already run with no errors (Node.js 22 LTS,
 `npm install` done), `results/` with an evaluated run, and `README.md`, `rubric.json`, `results/report.md` and one
 `results/<run>/profile.md` open.
 
@@ -104,11 +104,11 @@ Preparation before starting: terminal at the repository root, `python cli.py doc
 ## 6. The tool: architecture and walkthrough (5 min)
 
 **What to say** (go through in this order, one sentence per piece)
-- **`cli.py`**: single entry point with three commands: `doctor` (is the environment ready?), `evaluate` and `report`.
-- **`evaluate.py` and the `evaluator/` package**: one module per source of evidence (`collectors/`), one per decision point
+- **`js/cli.mjs`**: single entry point with three commands: `doctor` (is the environment ready?), `evaluate` and `report`.
+- **`js/evaluate.mjs` and the `evaluator/` package**: one module per source of evidence (`collectors/`), one per decision point
   (`points/`), and the scoring, dashboard and outputs. Evidence is collected once and saved in `metrics.json`; everything later (DV8,
   the live database, the judge, a manual review) only **re-scores** it.
-- **`ast_metrics.js`**: static analysis with `ts-morph`: functions and McCabe complexity, fan-out, classes and inheritance, literals,
+- **`js/tools/ast_metrics.js`**: static analysis with `ts-morph`: functions and McCabe complexity, fan-out, classes and inheritance, literals,
   `catch` blocks, `console` calls, Express routes, Sequelize models and migrations, raw SQL and query filters.
 - **Maintained tools, each one where it is the reference**:
   - `dependency-cruiser`: module graph and cycles.
@@ -121,11 +121,11 @@ Preparation before starting: terminal at the repository root, `python cli.py doc
     fixed reference date** (`--as-of`).
   - The app's own **test runner** with `c8` coverage, and optionally **StrykerJS** (mutation score).
   - **DV8**: Decoupling Level and Propagation Cost.
-- **Optional, against a running app**: the acceptance gate (`acceptance_check.py`) with PostgreSQL, the analysis of the real database
+- **Optional, against a running app**: the acceptance gate (`js/acceptance_check.mjs`) with PostgreSQL, the analysis of the real database
   (`--postgres`) and **Prism**, which checks every response of the gate against the OpenAPI contract.
 - **`tests/`**: the evaluator's own test suite, so that whoever modifies the rubric can check they did not break anything.
 
-**What to show:** `python cli.py doctor` live (each line explains itself) and the folder tree.
+**What to show:** `node js/cli.mjs doctor` live (each line explains itself) and the folder tree.
 
 ---
 
@@ -204,7 +204,7 @@ design is well thought out.
 ## 10. Live demo and reading the results (5 min)
 
 **Sequence**
-1. `python cli.py evaluate --model "<model>" --as-of <generation date>` (or show the output already generated: it takes a few minutes per app).
+1. `node js/cli.mjs evaluate --model "<model>" --as-of <generation date>` (or show the output already generated: it takes a few minutes per app).
 2. Open `results/report.md` and go through it top to bottom: overall result, weight sensitivity, ISO/IEC 5055 weaknesses, tokens, risk
    dashboard, points matrix, pending review, findings, warnings and environment.
 3. Open a `manual_review.md` and show what the evidence for deciding a criterion looks like.
@@ -256,8 +256,8 @@ Stating them before they are asked conveys rigor. Summary of `docs/limitations.m
   executed. Running its tests or mutation testing executes it: do that in a disposable machine.
 - **How reliable is the layer heuristic?** It is a heuristic. When the evidence is ambiguous, human review is requested, and a
   classification can be imposed with `.layers.json`.
-- **Can it be used with another stack?** It assumes PERN; adapting it requires changing `ast_metrics.js`, the schema extraction and the
+- **Can it be used with another stack?** It assumes PERN; adapting it requires changing `js/tools/ast_metrics.js`, the schema extraction and the
   package detection.
-- **What happens if the rubric changes?** Edit `rubric.json` and run the tests with `python -m unittest discover -s tests -v`.
+- **What happens if the rubric changes?** Edit `rubric.json` and run the tests with `npm run test:js`.
 - **Are the results reproducible?** The static analysis is. What depends on time (versions, advisories, supported runtimes) is fixed
   with `--as-of`; the deprecation of a version and the current severity of an advisory are the exceptions, documented in the limitations.

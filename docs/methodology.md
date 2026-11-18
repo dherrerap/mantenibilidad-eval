@@ -33,7 +33,7 @@ changes them, this page may become outdated and the file takes precedence.
 
 \* The absence of a test suite is not treated as missing data but as a **high-severity finding**.
 
-How the framework applies it (`inventory_artifacts` in `evaluator/artifacts.py`; the table itself is in `rubric.json` under `artifacts`,
+How the framework applies it (`inventory_artifacts` in `js/evaluator/collectors/docs.mjs`; the table itself is in `rubric.json` under `artifacts`,
 so the mapping is editable):
 
 - **Core artifact missing** → the points it feeds are **not evaluable**: no level, no score, and they are excluded from the subcharacteristic
@@ -95,7 +95,7 @@ use and is what forces red in the dashboard.
 
 The weights come from a panel whose concordance is not significant (Kendall's W = 0.158, see [limitations](limitations.md)), so the
 report (`report.md`, section *Weight sensitivity*; `_comparison/sensitivity.json`) scores every run again under other schemes
-(`evaluator/sensitivity.py`):
+(`js/evaluator/sensitivity.mjs`):
 
 | Scenario | Weights |
 |---|---|
@@ -145,7 +145,7 @@ or completes) or **manual**.
   "god" module and fragmentation heuristics, because mixed responsibilities in general need reading the code.
 - **Configuration C2.** Uses SonarQube rule S1192 (`no-duplicate-string` in `eslint-plugin-sonarjs`): threshold of 3
   repetitions, minimum length of 10, no literals made only of word characters and no `application/json`. The rule itself runs
-  (`lint_metrics.js`, over the production files) and counts the repetitions **per file**, like SonarQube. A reported literal fails
+  (`js/tools/lint_metrics.js`, over the production files) and counts the repetitions **per file**, like SonarQube. A reported literal fails
   C2. C2 stays **pending** when ESLint did not run, and when it reports nothing but could not parse some file (a 0 is not proven
   then). It is an **absolute** rule: it does not depend on the other evaluated applications.
 - **MMo-1-G (Coupling C2).** The numerator counts the modules whose outgoing coupling is bounded. It no longer counts the absence of
@@ -172,7 +172,7 @@ or completes) or **manual**.
   numbers coincide but the measurements do not. If `jscpd` did not run, C3 stays pending and the point's level becomes a range.
 - **Cognitive complexity**: measured with SonarSource rule S3776 itself (`sonarjs/cognitive-complexity`); not measured if ESLint
   did not run. Informational; reference of 15 per function.
-- **McCabe cross-check** (informational): the McCabe count of `ast_metrics.js`, which decides Cyclomatic C1/C2, is compared function by
+- **McCabe cross-check** (informational): the McCabe count of `js/tools/ast_metrics.js`, which decides Cyclomatic C1/C2, is compared function by
   function with ESLint's `complexity` rule (`metrics.mccabe_eslint`: share of equal values and the X ESLint would give). Both count
   default parameters, `&&`/`||`/`??`, logical assignments, `case` and `catch` alike; ESLint also counts each optional chaining `?.`.
 - **ASCMM weaknesses that no point scores** (supplementary indicators, group *ASCMM*; informational): CWE-1064 (functions with more than
@@ -190,9 +190,9 @@ or completes) or **manual**.
 - **Unused dependencies (Coupling C4)** come from the same Knip run, as do two informational counts: unused exports and dependencies
   used but not declared in `package.json`. C4 and C5 stay pending if Knip did not run.
 - **Knip does not execute the app.** Knip normally imports the JS/TS configuration files of the tools it recognizes, which would run
-  code written by the model. `knip_metrics.js` gives each plugin the package enables only its data configuration files (JSON, YAML,
+  code written by the model. `js/tools/knip_metrics.js` gives each plugin the package enables only its data configuration files (JSON, YAML,
   rc, `package.json`) and passes the JS/TS ones as entries, which are parsed like any source file; and Knip runs under
-  `no_exec_guard.mjs`, which makes any import, `require` or `vm` evaluation of a file of the app fail. Load errors, if any, are in
+  `js/tools/no_exec_guard.mjs`, which makes any import, `require` or `vm` evaluation of a file of the app fail. Load errors, if any, are in
   `metrics.json` (`knip.config_load_errors`).
 - **Contracts C1 and the *Contract specification* artifact.** C1 is met only by an OpenAPI or Swagger document (`openapi*.json|yaml`,
   `swagger*.json|yaml`; the one of `docs/R2/` first), because C2–C4 and the runtime conformance need one. The artifact of Table 27 is
@@ -211,7 +211,7 @@ or completes) or **manual**.
   frontend tests), static security (`eval`, literal credentials, raw SQL built by interpolation or concatenation) and
   schema-contract consistency (% of the table columns that appear, ignoring case and `_`, as a property in the OpenAPI). The reference thresholds
   are in `thresholds.supplementary` of `rubric.json`.
-- **Data model.** Evaluated over a relational schema that is extracted statically (`relational_schema.py`) from, in order of
+- **Data model.** Evaluated over a relational schema that is extracted statically (`js/relational/schema.mjs`) from, in order of
   preference: SQL files (`*.sql`: migrations, `schema.sql`, Prisma `migration.sql`), Sequelize migrations (`queryInterface.createTable`,
   `addColumn`, `addConstraint`, `addIndex`; the `down` half is ignored) and Sequelize models (`sequelize.define`, `Model.init`,
   `belongsTo`, `hasMany`, `hasOne`, `belongsToMany`). A table is decided entirely by the first source that defines it, and every element of
@@ -246,7 +246,7 @@ or completes) or **manual**.
 - **Technologies: resolved versions and reference date.** Every criterion looks at the version each direct dependency *resolves to*, not at
   the lower bound of its declared range: the app's `package-lock.json` when it pins every direct dependency, otherwise the lockfile npm
   generates with the registry as it was on the reference date (`npm install --package-lock-only --ignore-scripts --before=<as_of>`).
-  Everything that changes with time is computed as of that date (`--as-of YYYY-MM-DD` in `cli.py evaluate`, `as_of` in `experiment.json`;
+  Everything that changes with time is computed as of that date (`--as-of YYYY-MM-DD` in `js/cli.mjs evaluate`, `as_of` in `experiment.json`;
   default: the evaluation date): the latest version of a dependency is the highest stable one published by then (C3); the vulnerabilities are
   the OSV advisories (the GitHub Advisory Database that `npm audit` uses) for every package of the lockfile, transitive ones included,
   that were in the database and not withdrawn by then (the later of the publication date and GitHub's review date, since an advisory
@@ -266,18 +266,18 @@ or completes) or **manual**.
 ## Data model on a real database
 
 With `--postgres` (environment variable `PG_ADMIN_URL`, the connection string of a role that can create databases; without it, a disposable server
-that `pg_temp.py` starts for the whole batch from the local PostgreSQL binaries, see below) `pg_analysis.py` creates a
-database `eval_<run>`, starts the backend against it (`DATABASE_URL`, `PORT`), exercises it with the acceptance gate and with `pg_seed.py` (the same 25
+that `js/pg_temp.mjs` starts for the whole batch from the local PostgreSQL binaries, see below) `js/pg_analysis.mjs` creates a
+database `eval_<run>`, starts the backend against it (`DATABASE_URL`, `PORT`), exercises it with the acceptance gate and with `js/pg_seed.mjs` (the same 25
 users and their orders or seat purchases in all the apps of a domain; the gate is skipped on an app that already implements
-`r2-additional-requirements.md`, because its suites cover the original requirements), reads its catalog with `pg_schema.js` through the `pg` package (`information_schema` for tables and columns;
-`pg_catalog` for constraints, foreign keys, indexes and `pg_stat_user_indexes` for index usage) and drops the database. `pg_schema.js` refuses to
+`r2-additional-requirements.md`, because its suites cover the original requirements), reads its catalog with `js/tools/pg_schema.js` through the `pg` package (`information_schema` for tables and columns;
+`pg_catalog` for constraints, foreign keys, indexes and `pg_stat_user_indexes` for index usage) and drops the database. `js/tools/pg_schema.js` refuses to
 create, read or drop any database whose name does not match `eval_[a-z0-9_]+`, and `PG_ADMIN_URL` itself is not passed to the evaluated backend. The
 catalog is saved in `results/<run>/pg_schema.json` and replaces the static schema for these criteria:
 
-*Temporary server.* When `PG_ADMIN_URL` is not set, `cli.py evaluate --postgres` looks for `initdb` and `pg_ctl` (`PG_BIN`, the `PATH`, then the usual
+*Temporary server.* When `PG_ADMIN_URL` is not set, `js/cli.mjs evaluate --postgres` looks for `initdb` and `pg_ctl` (`PG_BIN`, the `PATH`, then the usual
 install folders, highest major first), creates a cluster in a new temporary folder, starts it on `127.0.0.1` and a free port with a superuser
 `evaluator` whose random password exists only in memory (scram-sha-256), uses it for every app of the batch and stops and deletes it at the end.
-Docker is not needed and no existing server or database is touched. `python pg_temp.py` checks that it can start one.
+Docker is not needed and no existing server or database is touched. `node js/pg_temp.mjs` checks that it can start one.
 
 
 - **C1** counts tables without primary key and `*_id` columns without a foreign key in the real database.
@@ -304,8 +304,8 @@ to be calibrated on the experiment's data before it can score.
   needs Node.js 22 or later. Configuration, migrations, seeders, type declarations and test files are not mutated.
 - **Runtime conformance to the contract (Contracts).** The static criteria tell whether a contract exists and whether its paths match the
   routes in the code; this tells whether the responses the running API returns are the ones the contract documents. When the acceptance
-  gate runs (`cli.py evaluate --postgres`, or `run_experiment.py` with Docker), `acceptance_check.py --app` sends the suite through a Prism
-  proxy (`contract_conformance.py`) that validates every exchange against the app's contract (the one of `docs/R2/` first). A call
+  gate runs (`js/cli.mjs evaluate --postgres`, or `js/run_experiment.mjs` with Docker), `js/acceptance_check.mjs --app` sends the suite through a Prism
+  proxy (`js/contract_conformance.mjs`) that validates every exchange against the app's contract (the one of `docs/R2/` first). A call
   conforms when its route is documented, its status code is declared and its body matches the schema; the requests the suite makes
   invalid on purpose (to check the 400s) are counted apart and do not lower it. Result: `contract_conformance.json`, read by the scoring
   like the live database.
@@ -348,7 +348,7 @@ Data model C1, C3, C4 and C6 are verifiable over the schema and count without ac
 automatic: there is a contract, there is a validation library, at least 90% of the POST/PUT/PATCH routes validate their input and the fields they
 validate (zod, Joi, yup, express-validator) exist as a property in the contract. Hierarchies C3 applies DV8's rules to the import
 graph. Observability C1 includes authentication and writes in addition to the `catch` blocks. Cohesion also reports DV8's IL
-(`dv8_metrics.py` computes it) and Coupling reports the cliques.
+(`js/dv8_metrics.mjs` computes it) and Coupling reports the cliques.
 
 ## Source of every threshold
 
@@ -368,7 +368,7 @@ evaluator's tests fail if a threshold has no backing entry or if a `normative_ex
 ## AI token consumption
 
 Besides the static profile, each application has an **effort indicator**: the tokens the generator agent consumed in two phases of its
-life, measured with `token_usage.py` from the agents' own usage records (procedure in [generating-apps.md](generating-apps.md)).
+life, measured with `js/token_usage.mjs` from the agents' own usage records (procedure in [generating-apps.md](generating-apps.md)).
 
 | Phase | What it measures |
 |---|---|
@@ -410,7 +410,7 @@ Each run leaves in `results/<run>/`:
 | `ast.json`, `depcruise.config.json`, `lint_raw.json`, `lint_request.json`, `jscpd/`, `knip/`, `mutation/` | Raw outputs of ts-morph, dependency-cruiser, ESLint, jscpd, Knip and StrykerJS (`mutation/` only with `--mutation`). |
 | `dv8/` | The DV8 matrix and its metrics (`dv8_metrics.json`; `dv8_manual.json` for a human review). |
 | `token_usage.json` | Tokens per phase and per session, with the source file of each. |
-| `acceptance.json`, `contract_conformance.json`, `pg_schema.json`, `seed.json` | Only with the acceptance gate / `--postgres`: functional result, runtime conformance to the contract (Prism) and catalog of the live database. |
+| `acceptance.json`, `contract_conformance.json`, `js/tools/pg_schema.json`, `seed.json` | Only with the acceptance gate / `--postgres`: functional result, runtime conformance to the contract (Prism) and catalog of the live database. |
 | `judge.json` | Only with `--judge`: the judge's decisions, votes and audit sample. |
 
 `results/environment.json` records the versions used, the options and the reference date `as_of`; `results/_comparison/` has

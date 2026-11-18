@@ -61,7 +61,7 @@ function replay(g, app) {
 }
 
 const files = fs.existsSync(DIR) ? fs.readdirSync(DIR).filter((f) => f.endsWith(".json")).sort() : [];
-if (!files.length) test("collect goldens", { skip: "run python tests/golden/record_collect.py first" }, () => {});
+if (!files.length) test("collect goldens", { skip: "run python python/golden/record_collect.py first" }, () => {});
 for (const f of files) {
   test(`collect ${f.replace(/\.json$/, "")}`, { timeout: 15 * 60 * 1000 }, async () => {
     const g = loadJson(fs.readFileSync(path.join(DIR, f), "utf8"));
