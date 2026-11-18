@@ -1,7 +1,8 @@
 // ascmm.mjs — The Automated Source Code Maintainability Measure (ISO/IEC 5055:2021) of a run: occurrences of every weakness the
 // framework detects and their density per KLOC of production code. Port of evaluator/ascmm.py (the profile; the Markdown comes
 // with the outputs).
-import { F, get, isDict, pyRound } from "../lib/py.mjs";
+import { F, get, isDict, pyRound, str, truthy } from "../lib/py.mjs";
+import { RUBRIC } from "./common.mjs";
 import { ascmmIndicators } from "./supplementary.mjs";
 
 const isInt = (v) => typeof v === "number" && Number.isInteger(v);  // Python int: a PyFloat (an object) or a bool is not one
@@ -65,4 +66,53 @@ export function ascmmProfile(m, points) {
   };
   return { kloc: F(kloc), size_basis: "KLOC of production code (ISO/IEC 5055 Annex C.1 uses AFP)", weaknesses: rows,
     scored: total(rows.filter((r) => r.scored)), all: total(rows) };
+}
+
+const geq = (t) => (t.complete ? "" : "≥ ");
+
+export const fmtTotal = (t) => `${geq(t)}${t.occurrences} (${geq(t)}${t.per_kloc !== null ? str(t.per_kloc) : "n/a"}/KLOC)`;
+
+export const COLUMNS = ["kloc", "ascmm_scored", "ascmm_scored_per_kloc", "ascmm_all", "ascmm_all_per_kloc", "ascmm_complete"];
+
+/** Values of COLUMNS for comparison.csv; nulls for an older profile without ASCMM. */
+export function ascmmColumns(prof) {
+  const a = get(prof, "ascmm");
+  if (!truthy(a)) return COLUMNS.map(() => null);
+  return [a.kloc, a.scored.occurrences, a.scored.per_kloc, a.all.occurrences, a.all.per_kloc, a.all.complete];
+}
+
+/** Section of comparison.md and report.md: runs = [[run_id, profile]]. */
+export function ascmmComparisonMd(runs) {
+  const rows = runs.filter(([, p]) => truthy(get(p, "ascmm"))).map(([r, p]) => [r, p.ascmm]);
+  if (!rows.length) return [];
+  const L = ["## ISO/IEC 5055 weaknesses (ASCMM)", "",
+    "Occurrences of the detected weaknesses and their density per KLOC of production code: compare densities, since the applications " +
+    "differ in size (ISO/IEC 5055 Annex C.1). ≥ = some weakness not measured, so the total is a lower bound.", "",
+    "| Run | KLOC | Scored | Scored / KLOC | All detected | All / KLOC |", "|---|---|---|---|---|---|"];
+  for (const [r, a] of rows)
+    L.push(`| ${r} | ${str(a.kloc)} | ${geq(a.scored)}${a.scored.occurrences} | ${geq(a.scored)}${str(a.scored.per_kloc)} | ${geq(a.all)}${a.all.occurrences} | ${geq(a.all)}${str(a.all.per_kloc)} |`);
+  const cwes = rows[0][1].weaknesses.map((w) => w.cwe);
+  L.push("", "Per weakness (occurrences / per KLOC):", "", "| CWE | " + rows.map(([r]) => r).join(" | ") + " |", "|---|" + "---|".repeat(rows.length));
+  for (const c of cwes) {
+    const cells = rows.map(([, a]) => {
+      const w = a.weaknesses.find((x) => x.cwe === c);
+      return !w || w.count === null ? "n/a" : `${str(w.count)} / ${str(w.per_kloc)}`;
+    });
+    L.push(`| ${c} | ` + cells.join(" | ") + " |");
+  }
+  return [...L, ""];
+}
+
+/** Section of profile.md. */
+export function ascmmMarkdown(a) {
+  const cov = RUBRIC.backing._coverage_ascmm;
+  const L = ["## ISO/IEC 5055 weaknesses (ASCMM)", "",
+    `Occurrences of every weakness the framework detects (${cov.scored.length} scored, ${cov.informational.length} informational, ` +
+    `${cov.not_detected.length} of the ${str(cov.applicable)} applicable not detected), and their density per KLOC of production code ` +
+    `(${str(a.kloc)} KLOC; ISO/IEC 5055 Annex C.1 normalizes by AFP, which is not computed). n/a = not measured.`, "",
+    "| CWE | Weakness | Occurrences | Per KLOC | Counted as | Scored in |", "|---|---|---|---|---|---|"];
+  for (const r of a.weaknesses)
+    L.push(`| ${r.cwe} | ${r.name} | ${r.count === null ? "n/a" : str(r.count)} | ${r.per_kloc === null ? "n/a" : str(r.per_kloc)} | ${r.unit} | ${r.point || "informational"} |`);
+  L.push("", `**ASCMM, scored weaknesses:** ${fmtTotal(a.scored)} · **all detected:** ${fmtTotal(a.all)}` + (a.all.not_measured.length ? `. Not measured: ${a.all.not_measured.join(", ")}.` : "."), "");
+  return L;
 }

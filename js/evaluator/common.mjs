@@ -45,3 +45,9 @@ export const appFs = {
     return sorted(out, key).map((p) => { try { return fs.readFileSync(p, "utf8"); } catch { return null; } }).filter((t) => t !== null).join("\n");
   },
 };
+
+const MISSING_MODEL_VALUES = new Set(["", "n/a", "na", "none", "null", "unknown", "?"]);
+export const MODEL_WARNING = "The generator model was not recorded (`--model`). It is a variable of the experiment: without it the result cannot be attributed to " +
+  "a model, compared with other models or reproduced.";
+/** True when the generator model was not given (null, empty, n/a, unknown…). */
+export const modelMissing = (model) => model === null || model === undefined || MISSING_MODEL_VALUES.has(str(model).trim().toLowerCase());

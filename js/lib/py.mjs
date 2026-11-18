@@ -231,3 +231,35 @@ export function setEq(a, b) {
   for (const x of A) if (!B.has(x)) return false;
   return true;
 }
+
+/** json.dumps(v, indent=n, ensure_ascii=False): Python's layout (", " / ": " separators, one item per line with `indent`), floats
+ *  as Python writes them (50.0, 1e-05, NaN, Infinity). */
+export function dumps(v, indent = null, level = 0) {
+  const nl = indent === null ? "" : "\n" + " ".repeat(indent * (level + 1));
+  const end = indent === null ? "" : "\n" + " ".repeat(indent * level);
+  const sep = indent === null ? ", " : ",";
+  if (v === null || v === undefined) return "null";
+  if (v === true) return "true";
+  if (v === false) return "false";
+  if (v instanceof Number || typeof v === "number") {
+    const x = Number(v);
+    if (Number.isNaN(x)) return "NaN";
+    if (!Number.isFinite(x)) return x > 0 ? "Infinity" : "-Infinity";
+    return v instanceof Number ? floatRepr(x) : reprNum(x);
+  }
+  if (typeof v === "string") return JSON.stringify(v);
+  if (Array.isArray(v)) return v.length ? "[" + v.map((x) => nl + dumps(x, indent, level + 1)).join(sep) + end + "]" : "[]";
+  const ks = Object.keys(v).filter((k) => v[k] !== undefined);
+  return ks.length ? "{" + ks.map((k) => nl + JSON.stringify(k) + ": " + dumps(v[k], indent, level + 1)).join(sep) + end + "}" : "{}";
+}
+
+/** csv.writer (excel dialect) row: fields with , " \r or \n quoted, quotes doubled, None empty, "\r\n" at the end. */
+export function csvRow(fields) {
+  const cell = (f) => {
+    const s = f === null || f === undefined ? "" : str(f);
+    return /[,"\r\n]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
+  };
+  const out = fields.map(cell);
+  if (out.length === 1 && out[0] === "") out[0] = '""';  // csv writes a lone empty field as "" so the row is not blank
+  return out.join(",") + "\r\n";
+}

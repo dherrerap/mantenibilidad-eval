@@ -6,7 +6,7 @@ the same JSON as the Python one**, so that results stay comparable across the mi
 
 ## How equivalence is checked
 
-1. `python tests/golden/record_relational.py` and `record_scoring.py` wrap the public functions of the Python modules and run the
+1. `python tests/golden/record_relational.py`, `record_scoring.py` and `record_outputs.py` wrap the public functions of the Python modules and run the
    whole Python test suite.
    It also evaluates the apps in `apps/`, when there are any. Every distinct call is recorded as `{fn, args, result}`:
    - `tests/golden/*.json` holds the test suite and fixture calls. It is committed. Absolute paths are replaced.
@@ -16,6 +16,9 @@ the same JSON as the Python one**, so that results stay comparable across the mi
    - A scoring record also keeps what the call read from disk, such as the error middleware's file and the design documents. The
      replay serves those files from the record instead of the disk.
    - A Python test that replaces `EVALUATORS` with stubs is not recorded, because it does not exercise the real points.
+   - An outputs record keeps the content of every file `write_outputs` wrote, and the replay compares them as text. On each
+     evaluated run it also keeps the inputs of the scoring, so the replay runs the whole chain in JavaScript: `metrics.json` →
+     `evaluateProfile` → `writeOutputs`. The files must come out identical to Python's.
 2. `npm run test:js` replays every recorded call on the JavaScript port. It requires the same JSON, including **key order**,
    because Python dicts are ordered and the reports are built from them.
 3. When the Python code changes, record again, then fix the port until the JavaScript tests pass.
@@ -26,6 +29,7 @@ the same JSON as the Python one**, so that results stay comparable across the mi
   would print is wrapped in `PyFloat`, which serializes as a plain number. `loadJson` reads a number written with a decimal point or
   an exponent as a `PyFloat`, as Python's `json` reads it as a float. This applies to the rubric and to the recorded inputs;
 - `format()` (`:.1f` rounds half to even, and `:g`) and `str.format` for the templates of `rubric.json`;
+- `json.dumps(indent=1, ensure_ascii=False)` (`dumps`) and the `csv` writer (`csvRow`), so that the files are the same byte for byte;
 - `str()` and `repr()` (`True`, `None`, `1e-05`);
 - `round()`, which rounds half to even on the exact binary value;
 - ordering of mixed values;
@@ -41,10 +45,16 @@ The port also sorts folder listings without regard to case on Windows, as `Windo
 | `relational_analysis.py` | `js/relational/analysis.mjs` | ✔ the same, plus `load_er` on `tests/fixtures/er_versions`. |
 | `evaluator/points/*` (the 11 points) | `js/evaluator/points/*.mjs` | ✔ every recorded call of each point. |
 | `evaluator/criteria.py`, `scoring.py`, `ascmm.py` (profile), `supplementary.py`, `graph.py`, `routes.py` | `js/evaluator/*.mjs` | ✔ `evaluate_profile` and `risk_summary` on the 3 ecommerce apps, plus every call from the test suite. |
-| `evaluator/outputs.py`, `dashboard.py`, `sensitivity.py`, the Markdown of `ascmm.py` | — | pending |
+| `evaluator/outputs.py`, `dashboard.py`, `sensitivity.py`, the Markdown of `ascmm.py`, the summary part of `token_usage.py` | `js/evaluator/{outputs,dashboard,sensitivity,ascmm,tokens}.mjs` | ✔ the 11 files of every recorded `write_outputs`, the same text as Python's. On the 3 ecommerce apps the files also come out the same from `metrics.json` through the JS scoring. Also every recorded call of the sensitivity and the ASCMM comparison. |
 | `evaluator/collectors/*` (tools run as subprocesses) | — | pending |
 | `evaluate.py`, `cli.py`, `manual_template.py`, `judge.py`, `token_usage.py` | — | pending |
 | `pg_*.py`, `acceptance_check.py`, `contract_conformance.py`, `run_experiment.py` | — | pending |
+
+**Newlines.** Python's `Path.write_text` turns `
+` into `
+` on Windows, so profile.md and the JSON files have CRLF there. The
+JavaScript version writes LF on every platform. The CSV files keep their `
+` in both, because Python opens them with `newline=""`.
 
 **One change to Python came out of the port.** `graph.cliques` visited each module's neighbours from a `set`. The order of a set of
 strings is a hash order that changes between runs, so the order of the cliques in the evidence was not reproducible. The neighbours
