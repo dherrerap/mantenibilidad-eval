@@ -268,8 +268,8 @@ or completes) or **manual**.
 With `--postgres` (environment variable `PG_ADMIN_URL`, the connection string of a role that can create databases; without it, a disposable server
 that `js/pg_temp.mjs` starts for the whole batch from the local PostgreSQL binaries, see below) `js/pg_analysis.mjs` creates a
 database `eval_<run>`, starts the backend against it (`DATABASE_URL`, `PORT`), exercises it with the acceptance gate and with `js/pg_seed.mjs` (the same 25
-users and their orders or seat purchases in all the apps of a domain; the gate is skipped on an app that already implements
-`r2-additional-requirements.md`, because its suites cover the original requirements), reads its catalog with `js/tools/pg_schema.js` through the `pg` package (`information_schema` for tables and columns;
+users and their orders or seat purchases in all the apps of a domain; on an e-commerce app that already implements
+`r2-additional-requirements.md` the gate runs the r2 suite instead, on databases of its own, and on a cinema one it is skipped), reads its catalog with `js/tools/pg_schema.js` through the `pg` package (`information_schema` for tables and columns;
 `pg_catalog` for constraints, foreign keys, indexes and `pg_stat_user_indexes` for index usage) and drops the database. `js/tools/pg_schema.js` refuses to
 create, read or drop any database whose name does not match `eval_[a-z0-9_]+`, and `PG_ADMIN_URL` itself is not passed to the evaluated backend. The
 catalog is saved in `results/<run>/pg_schema.json` and replaces the static schema for these criteria:

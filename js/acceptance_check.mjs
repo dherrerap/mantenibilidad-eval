@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 // acceptance_check.mjs — Functional gate: verifies, against the running API, the behaviors of the domain requirements (ecommerce,
 // cinema) and the contract of their minimum HTTP interface. Port of acceptance_check.py (see it for what the suites cover).
-//   node js/acceptance_check.mjs --base http://localhost:4000 [--domain cinema] --out acceptance.json [--app <app folder>]
+//   node js/acceptance_check.mjs --base http://localhost:4000 [--domain cinema] --out acceptance.json [--app <app folder>] [--suite r2]
+// --suite r2 checks r2-additional-requirements.md instead (acceptance_r2.mjs); it reads ADMIN_EMAIL, ADMIN_PASSWORD, AUDITOR_EMAIL and
+// AUDITOR_PASSWORD from the environment, the same values the backend was started with.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { F, dumps, isDict, loadJson, pyRound, repr, sorted, str } from "./lib/py.mjs";
 import * as cc from "./contract_conformance.mjs";
 import { findContracts } from "./evaluator/collectors/tools.mjs";
+import { R2_SUITES } from "./acceptance_r2.mjs";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 let CALLS = null;  // calls made through the Prism proxy, with the violations of its sl-violations header
@@ -35,7 +38,7 @@ const keySet = (x) => new Set(isDict(x) ? Object.keys(x) : Array.isArray(x) ? x 
 const subset = (a, b) => [...a].every((x) => b.has(x));
 const eqSet = (a, b) => a.size === b.size && subset(a, b);
 /** Python ==, for the values the cases compare (numbers by value, lists and dicts deeply). */
-function eq(a, b) {
+export function eq(a, b) {
   if ((typeof a === "number" || a instanceof Number) && (typeof b === "number" || b instanceof Number)) return Number(a) === Number(b);
   if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => eq(x, b[i]));
   if (isDict(a) && isDict(b)) return eqSet(new Set(Object.keys(a)), new Set(Object.keys(b))) && Object.keys(a).every((k) => eq(a[k], b[k]));
@@ -80,18 +83,18 @@ export const isNumber = (x) => typeof x === "number" || x instanceof Number;
 export const isOpaqueId = (x) => (typeof x === "number" && Number.isInteger(x)) || (typeof x === "string" && UUID_RE.test(x));
 
 /** `case(name, fn)`: runs fn at once and records [ok, detail]; an exception is a failed case. */
-async function runCase(results, name, fn) {
+export async function runCase(results, name, fn) {
   let ok, detail;
   try { [ok, detail] = await fn(); } catch (e) { ok = false; detail = `exception: ${e.pyRepr || `${e.name}(${repr(e.message)})`}`; }
   results.push({ case: name, ok: Boolean(ok), detail });
 }
 
-function testUsers() {
+export function testUsers() {
   const stamp = String(Date.now());
   return [{ name: "Ann", email: `ann${stamp}@test.com`, password: "Passw0rd!x" }, { name: "Bob", email: `bob${stamp}@test.com`, password: "Passw0rd!x" }];
 }
 
-async function authCases(base, results, user, ctx) {
+export async function authCases(base, results, user, ctx) {
   await runCase(results, "register: 201", async () => { const [s] = await call(base, "POST", "/api/auth/register", user); return [s === 201, s]; });
   await runCase(results, "duplicate register: 409", async () => { const [s] = await call(base, "POST", "/api/auth/register", user); return [s === 409, s]; });
   await runCase(results, "login: 200 with token", async () => {
@@ -109,7 +112,7 @@ export async function login(base, user) {
   return isDict(b) ? pget(b, "token") : null;
 }
 
-function summary(base, results, domain) {
+export function summary(base, results, domain) {
   const passed = results.filter((r) => r.ok).length;
   return { base, domain, total: results.length, passed, acceptance_pct: F(results.length ? pyRound((100.0 * passed) / results.length, 1) : 0.0), cases: results };
 }
@@ -352,39 +355,41 @@ async function runCinema(base) {
 
 export const SUITES = { ecommerce: runEcommerce, cinema: runCinema };
 
-export function run(base, domain = "ecommerce") {
-  if (!(domain in SUITES)) throw new Error(`no acceptance suite for domain '${domain}' (available: ${sorted(Object.keys(SUITES)).join(", ")})`);
-  return SUITES[domain](base);
+/** `suite` "r1" is the original requirements; "r2" the additional ones (acceptance_r2.mjs), for a project that implements them. */
+export function run(base, domain = "ecommerce", suite = "r1") {
+  const suites = suite === "r2" ? R2_SUITES : SUITES;
+  if (!(domain in suites)) throw new Error(`no ${suite} acceptance suite for domain '${domain}' (available: ${sorted(Object.keys(suites)).join(", ")})`);
+  return suites[domain](base);
 }
 
 /** The suite through a Prism proxy that validates every response against the app's OpenAPI contract; `_conformance` carries the
  *  conformance or why it was not measured. A proxy failure never fails the gate: the suite then runs direct. */
-export async function runWithContract(base, domain, app) {
+export async function runWithContract(base, domain, app, suite = "r1") {
   const found = findContracts(app);
-  if (!found.length) return { ...(await run(base, domain)), _conformance: cc.withoutPrism("the app has no OpenAPI contract") };
+  if (!found.length) return { ...(await run(base, domain, suite)), _conformance: cc.withoutPrism("the app has no OpenAPI contract") };
   const contract = path.join(app, found[0]);
-  if (!cc.available()) return { ...(await run(base, domain)), _conformance: cc.withoutPrism("Prism is not installed (npm install)", found[0]) };
+  if (!cc.available()) return { ...(await run(base, domain, suite)), _conformance: cc.withoutPrism("Prism is not installed (npm install)", found[0]) };
   const proxy = new cc.Proxy(contract, base);
   let proxied;
   try { proxied = await proxy.open(); } catch (e) {
     proxy.close();
-    return { ...(await run(base, domain)), _conformance: cc.withoutPrism(String(e.message).slice(0, 300), found[0]) };
+    return { ...(await run(base, domain, suite)), _conformance: cc.withoutPrism(String(e.message).slice(0, 300), found[0]) };
   }
   CALLS = [];
   try {
-    const res = await run(proxied, domain);
+    const res = await run(proxied, domain, suite);
     res.base = base;
     return { ...res, _conformance: cc.summarize(CALLS, found[0], proxy.base_path) };
   } finally { CALLS = null; proxy.close(); }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = process.argv.slice(2), o = { base: "http://localhost:4000", out: "acceptance.json", domain: "ecommerce", app: null };
+  const args = process.argv.slice(2), o = { base: "http://localhost:4000", out: "acceptance.json", domain: "ecommerce", app: null, suite: "r1" };
   for (let i = 0; i < args.length; i++) if (args[i].startsWith("--")) o[args[i].slice(2)] = args[++i];
   const base = o.base.replace(/\/+$/, "");
   let conformance = null, res;
-  if (o.app) { res = await runWithContract(base, o.domain, o.app); conformance = res._conformance; delete res._conformance; }
-  else res = await run(base, o.domain);
+  if (o.app) { res = await runWithContract(base, o.domain, o.app, o.suite); conformance = res._conformance; delete res._conformance; }
+  else res = await run(base, o.domain, o.suite);
   fs.writeFileSync(o.out, dumps(res, 1), "utf8");
   if (conformance !== null) {
     fs.writeFileSync(path.join(path.dirname(path.resolve(o.out)), cc.RESULT_FILE), dumps(conformance, 1), "utf8");

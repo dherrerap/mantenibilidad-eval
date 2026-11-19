@@ -138,8 +138,13 @@ schema, the *Data model design* point is not evaluable.
    application's own `docker-compose.yml` (project and disposable database `eval_<run>`, removed afterwards), runs the backend with
    `DATABASE_URL` and `PORT`, and checks the minimum HTTP interface of the domain with `js/acceptance_check.mjs --domain <domain>`:
    e-commerce (money as JSON numbers, opaque ids, the volume-discount examples, the stock rules, the order statuses) or cinema (the seed
-   screenings and prices, the seat map, locks between users, sold seats, isolation of purchases). The suites cover the **original**
-   requirements, so the gate runs right after phase initial, before r2; on a project that already implements r2 it is skipped and
-   the earlier result is kept. It needs Docker; without it the gate is skipped and says so. Without Docker, `js/cli.mjs evaluate --postgres`
-   runs the same gate against a disposable database of a PostgreSQL server (`PG_ADMIN_URL`). In both, the suite also goes through a Prism
-   proxy that checks the responses against `docs/openapi.yaml` (`contract_conformance.json`). Or test the application by hand.
+   screenings and prices, the seat map, locks between users, sold seats, isolation of purchases). These suites cover the **original**
+   requirements, so `js/run_experiment.mjs` runs the gate right after phase initial, before r2; on a project that already implements r2
+   it keeps the earlier result. It needs Docker; without it the gate is skipped and says so. Without Docker, `js/cli.mjs evaluate --postgres`
+   runs the gate against a disposable database of a PostgreSQL server (`PG_ADMIN_URL`). On an e-commerce app that implements r2 it runs
+   the **r2 suite** instead (`js/acceptance_r2.mjs`, `--suite r2`): Requirements 1 to 9 through the HTTP interface of
+   `r2-additional-requirements.md` (roles, audit, logical deletion, the replica and an unconfigured SQL Server, coupons, cancellation,
+   the new prices with shipping, the purchase limits), on databases of its own (`eval_<run>_acc`, and `eval_<run>_rep` as
+   `REPLICA_DATABASE_URL`) with random `ADMIN_*` and `AUDITOR_*` accounts, so that it does not change the data the catalog analysis
+   reads. In both, the suite also goes through a Prism proxy that checks the responses against the contract (`docs/R2/openapi.yaml`
+   when there is one, else `docs/openapi.yaml`; `contract_conformance.json`). Or test the application by hand.

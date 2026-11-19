@@ -92,8 +92,8 @@ export function mask(text, ...urls) {
 const R2_MARKERS = ["r2-additional-requirements.md", "PROMPT-R2.md"];
 /** True when the additional requirements (phase r2) were handed to the agent in this project. */
 export const hasR2 = (project) => R2_MARKERS.some((f) => { try { return fs.statSync(path.join(project, f)).isFile(); } catch { return false; } });
-export const R2_GATE_SKIP = "the project already implements r2-additional-requirements.md and the acceptance suite covers the original " +
-  "requirements only (r2 changes prices, shipping and roles); run the gate after phase initial";
+export const R2_GATE_SKIP = "the project already implements r2-additional-requirements.md and this domain has no r2 acceptance suite " +
+  "(only ecommerce has one; the original suite does not apply, because r2 changes prices, shipping and roles); run the gate after phase initial";
 
 // ───────────────────────── Docker Compose (acceptance gate) ─────────────────────────
 const COMPOSE_NAMES = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"];

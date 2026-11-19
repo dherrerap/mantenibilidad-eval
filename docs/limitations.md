@@ -12,10 +12,13 @@ What the framework does **not** guarantee. Cite them alongside any result.
   Compose v2; without them it is skipped and says so), and `js/cli.mjs evaluate --postgres` runs it against a disposable database of the server in
   `PG_ADMIN_URL` or, without it, of a temporary server started from the local PostgreSQL binaries (`js/pg_temp.mjs`). Without either, nothing in the
   profile tells whether the app works. It is a maintainability measure, not a correctness one.
-- **The gate covers the original requirements only** (`requirements-ecommerce.md` or `requirements-cinema.md`, chosen by the domain).
-  The additional requirements of phase r2 change some of its rules (prices, shipping, roles), so `js/run_experiment.mjs` runs it right
-  after phase initial and skips it on a project that already implements r2. There is no acceptance suite for r2 yet. The 5-minute
-  expiry of the cinema seat locks is not checked (it would take 5 minutes).
+- **The r2 gate covers e-commerce only.** The original suites (`requirements-ecommerce.md`, `requirements-cinema.md`) do not apply
+  to a project that implements r2 (it changes prices, shipping and roles). `js/cli.mjs evaluate --postgres` runs the r2 suite
+  (`js/acceptance_r2.mjs`) on an e-commerce app that implements r2; a cinema app that implements r2 has no suite and its gate is
+  skipped. `js/run_experiment.mjs` (Docker) does not run the r2 suite: it keeps the result of the gate run after phase initial. The r2
+  suite does not check SQL Server itself (it needs a SQL Server instance; only the 503 of an unconfigured one is checked), nor the user
+  interface rules (the auditor must not be offered write actions). The 5-minute expiry of the cinema seat locks is not checked (it
+  would take 5 minutes).
 - **A single run per combination.** With one run per level there is no statistical basis to claim that one level beats
   another. Differences of a few points are within the margin left by the pending criteria.
 - **The result is a range** as long as there are pending criteria. The ends are bounds, not estimates.

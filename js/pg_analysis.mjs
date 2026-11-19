@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { get, loadJson, readText, str } from "./lib/py.mjs";
 import { HERE } from "./evaluator/common.mjs";
 import * as rt from "./pg_runtime.mjs";
+import { R2_SUITES, r2Credentials } from "./acceptance_r2.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const readJson = (p) => loadJson(fs.readFileSync(p, "utf8"));
@@ -39,13 +40,54 @@ async function exerciseBackend(be, env, port, res, wait, skipSeed, logFd, domain
   } finally { rt.killTree(proc); }
 }
 
-/** The acceptance suites cover the original requirements: on an app that already implements r2 the gate is skipped. */
-function gateAllowed(app, res) {
-  if (!rt.hasR2(app)) return true;
+/** Which acceptance suite applies: "r1" (original requirements), "r2" (an app that implements r2 and a domain with an r2 suite) or
+ *  null (an r2 app of a domain without one: the gate is skipped). */
+function gateSuite(app, res, domain) {
+  if (!rt.hasR2(app)) return "r1";
+  if (domain in R2_SUITES) return "r2";
   fs.rmSync(path.join(res, "acceptance.json"), { force: true });
   fs.rmSync(path.join(res, "contract_conformance.json"), { force: true });
   console.log(`Acceptance gate skipped: ${rt.R2_GATE_SKIP}.`);
-  return false;
+  return null;
+}
+
+/** The r2 gate on its own databases (the suite creates, edits and deletes catalog records and coupons, which must not reach the
+ *  database the catalog analysis reads): <db>_acc as DATABASE_URL and <db>_rep as REPLICA_DATABASE_URL, SQLSERVER_URL unset, and the
+ *  bootstrap accounts of Requirement 4. Both databases are dropped at the end. An error text or null. */
+async function r2Gate({ be, baseEnv, adminUrl, db, res, wait, domain, logFd }) {
+  const acc = db.slice(0, 51) + "_acc", rep = db.slice(0, 51) + "_rep", made = [];
+  try {
+    for (const name of [acc, rep]) {
+      const [rc, out] = nodePg(["create", name], adminUrl);
+      console.log(out);
+      if (rc !== 0) return `could not create ${name} for the r2 gate`;
+      made.push(name);
+    }
+    const creds = r2Credentials(), port = rt.freePort();
+    const env = { ...baseEnv, ...creds, PORT: String(port), DATABASE_URL: rt.dbUrl(adminUrl, acc), REPLICA_DATABASE_URL: rt.dbUrl(adminUrl, rep) };
+    delete env.SQLSERVER_URL;
+    console.log(`r2 acceptance gate: databases ${acc} and ${rep}; backend on port ${port} …`);
+    const proc = rt.startProcess(rt.npmCmd("start"), be, env, logFd);
+    try {
+      if (!(await rt.waitForPort(port, wait))) return `the backend did not open the port within ${wait} s for the r2 gate (see backend.log)`;
+      await sleep(2000);
+      spawnSync(process.execPath, [path.join(HERE, "js", "acceptance_check.mjs"), "--base", `http://127.0.0.1:${port}`, "--domain", domain, "--suite", "r2",
+        "--out", path.join(res, "acceptance.json"), "--app", path.dirname(be)], { env: { ...process.env, ...creds }, stdio: ["ignore", logFd, logFd], timeout: 900000, windowsHide: true });
+      return null;
+    } finally { rt.killTree(proc); }
+  } finally {
+    for (const name of made) { const [rc, out] = nodePg(["drop", name], adminUrl); console.log(out); if (rc !== 0) console.log(`COULD NOT DROP ${name}: drop it by hand`); }
+  }
+}
+
+/** npm install when needed, then the r2 gate; a failure to run it is reported, never fatal for the analysis. */
+async function runR2Gate(o) {
+  if (!fs.existsSync(path.join(o.be, "node_modules"))) {
+    const cmd = rt.npmCmd("install", "--no-audit", "--no-fund");
+    spawnSync(cmd[0], cmd.slice(1), { cwd: o.be, stdio: ["ignore", o.logFd, o.logFd], timeout: 900000, windowsHide: true });
+  }
+  const gateError = await r2Gate(o);
+  if (gateError) console.log(`r2 acceptance gate not run: ${gateError}`);
 }
 
 /** [error or null, database name]. The database is dropped at the end unless `keep`. */
@@ -67,11 +109,14 @@ export async function analyze(res, adminUrl, app = null, skipSeed = false, keep 
   if (rc !== 0) return ["could not create the database (see above)", db];
   let error = null;
   const domain = get(meta, "domain") || "ecommerce";
-  const gate = gateAllowed(app, res);
+  const suite = gateSuite(app, res, domain);
   const logPath = path.join(res, "backend.log");
   try {
     const fd = fs.openSync(logPath, "w");
-    try { error = await exerciseBackend(be, env, port, res, wait, skipSeed, fd, domain, gate); } finally { fs.closeSync(fd); }
+    try {
+      if (suite === "r2") await runR2Gate({ be, baseEnv: env, adminUrl, db, res, wait, domain, logFd: fd });
+      error = await exerciseBackend(be, env, port, res, wait, skipSeed, fd, domain, suite === "r1");
+    } finally { fs.closeSync(fd); }
     if (error === null) {
       [rc, out] = nodePg(["dump", db, path.join(res, "pg_schema.json")], adminUrl);
       console.log(out);
