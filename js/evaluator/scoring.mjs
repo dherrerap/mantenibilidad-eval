@@ -3,7 +3,7 @@
 import { F, get, pyRound, search, sorted, str, truthy } from "../lib/py.mjs";
 import { artifactFindings } from "./artifacts.mjs";
 import { ascmmProfile } from "./ascmm.mjs";
-import { RUBRIC } from "./common.mjs";
+import { RUBRIC, pointWeight } from "./common.mjs";
 import { levelFrom, pdict } from "./criteria.mjs";
 import { evalDataModel, evalTechnologies } from "./points/dependencies.mjs";
 import { evalConfiguration, evalContracts, evalHierarchies, evalObservability, evalTests } from "./points/simple.mjs";
@@ -68,8 +68,10 @@ export function profile(points) {
   for (const s of Object.keys(W)) {
     const ps = points.filter((p) => p.subcharacteristics.includes(s) && p.score_min !== null);
     const tot = points.filter((p) => p.subcharacteristics.includes(s));
-    const lo = ps.length ? ps.reduce((a, p) => a + Number(p.score_min), 0) / ps.length : null;
-    const hi = ps.length ? ps.reduce((a, p) => a + Number(p.score_max), 0) / ps.length : null;
+    // weighted mean of the evaluable points (`point_weights`); with no weights set every point weighs 1 and this is the plain mean
+    const tw = ps.reduce((a, p) => a + pointWeight(p.id), 0);
+    const lo = ps.length ? ps.reduce((a, p) => a + pointWeight(p.id) * Number(p.score_min), 0) / tw : null;
+    const hi = ps.length ? ps.reduce((a, p) => a + pointWeight(p.id) * Number(p.score_max), 0) / tw : null;
     subs[s] = { weight: W[s], points: tot.map((p) => p.id), evaluable_points: ps.length,
       min: lo === null ? null : F(pyRound(100 * lo, 1)), max: hi === null ? null : F(pyRound(100 * hi, 1)) };
   }
@@ -101,11 +103,12 @@ export const trafficLight = (point) => get(TRAFFIC, point.level, "⚪");
 /** Condensed risk view: every point with its traffic light and the overall-score points it puts at stake, highest risk first. */
 export function riskSummary(points) {
   const W = RUBRIC.subcharacteristic_weights;
-  const count = Object.fromEntries(Object.keys(W).map((s) => [s, points.filter((p) => p.subcharacteristics.includes(s)).length]));
+  // total point weight of each subcharacteristic: with no `point_weights` it is the number of points that feed it
+  const total = Object.fromEntries(Object.keys(W).map((s) => [s, points.filter((p) => p.subcharacteristics.includes(s)).reduce((a, p) => a + pointWeight(p.id), 0)]));
   const rows = [];
   for (const p of points) {
     if (p.score_min === null) continue;
-    const impact = 100 * p.subcharacteristics.filter((s) => Object.prototype.hasOwnProperty.call(W, s)).reduce((a, s) => a + Number(W[s]) / count[s], 0);
+    const impact = 100 * p.subcharacteristics.filter((s) => Object.prototype.hasOwnProperty.call(W, s)).reduce((a, s) => a + (Number(W[s]) * pointWeight(p.id)) / total[s], 0);
     rows.push({ id: p.id, name: p.name, light: trafficLight(p), level: p.level, level_min: p.level_min, level_max: p.level_max, pending: p.pending_criteria,
       impact: F(pyRound(impact, 1)), at_stake_min: F(pyRound((1 - Number(p.score_max)) * impact, 1)), at_stake_max: F(pyRound((1 - Number(p.score_min)) * impact, 1)) });
   }

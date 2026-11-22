@@ -9,6 +9,16 @@ export const HERE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 export const RUBRIC = loadJson(fs.readFileSync(path.join(HERE, "rubric.json"), "utf8"));  // floats stay floats, as in Python
 export const LEVELS = ["Fails", "Partial", "Meets"];
 
+/** Weight of a decision point inside every subcharacteristic it feeds (`point_weights` in rubric.json); 1 when the rubric sets none, which
+ * makes each subcharacteristic the plain mean of its points. Read at call time, so a test or a script can change the rubric in memory. */
+export function pointWeight(pid) {
+  const pw = RUBRIC.point_weights;
+  if (!pw || !Object.prototype.hasOwnProperty.call(pw, pid)) return 1;
+  const w = num(pw[pid]);
+  if (!(Number.isFinite(w) && w > 0)) throw new Error(`rubric.json point_weights.${pid} must be a positive number`);
+  return w;
+}
+
 /** None if b is 0, else a percentage (a Python float). */
 export const pct = (a, b) => (!num(b) ? null : F((100.0 * num(a)) / num(b)));
 

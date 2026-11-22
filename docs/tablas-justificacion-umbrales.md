@@ -46,6 +46,7 @@ valor de corte (solo función).
 | Umbral                                 | Valor               | Criterio o efecto                       | Decide un veredicto            |
 | -------------------------------------- | ------------------- | --------------------------------------- | ------------------------------ |
 | Pesos de las subcaracterísticas        | 30 / 24 / 24 / 22 % | Puntaje global                          | Sí                             |
+| Agregación de los puntos dentro de cada subcaracterística | Promedio simple (`point_weights` vacío) | Peso efectivo de cada punto en el puntaje global (de 3,4 % a 18,4 %) | Sí |
 | Fracción mínima para _Parcial_         | 0,5                 | Nivel de todos los puntos               | Sí                             |
 | Puntaje por nivel                      | 1 / 0,5 / 0         | Puntaje de todas las subcaracterísticas | Sí                             |
 | Violaciones de capas para _Parcial_    | 5 %                 | Capas, C2                               | Sí                             |

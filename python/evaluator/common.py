@@ -25,6 +25,18 @@ SKIP_DIRS = {"node_modules", "dist", "build", "coverage", ".git", ".next", "out"
 LEVELS = ["Fails", "Partial", "Meets"]
 
 
+def point_weight(pid):
+    """Weight of a decision point inside every subcharacteristic it feeds (`point_weights` in rubric.json); 1 when the rubric sets
+    none, which makes each subcharacteristic the plain mean of its points. Read at call time, so a test can patch the rubric."""
+    pw = RUBRIC.get("point_weights") or {}
+    if pid not in pw:
+        return 1
+    w = pw[pid]
+    if isinstance(w, bool) or not isinstance(w, (int, float)) or not (0 < w < float("inf")):
+        raise ValueError(f"rubric.json point_weights.{pid} must be a positive number")
+    return w
+
+
 MISSING_MODEL_VALUES = {"", "n/a", "na", "none", "null", "unknown", "?"}
 
 

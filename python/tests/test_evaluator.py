@@ -1527,7 +1527,7 @@ class TestBackingTraceability(unittest.TestCase):
         self.assertEqual(missing, [], f"without backing: {missing}")
 
     def test_top_level_weights_and_scales_declare_a_backing(self):
-        for key in ("subcharacteristic_weights", "partial_min_fraction", "level_score", "level_severity",
+        for key in ("subcharacteristic_weights", "point_weights", "partial_min_fraction", "level_score", "level_severity",
                     "risk_dashboard.semaphore", "risk_dashboard.hotspots_top_n", "supported_runtimes"):
             self.assertIn(key, ev.RUBRIC["backing"])
 
@@ -2093,6 +2093,55 @@ class TestCliCollectsOnce(unittest.TestCase):
             (Path(t) / "res" / "claude-n1-ecommerce-r1" / "metrics.json").write_text("{}", encoding="utf-8")
             calls, summary = self.run_app(t, rescore_only=True)
         self.assertEqual(calls, ["evaluate.py:rescore"]); self.assertFalse(summary.startswith("ERROR"))
+
+
+class TestPointWeights(unittest.TestCase):
+    """Weights of the decision points inside each subcharacteristic (`point_weights` in rubric.json)."""
+
+    LEVEL = {0: "Fails", 0.5: "Partial", 1: "Meets"}
+
+    def pts(self, scores=None):
+        scores = scores or {}
+        return [{"id": pid, "name": d["name"], "subcharacteristics": d["subcharacteristics"], "complete": True,
+                 "level": self.LEVEL[scores.get(pid, 0)], "level_min": self.LEVEL[scores.get(pid, 0)], "level_max": self.LEVEL[scores.get(pid, 0)],
+                 "pending_criteria": [], "score_min": scores.get(pid, 0), "score_max": scores.get(pid, 0)}
+                for pid, d in ev.RUBRIC["points"].items()]
+
+    def test_without_point_weights_each_subcharacteristic_is_the_plain_mean(self):
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {}}):
+            prof = ev.profile(self.pts({"tests": 1}))
+        self.assertEqual(prof["subcharacteristics"]["Testability"]["min"], 50.0)
+        self.assertEqual(prof["maintainability_min"], 15.0)
+
+    def test_a_point_weight_makes_its_subcharacteristic_a_weighted_mean(self):
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"tests": 3}}):
+            prof = ev.profile(self.pts({"tests": 1}))
+        self.assertEqual(prof["subcharacteristics"]["Testability"]["min"], 75.0)
+        self.assertEqual(prof["maintainability_min"], 22.5)
+
+    def test_the_impact_of_the_risk_list_follows_the_point_weights(self):
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {}}):
+            r = {x["id"]: x["impact"] for x in ev.risk_summary(self.pts())}
+        self.assertEqual((r["tests"], r["layers"]), (15.0, 3.4))
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"tests": 3}}):
+            r = {x["id"]: x["impact"] for x in ev.risk_summary(self.pts())}
+        self.assertEqual((r["tests"], r["contracts"]), (22.5, 10.9))
+
+    def test_the_panel_scenario_reproduces_the_weighted_profile(self):
+        from evaluator import sensitivity as S
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"tests": 3, "layers": 2}}):
+            p = self.pts({"tests": 1, "layers": 0.5, "observability": 1}); prof = ev.profile(p)
+            panel = next(spec for name, _, spec in S.scenarios() if name == "panel")
+            self.assertEqual(S.overall(p, panel), (prof["maintainability_min"], prof["maintainability_max"]))
+
+    def test_a_point_weight_that_is_not_a_positive_number_is_rejected(self):
+        from evaluator.common import point_weight
+        for bad in (0, -1, "2", True):
+            with mock.patch.dict(ev.RUBRIC, {"point_weights": {"tests": bad}}):
+                with self.assertRaises(ValueError):
+                    point_weight("tests")
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"_comment": "only a comment"}}):
+            self.assertEqual(point_weight("tests"), 1)
 
 
 class TestWeightSensitivity(unittest.TestCase):

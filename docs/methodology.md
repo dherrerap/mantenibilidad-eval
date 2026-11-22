@@ -85,7 +85,12 @@ use and is what forces red in the dashboard.
 ## Scores
 
 - Each level is worth: Meets = 1, Partial = 0.5, Fails = 0.
-- A subcharacteristic's score is the average of the points that feed it, times 100.
+- A subcharacteristic's score is the mean of the evaluable points that feed it, weighted by `point_weights` in `rubric.json`,
+  times 100. A point with no weight there weighs 1, so with no weights set (the default) it is the plain average. Each point then has
+  an implicit weight in the overall score, the subcharacteristic weight divided by the number of points that feed it, summed over the
+  subcharacteristics it feeds: from 3.4% (layers, hierarchies, coupling) to 18.4% (contracts) with the default rubric. That
+  distribution follows from how many points feed each subcharacteristic, not from a judgment of their importance; `point_weights`
+  exists to replace it with the ratings of the expert consultation (see `backing.point_weights`).
 - The overall score is the weighted sum: Testability 30%, Analyzability 24%, Modularity 24%, Modifiability 22%.
 - **Ranges.** A pending criterion (`ok = null`) is evaluated twice, as met and as not met. The point, the
   subcharacteristic and the overall score are then expressed as `minimum–maximum`. When everything is resolved, the range collapses to a
@@ -333,8 +338,9 @@ code** (`profile.json` → `ascmm`, a section of `profile.md`, and in `report.md
 In addition to the dashboard above, to see at a glance where maintainability is most at risk, `profile.md` and `report.md` condense the 11 points into a risk map:
 
 - **Traffic light** per point: 🟢 Meets, 🟡 Partial, 🔴 Fails, ⚪ undecided (pending criteria).
-- **Points at stake**: how many of the 100 overall points the point can still cost. A point controls `weight / (points in that
-  subcharacteristic)` of each subcharacteristic it feeds, so a point that is the only one feeding a heavy subcharacteristic weighs more.
+- **Points at stake**: how many of the 100 overall points the point can still cost. A point controls `weight × point weight / (total point
+  weight of that subcharacteristic)` of each subcharacteristic it feeds, which without `point_weights` is `weight / (points in that
+  subcharacteristic)`, so a point that is the only one feeding a heavy subcharacteristic weighs more.
   The worst case (lowest score of the range) is used for ranking, so pending points are not hidden behind a "?".
 - `profile.md` lists the points of one app, highest risk first. `report.md` adds a **heat map** (points × applications, riskiest rows
   first) and the top 3 risks per application. The same data is in `profile.json` under `risk`.
