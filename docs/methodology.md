@@ -368,8 +368,11 @@ grades of compliance"), `tool_parameter` (the value comes from a tool's rule) an
 this study, declared under ISO/IEC 25023 Clause 2(e)). Only ISO/IEC 5055 supplies numeric thresholds; ISO/IEC 25010 supplies the
 quality model only and IEEE Std 1028 the review process only. `backing` also records the coverage of the 29 weaknesses of the
 Automated Source Code Maintainability Measure (`_coverage_ascmm`), the conformance statement for ISO/IEC 25023 Clause 2
-(`_conformance_25023`, including the exclusions and their rationale) and the one for IEEE Std 1028 (`_conformance_1028`). The
-evaluator's tests fail if a threshold has no backing entry or if a `normative_exact` value drifts from the standard's default.
+(`_conformance_25023`, including the exclusions and their rationale), the one for IEEE Std 1028 (`_conformance_1028`) and, under
+`points.subcharacteristics`, the basis of each of the 16 links of Table 24 between a point and a subcharacteristic: 3 follow
+ISO/IEC 25023, which places the measure the point implements under that subcharacteristic, and 13 are a decision of this framework. The
+evaluator's tests fail if a threshold or a point-subcharacteristic link has no backing entry, or if a `normative_exact` value drifts from
+the standard's default.
 
 ## AI token consumption
 

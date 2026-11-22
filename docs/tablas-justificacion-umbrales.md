@@ -4,8 +4,8 @@
 
 | Estándar             | Aporta                                                                                                                                                          | No aporta                                                                                                          |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| ISO/IEC 25010 (2023) | La definición de mantenibilidad y de sus cinco subcaracterísticas; la adscripción de cada punto de decisión a la subcaracterística afectada                     | Ninguna medida ni ningún umbral: es un modelo de calidad                                                           |
-| ISO/IEC 25023 (2016) | Las funciones de medición, de la forma X = A/B o X = 1 − A/B; el nivel de recomendación de cada medida; los requisitos de conformidad de la cláusula 2          | Ningún valor de corte                                                                                              |
+| ISO/IEC 25010 (2023) | La definición de mantenibilidad y de sus cinco subcaracterísticas (no menciona los puntos de decisión, así que no los asigna a ninguna)                         | Ninguna medida ni ningún umbral: es un modelo de calidad                                                           |
+| ISO/IEC 25023 (2016) | Las funciones de medición, de la forma X = A/B o X = 1 − A/B; la subcaracterística bajo la que pone cada medida; el nivel de recomendación de cada medida; los requisitos de conformidad de la cláusula 2 | Ningún valor de corte                                                                                              |
 | ISO/IEC 5055 (2021)  | Umbrales numéricos por defecto para varias de las 29 debilidades de mantenibilidad; el conteo de ocurrencias como forma de cálculo; la normalización por tamaño | Nada sobre esquemas relacionales, obsolescencia de dependencias, contratos de comunicación ni cobertura de pruebas |
 | IEEE Std 1028 (2008) | El proceso de revisión: roles, criterios de entrada y de salida, escala de ordenamiento de anomalías y tasas de inspección                                      | Ninguna métrica de producto ni umbral de código                                                                    |
 
@@ -47,6 +47,7 @@ valor de corte (solo función).
 | -------------------------------------- | ------------------- | --------------------------------------- | ------------------------------ |
 | Pesos de las subcaracterísticas        | 30 / 24 / 24 / 22 % | Puntaje global                          | Sí                             |
 | Agregación de los puntos dentro de cada subcaracterística | Promedio simple (`point_weights` vacío) | Peso efectivo de cada punto en el puntaje global (de 3,4 % a 18,4 %) | Sí |
+| Asignación de los puntos a las subcaracterísticas (Tabla 24) | 16 conexiones; 3 siguen a ISO/IEC 25023 (acoplamiento y complejidad ciclomática → modularidad, MMo-1-G y MMo-2-S; observabilidad → analizabilidad, MAn-1-G) y 13 son decisión propia | Puntaje de cada subcaracterística y peso efectivo de cada punto | Sí |
 | Fracción mínima para _Parcial_         | 0,5                 | Nivel de todos los puntos               | Sí                             |
 | Puntaje por nivel                      | 1 / 0,5 / 0         | Puntaje de todas las subcaracterísticas | Sí                             |
 | Violaciones de capas para _Parcial_    | 5 %                 | Capas, C2                               | Sí                             |

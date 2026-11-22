@@ -1531,6 +1531,18 @@ class TestBackingTraceability(unittest.TestCase):
                     "risk_dashboard.semaphore", "risk_dashboard.hotspots_top_n", "supported_runtimes"):
             self.assertIn(key, ev.RUBRIC["backing"])
 
+    def test_every_point_subcharacteristic_link_declares_its_basis(self):
+        links = ev.RUBRIC["backing"]["points.subcharacteristics"]["links"]
+        expected = {f"{pid}.{s}" for pid, d in ev.RUBRIC["points"].items() for s in d["subcharacteristics"]}
+        self.assertEqual(set(links), expected, "every link of Table 24 needs exactly one entry")
+        for key, b in links.items():
+            self.assertIn(b["basis"], {"iso25023", "own"}, key)
+            self.assertTrue(b.get("rationale"), key)
+            if b["basis"] == "iso25023":
+                self.assertTrue(b.get("measure") and b.get("locator"), f"{key} claims ISO/IEC 25023 without a measure and locator")
+        self.assertEqual(sorted(k for k, b in links.items() if b["basis"] == "iso25023"),
+                         ["coupling.Modularity", "cyclomatic.Modularity", "observability.Analyzability"])
+
     def test_every_backing_entry_has_a_known_type_and_a_locator_when_normative(self):
         for key, b in ev.RUBRIC["backing"].items():
             if key.startswith("_"):
