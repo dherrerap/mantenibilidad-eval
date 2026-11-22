@@ -1,6 +1,6 @@
 """Sensitivity of the overall score to the weighting scheme.
 
-The subcharacteristic weights (30/24/24/22) come from a panel whose concordance is not significant (Kendall's W = 0.158,
+The subcharacteristic weights (30/24/24/22) come from a panel whose concordance is not significant (Kendall's W = 0.0875,
 `backing.subcharacteristic_weights`), so a conclusion drawn from the overall score must hold under other reasonable weights.
 Each run is scored again from its points under these scenarios:
 
@@ -148,7 +148,7 @@ def sensitivity_md(s, heading="##"):
     """Markdown section of the report."""
     runs = list(s["runs"]); alt = [x for x in s["scenarios"] if x["name"] != "panel"]
     L = [f"{heading} Weight sensitivity", "",
-         "The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: "
+         "The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: "
          "uniform 25%, every point with the same weight, each point removed in turn" +
          (", and the weight sets of `sensitivity.weight_sets` in `rubric.json`" if any(not x["name"].startswith(("uniform", "equal_points", "without_")) for x in alt) else "") +
          ". Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.", ""]

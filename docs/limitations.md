@@ -236,9 +236,9 @@ included. Use a virtual machine or a disposable container.
   and both are classified HR in ISO/IEC 25023, Annex A. Both require actual modification events, which a freshly generated application
   does not have, so they are excluded under Clause 2(b). Section 6.2 of the standard recommends relating internal measures to the
   external measures they are meant to predict, so the profile this framework produces is not validated against them.
-- **The weights come from a panel of four with low concordance.** Kendall's W over the rankings of Table 23 of PIA02 is 0.158
-  (chi-square 2.52, 4 df, critical value 9.49 at alpha 0.05): not statistically significant. The ranking of E4 also sums 17 instead of
-  15, because it assigns rank 5 twice and omits rank 3. Treat 30/24/24/22 as the priority profile of a small, dispersed panel. The
+- **The weights come from a panel of four with low concordance.** Kendall's W over the rankings of Table 23 of PIA02, with the ranking
+  of E4 corrected as in its Appendix 2 (Table 23 transcribes rank 5 twice and omits rank 3), is 0.0875 (chi-square 1.40, 4 df, critical
+  value 9.49 at alpha 0.05): not statistically significant. The correction does not change the weights. Treat 30/24/24/22 as the priority profile of a small, dispersed panel. The
   report includes a sensitivity analysis (uniform 25%, equal points, each point removed, and optional per-expert sets; see
   [methodology](methodology.md#weight-sensitivity)): cite only the conclusions that hold across it.
 - **The Technologies point has no backing at all.** Dependency obsolescence is not a weakness of the maintainability measure and is not

@@ -9563,7 +9563,7 @@ false
 "result": [
 "## Weight sensitivity",
 "",
-"The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
+"The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
 "",
 "- **Best run**: holds in every scenario.",
 "- **Order of the levels** by mean score: holds in every scenario.",
@@ -19178,7 +19178,7 @@ false
 "result": [
 "## Weight sensitivity",
 "",
-"The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
+"The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
 "",
 "A single run: there is no ranking to compare. Scores per scenario are in `_comparison/sensitivity.json`.",
 ""
@@ -20840,7 +20840,7 @@ false
 "result": [
 "## Weight sensitivity",
 "",
-"The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
+"The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
 "",
 "- **Best run**: changes under `uniform`, `equal_points`, `without_cyclomatic`, `without_cohesion`, `without_technologies`, `without_data_model`, `without_tests`.",
 "- **Order of the levels** by mean score: changes under `uniform`, `equal_points`, `without_cyclomatic`, `without_cohesion`, `without_technologies`, `without_data_model`, `without_tests`.",
@@ -22479,7 +22479,7 @@ false
 "result": [
 "## Weight sensitivity",
 "",
-"The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
+"The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
 "",
 "- **Best run**: holds in every scenario.",
 "- **Order of the levels** by mean score: holds in every scenario.",
@@ -23627,7 +23627,7 @@ false
 "result": [
 "## Weight sensitivity",
 "",
-"The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
+"The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: uniform 25%, every point with the same weight, each point removed in turn. Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.",
 "",
 "A single run: there is no ranking to compare. Scores per scenario are in `_comparison/sensitivity.json`.",
 ""

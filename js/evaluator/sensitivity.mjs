@@ -137,7 +137,7 @@ const fmtRank = (x) => (x === null || x === undefined ? "—" : gfmt(x));
 export function sensitivityMd(s, heading = "##") {
   const runs = Object.keys(s.runs), alt = s.scenarios.filter((x) => x.name !== "panel");
   const L = [`${heading} Weight sensitivity`, "",
-    "The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: " +
+    "The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: " +
     "uniform 25%, every point with the same weight, each point removed in turn" +
     (alt.some((x) => !["uniform", "equal_points", "without_"].some((p) => x.name.startsWith(p))) ? ", and the weight sets of `sensitivity.weight_sets` in `rubric.json`" : "") +
     ". Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.", ""];

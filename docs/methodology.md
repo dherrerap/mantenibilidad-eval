@@ -93,7 +93,7 @@ use and is what forces red in the dashboard.
 
 ### Weight sensitivity
 
-The weights come from a panel whose concordance is not significant (Kendall's W = 0.158, see [limitations](limitations.md)), so the
+The weights come from a panel whose concordance is not significant (Kendall's W = 0.0875, see [limitations](limitations.md)), so the
 report (`report.md`, section *Weight sensitivity*; `_comparison/sensitivity.json`) scores every run again under other schemes
 (`js/evaluator/sensitivity.mjs`):
 
