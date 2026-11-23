@@ -1527,7 +1527,7 @@ class TestBackingTraceability(unittest.TestCase):
         self.assertEqual(missing, [], f"without backing: {missing}")
 
     def test_top_level_weights_and_scales_declare_a_backing(self):
-        for key in ("subcharacteristic_weights", "point_weights", "partial_min_fraction", "level_score", "level_severity",
+        for key in ("subcharacteristic_weights", "point_weights", "partial_min_fraction", "level_score", "level_severity", "risk_dashboard.escalation",
                     "risk_dashboard.semaphore", "risk_dashboard.hotspots_top_n", "supported_runtimes"):
             self.assertIn(key, ev.RUBRIC["backing"])
 

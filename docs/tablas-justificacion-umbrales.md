@@ -21,7 +21,6 @@
 | Clases hijas directas                | 10        | Jerarquías, C2                   | ISO/IEC 5055 (2021)  | CWE-1086, clase con número excesivo de clases hijas  |
 | Archivos estructuralmente muertos    | 0         | Acoplamiento, C5                 | ISO/IEC 5055 (2021)  | CWE-561, código muerto                               |
 | Parámetros por función               | 7         | Indicador ASCMM (informativo)    | ISO/IEC 5055 (2021)  | CWE-1064, firma con número excesivo de parámetros    |
-| Escala de severidad                  | 4 niveles | Severidad de todos los puntos    | IEEE Std 1028 (2008) | 6.8.3                                                |
 
 ## Umbrales con respaldo normativo parcial
 
@@ -36,6 +35,7 @@ valor de corte (solo función).
 | Dependencias salientes por módulo        | 10            | Acoplamiento, C2 (numerador)        | Alternativo      | ISO/IEC 5055, CWE-1048: 5 referencias por función; aquí, 10 dependencias distintas por módulo           |
 | Líneas duplicadas                        | 10 %          | Complejidad ciclomática, C3         | Alternativo      | ISO/IEC 5055, CWE-1041: 10 % de las instrucciones de cada instancia de clon; aquí, líneas de toda la app |
 | Código comentado por función             | 2 %           | Indicador ASCMM (informativo)       | Alternativo      | ISO/IEC 5055, CWE-1085: instrucciones comentadas; aquí, líneas comentadas de la función                 |
+| Escala de severidad                      | 4 niveles     | Severidad de todos los puntos       | Alternativo      | IEEE Std 1028, 6.8.3: la escala ordena anomalías por la gravedad de sus consecuencias; aquí se asigna a los niveles (No cumple → Crítica, Parcial → Marginal, Cumple → Despreciable), una correspondencia propia |
 | Props por componente                     | 7             | Indicador suplementario (informativo) | Alternativo    | ISO/IEC 5055, CWE-1064: parámetros de una función, aplicado a las props de un componente React          |
 | X de complejidad ciclomática             | 0,95 y 0,98   | Complejidad ciclomática, C1 y C2    | Solo función     | ISO/IEC 25023, MMo-2-S: X = 1 − A/B, sin valor de corte                                                 |
 | X de acoplamiento entre componentes      | 0,90          | Acoplamiento, C2                    | Solo función     | ISO/IEC 25023, MMo-1-G: X = A/B, sin valor de corte                                                     |
@@ -65,6 +65,7 @@ valor de corte (solo función).
 | Cobertura de línea                     | 70 %                | Pruebas, C3                             | Sí                             |
 | Cobertura de rama                      | 50 %                | Pruebas, C4                             | Sí                             |
 | Cortes del semáforo                    | 70 y 40             | Estado de la tabla de riesgo            | Sí                             |
+| Escalada por severidad Crítica         | Un punto Crítico pone en rojo su subcaracterística | Estado de la tabla de riesgo (por eso el corte de 40 solo actúa con criterios pendientes) | Sí |
 | Puntos de entrada adicionales de Knip  | 7 nombres y 2 patrones | Acoplamiento, C5, detección          | Sí, indirectamente             |
 | Inclusión de _devDependencies_         | falso               | Acoplamiento, C4, denominador           | Sí, indirectamente             |
 | Literal de red con respaldo de entorno | falso               | Configuración, C1, detección            | Sí, indirectamente             |

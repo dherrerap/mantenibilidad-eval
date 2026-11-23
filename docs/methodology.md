@@ -77,10 +77,13 @@ For a point with *n* criteria:
 
 Layers additionally uses percentage thresholds (see below).
 
-The severity of each point follows the anomaly ranking of **IEEE Std 1028-2008, 6.8.3**: Meets → *Negligible*, Partial → *Marginal*,
-Fails → *Critical*. The fourth rank, *Catastrophic*, is not used: 6.8.3(a) reserves it for anomalies whose consequences are loss of
+The severity of each point uses the anomaly ranking scale of **IEEE Std 1028-2008, 6.8.3**: Meets → *Negligible*, Partial → *Marginal*,
+Fails → *Critical*. The scale is the standard's, but the standard ranks anomalies by the consequences of the failure they would cause and
+says nothing about levels, so this correspondence is a decision of the framework (`backing.level_severity`). The fourth rank, *Catastrophic*, is not used: 6.8.3(a) reserves it for anomalies whose consequences are loss of
 life, failure of mission or very large economic or social loss and for which mitigation is not possible. *Critical* is the top rank in
-use and is what forces red in the dashboard.
+use and is what forces red in the dashboard; that escalation is also a decision of the framework (`backing.risk_dashboard.escalation`).
+Because of it, the yellow/red cut-off of 40 only acts on score ranges with pending criteria: a subcharacteristic below 40 needs at least
+one decided Fails, which already forces red.
 
 ## Scores
 
