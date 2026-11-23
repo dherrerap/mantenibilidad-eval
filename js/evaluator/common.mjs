@@ -13,7 +13,7 @@ export const LEVELS = ["Fails", "Partial", "Meets"];
  * makes each subcharacteristic the plain mean of its points. Read at call time, so a test or a script can change the rubric in memory. */
 export function pointWeight(pid) {
   const pw = RUBRIC.point_weights;
-  if (!pw || !Object.prototype.hasOwnProperty.call(pw, pid)) return 1;
+  if (!pw || !Object.hasOwn(pw, pid)) return 1;
   const w = num(pw[pid]);
   if (!(Number.isFinite(w) && w > 0)) throw new Error(`rubric.json point_weights.${pid} must be a positive number`);
   return w;

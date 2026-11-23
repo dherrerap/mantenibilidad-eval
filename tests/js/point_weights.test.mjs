@@ -17,7 +17,7 @@ function points(scores = {}) {
 }
 
 function withWeights(weights, fn) {
-  const had = Object.prototype.hasOwnProperty.call(RUBRIC, "point_weights"), before = RUBRIC.point_weights;
+  const had = Object.hasOwn(RUBRIC, "point_weights"), before = RUBRIC.point_weights;
   RUBRIC.point_weights = weights;
   try { fn(); } finally { if (had) RUBRIC.point_weights = before; else delete RUBRIC.point_weights; }
 }

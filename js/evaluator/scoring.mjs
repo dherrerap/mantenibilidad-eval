@@ -108,7 +108,7 @@ export function riskSummary(points) {
   const rows = [];
   for (const p of points) {
     if (p.score_min === null) continue;
-    const impact = 100 * p.subcharacteristics.filter((s) => Object.prototype.hasOwnProperty.call(W, s)).reduce((a, s) => a + (Number(W[s]) * pointWeight(p.id)) / total[s], 0);
+    const impact = 100 * p.subcharacteristics.filter((s) => Object.hasOwn(W, s)).reduce((a, s) => a + (Number(W[s]) * pointWeight(p.id)) / total[s], 0);
     rows.push({ id: p.id, name: p.name, light: trafficLight(p), level: p.level, level_min: p.level_min, level_max: p.level_max, pending: p.pending_criteria,
       impact: F(pyRound(impact, 1)), at_stake_min: F(pyRound((1 - Number(p.score_max)) * impact, 1)), at_stake_max: F(pyRound((1 - Number(p.score_min)) * impact, 1)) });
   }
