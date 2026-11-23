@@ -1,7 +1,9 @@
 """The 11 decision points of Table 26, one module each. EVALUATORS maps a point id to the function that evaluates it:
-`fn(m, manual, opts) -> (criteria, metrics, evidence, finding, forced_levels)`; MUST lists the criteria that alone make a point fail.
+`fn(m, manual, opts) -> (criteria, metrics, evidence, finding, forced_levels)`; must_criteria() lists the criteria that alone make a
+point fail (`must_criteria` in rubric.json).
 """
 
+from evaluator.common import RUBRIC
 from evaluator.points.cohesion import eval_cohesion
 from evaluator.points.configuration import eval_configuration
 from evaluator.points.contracts import eval_contracts
@@ -20,4 +22,6 @@ EVALUATORS = {"layers": eval_layers, "cyclomatic": eval_cyclomatic, "cohesion": 
               "contracts": eval_contracts, "observability": eval_observability, "tests": eval_tests, "configuration": eval_configuration}
 
 
-MUST = {"contracts": ("C1",), "tests": ("C2",)}
+def must_criteria(pid):
+    """Criteria that alone make a point fail (`must_criteria` in rubric.json). Read at call time, like the rest of the rubric."""
+    return () if pid.startswith("_") else tuple((RUBRIC.get("must_criteria") or {}).get(pid, ()))

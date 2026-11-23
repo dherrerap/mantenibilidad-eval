@@ -49,6 +49,8 @@ valor de corte (solo función).
 | Agregación de los puntos dentro de cada subcaracterística | Promedio simple (`point_weights` vacío) | Peso efectivo de cada punto en el puntaje global (de 3,4 % a 18,4 %) | Sí |
 | Asignación de los puntos a las subcaracterísticas (Tabla 24) | 16 conexiones; 3 siguen a ISO/IEC 25023 (acoplamiento y complejidad ciclomática → modularidad, MMo-1-G y MMo-2-S; observabilidad → analizabilidad, MAn-1-G) y 13 son decisión propia | Puntaje de cada subcaracterística y peso efectivo de cada punto | Sí |
 | Fracción mínima para _Parcial_         | 0,5                 | Nivel de todos los puntos               | Sí                             |
+| Peso de los criterios dentro de un punto | Todos iguales; el mínimo real para _Parcial_ va de 50 % a 67 % según cuántos criterios tenga el punto | Nivel de todos los puntos salvo Capas | Sí |
+| Criterios con veto                     | Contratos C1 (existe un contrato) y Pruebas C2 (existen pruebas y pasan) | Nivel de Contratos y de Pruebas | Sí (en Contratos es redundante: sin contrato tampoco se cumplen C2–C4) |
 | Puntaje por nivel                      | 1 / 0,5 / 0         | Puntaje de todas las subcaracterísticas | Sí                             |
 | Violaciones de capas para _Parcial_    | 5 %                 | Capas, C2                               | Sí                             |
 | Capas identificables mínimas           | 2                   | Capas, C1                               | Sí                             |

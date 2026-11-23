@@ -9,7 +9,7 @@ from evaluator.artifacts import artifact_findings
 from evaluator.ascmm import ascmm_profile
 from evaluator.common import RUBRIC, point_weight
 from evaluator.criteria import level_from, pdict
-from evaluator.points import EVALUATORS, MUST
+from evaluator.points import EVALUATORS, must_criteria
 
 
 # What the README usually says about each point (used to detect declared-vs-implemented gaps)
@@ -41,7 +41,7 @@ def evaluate_points(m, manual, opts):
         if forced and (forced[0] or forced[1] != forced[2]):  # forced, or pending range (level None, lo ≠ hi)
             level, lo, hi = forced
         elif crits:
-            level, lo, hi = level_from(crits, MUST.get(pid, ()))
+            level, lo, hi = level_from(crits, must_criteria(pid))
         else:
             level = lo = hi = None
         pend = [k for k, v in crits.items() if v["ok"] is None]

@@ -1527,9 +1527,20 @@ class TestBackingTraceability(unittest.TestCase):
         self.assertEqual(missing, [], f"without backing: {missing}")
 
     def test_top_level_weights_and_scales_declare_a_backing(self):
-        for key in ("subcharacteristic_weights", "point_weights", "partial_min_fraction", "level_score", "level_severity", "risk_dashboard.escalation",
+        for key in ("subcharacteristic_weights", "point_weights", "partial_min_fraction", "level_score", "level_severity", "risk_dashboard.escalation", "must_criteria",
                     "risk_dashboard.semaphore", "risk_dashboard.hotspots_top_n", "supported_runtimes"):
             self.assertIn(key, ev.RUBRIC["backing"])
+
+    def test_must_criteria_name_points_and_criteria_and_veto_the_level(self):
+        from evaluator.points import must_criteria
+        mc = {k: v for k, v in ev.RUBRIC["must_criteria"].items() if not k.startswith("_")}
+        self.assertEqual(mc, {"contracts": ["C1"], "tests": ["C2"]})
+        self.assertLessEqual(set(mc), set(ev.RUBRIC["points"]))
+        self.assertEqual(must_criteria("_comment"), ())
+        crit = lambda **ok: {k: {"ok": v} for k, v in ok.items()}
+        tests_fail = crit(C1=True, C2=False, C3=True, C4=True)  # tests exist but fail; the rest is met
+        self.assertEqual(ev.level_from(tests_fail, must_criteria("tests"))[0], "Fails")
+        self.assertEqual(ev.level_from(tests_fail)[0], "Partial")
 
     def test_every_point_subcharacteristic_link_declares_its_basis(self):
         links = ev.RUBRIC["backing"]["points.subcharacteristics"]["links"]

@@ -11,7 +11,8 @@ import { evalCohesion, evalCoupling, evalCyclomatic, evalLayers } from "./points
 
 export const EVALUATORS = { layers: evalLayers, cyclomatic: evalCyclomatic, cohesion: evalCohesion, hierarchies: evalHierarchies, technologies: evalTechnologies,
   coupling: evalCoupling, data_model: evalDataModel, contracts: evalContracts, observability: evalObservability, tests: evalTests, configuration: evalConfiguration };
-export const MUST = { contracts: ["C1"], tests: ["C2"] };
+/** Criteria that alone make a point fail (`must_criteria` in rubric.json). Read at call time, like the rest of the rubric. */
+export const mustCriteria = (pid) => (pid.startsWith("_") ? [] : get(get(RUBRIC, "must_criteria", {}), pid, []));
 
 // What the README usually says about each point (declared-vs-implemented gaps); whole words only
 const DECLARED_PATTERNS = { layers: String.raw`\blayer(s|ed)?\b|\bcontrollers?\b|\bservices? layer\b|\brepositor(y|ies)\b`,
@@ -40,7 +41,7 @@ export function evaluatePoints(m, manual, opts) {
     }
     let level, lo, hi;
     if (forced && (forced[0] || forced[1] !== forced[2])) [level, lo, hi] = forced;  // forced, or a pending range
-    else if (Object.keys(crits).length) [level, lo, hi] = levelFrom(crits, get(MUST, pid, []));
+    else if (Object.keys(crits).length) [level, lo, hi] = levelFrom(crits, mustCriteria(pid));
     else level = lo = hi = null;
     const pend = Object.entries(crits).filter(([, v]) => v.ok === null).map(([k]) => k);
     const readme = get(m, "readme");

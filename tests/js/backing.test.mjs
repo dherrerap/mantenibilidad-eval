@@ -15,3 +15,14 @@ test("every point-subcharacteristic link declares its basis", () => {
   assert.deepEqual(Object.keys(links).filter((k) => links[k].basis === "iso25023").sort(),
     ["coupling.Modularity", "cyclomatic.Modularity", "observability.Analyzability"]);
 });
+
+test("the vetoes live in the rubric and decide the level", async () => {
+  const { mustCriteria } = await import("../../js/evaluator/scoring.mjs");
+  const { levelFrom } = await import("../../js/evaluator/criteria.mjs");
+  assert.deepEqual(mustCriteria("contracts"), ["C1"]);
+  assert.deepEqual(mustCriteria("tests"), ["C2"]);
+  assert.deepEqual(mustCriteria("_comment"), []);
+  const testsFail = { C1: { ok: true }, C2: { ok: false }, C3: { ok: true }, C4: { ok: true } };  // tests exist but fail; the rest is met
+  assert.equal(levelFrom(testsFail, mustCriteria("tests"))[0], "Fails");
+  assert.equal(levelFrom(testsFail)[0], "Partial");
+});

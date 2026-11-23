@@ -73,9 +73,13 @@ For a point with *n* criteria:
 - **Partial**: at least half are met (`partial_min_fraction = 0.5`).
 - **Fails**: fewer than half are met.
 - A failing **mandatory** criterion forces "Fails": `contracts.C1` (machine-readable contract) and `tests.C2`
-  (tests exist and pass).
+  (tests exist and pass), listed in `must_criteria` in `rubric.json`.
 
-Layers additionally uses percentage thresholds (see below).
+Every criterion of a point weighs the same, and the points have different numbers of criteria, so the minimum that yields Partial is
+2 of 3 (67%) for cyclomatic complexity, hierarchies and configuration, 2 of 4 (50%) for cohesion, technologies, contracts, observability
+and tests, 3 of 5 (60%) for coupling and 3 of 6 (50%) for data model. Layers is the exception: its level comes from percentage
+thresholds (see below). Both rules, and the vetoes, are decisions of the framework (`backing.partial_min_fraction` and
+`backing.must_criteria`).
 
 The severity of each point uses the anomaly ranking scale of **IEEE Std 1028-2008, 6.8.3**: Meets → *Negligible*, Partial → *Marginal*,
 Fails → *Critical*. The scale is the standard's, but the standard ranks anomalies by the consequences of the failure they would cause and
