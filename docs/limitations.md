@@ -241,6 +241,9 @@ included. Use a virtual machine or a disposable container.
   value 9.49 at alpha 0.05): not statistically significant. The correction does not change the weights. Treat 30/24/24/22 as the priority profile of a small, dispersed panel. The
   report includes a sensitivity analysis (uniform 25%, equal points, each point removed, and optional per-expert sets; see
   [methodology](methodology.md#weight-sensitivity)): cite only the conclusions that hold across it.
+- **Hierarchies only measures inheritance.** The point is named *depth and breadth of inheritance or composition hierarchies*, but its
+  criteria measure inheritance only; when no class of the app extends another one it is reported as not applicable, and composition
+  (components or modules nested inside one another) is not measured.
 - **The Technologies point has no backing at all.** Dependency obsolescence is not a weakness of the maintainability measure and is not
   among the analysability or modifiability measures of ISO/IEC 25023. Counting high and critical vulnerabilities inside a
   maintainability point also borrows from the Automated Source Code *Security* Measure, which the standard does not authorize.

@@ -349,6 +349,8 @@ LIGHT = {"green": "🟢", "yellow": "🟡", "red": "🔴", "undecided": "⚪", "
 def level_txt(p):
     if p.get("evaluable") is False:
         return "▨"
+    if p.get("applicable") is False:
+        return "⊘"
     if p["level"]:
         return SYMBOL[p["level"]]
     lo, hi = p.get("level_min"), p.get("level_max")
@@ -430,7 +432,8 @@ def write_report(res):
     order = {r["id"]: i for i, r in enumerate(max((pf.get("risk", []) for _, pf, _ in runs), key=lambda x: sum(y["at_stake_max"] for y in x), default=[]))}
     for pid in sorted(ids, key=lambda i: order.get(i, 99)):
         L.append(f"| {names[pid]} | " + " | ".join(
-            next((f"{x['light']} {x['at_stake_max']:.1f}" for x in pf.get("risk", []) if x["id"] == pid), "▨ not evaluable") for _, pf, _ in runs) + " |")
+            next((f"{x['light']} {x['at_stake_max']:.1f}" for x in pf.get("risk", []) if x["id"] == pid),
+                 "⊘ not applicable" if any(c["point"] == pid and c["state"] == "not_applicable" for c in pf.get("dashboard", {}).get("heatmap", [])) else "▨ not evaluable") for _, pf, _ in runs) + " |")
     L += ["", "Each cell: traffic light and overall points at stake in the worst case.", "", "### Top risks per application", ""]
     for d, pf, pts in runs:
         top = [x for x in pf.get("risk", []) if x["at_stake_max"] > 0][:3]

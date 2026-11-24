@@ -43,6 +43,9 @@ def eval_hierarchies(m, manual, opts):
     wide = [k for k, v in kids.items() if v > T["children_max"]]
     uih = (manual.get("dv8") or {}).get("unhealthy_inheritance")
     own = any((c["extends"] or "").split(".")[-1] in byname for c in cls)
+    if not own:  # no class extends another class of the application: there is no hierarchy to evaluate, which is not "Meets"
+        what = f"{len(cls)} classes, none extends another class of the application" if cls else "no classes"
+        return {}, {"classes": len(cls), "applicable": False}, [], f"Not applicable: {what}; there is no inheritance hierarchy to evaluate.", None
     uih_src = "auto (no classes)" if not cls else ("dv8" if uih is not None else "pending (DV8)")
     if cls and uih is None and own and m["graph"].get("modules"):  # own hierarchy and a graph: DV8 rules on the graph
         uih = len(unhealthy_inheritance_graph(m)); uih_src = "auto (DV8 rules on the graph)"

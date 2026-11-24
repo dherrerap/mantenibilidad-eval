@@ -81,6 +81,13 @@ and tests, 3 of 5 (60%) for coupling and 3 of 6 (50%) for data model. Layers is 
 thresholds (see below). Both rules, and the vetoes, are decisions of the framework (`backing.partial_min_fraction` and
 `backing.must_criteria`).
 
+A point is **not applicable** when the app has nothing for it to evaluate. Today that is only *Hierarchies* when no class of the app
+extends another class of the app (a functional React and Express codebase usually has none): its three criteria would all be met
+trivially, and a *Meets* without anything to judge would raise Modularity for every app alike. A not-applicable point has no level
+and no score, is complete, is left out of the mean of its subcharacteristics (like a not-evaluable point), has severity *Not
+applicable* and shows ⊘ in the heat map, the scorecard and the comparison. Unlike *not evaluable*, nothing is missing: there is
+simply no inheritance hierarchy.
+
 The severity of each point uses the anomaly ranking scale of **IEEE Std 1028-2008, 6.8.3**: Meets → *Negligible*, Partial → *Marginal*,
 Fails → *Critical*. The scale is the standard's, but the standard ranks anomalies by the consequences of the failure they would cause and
 says nothing about levels, so this correspondence is a decision of the framework (`backing.level_severity`). The fourth rank, *Catastrophic*, is not used: 6.8.3(a) reserves it for anomalies whose consequences are loss of
@@ -132,7 +139,7 @@ or completes) or **manual**.
 | **Layers** | Modularity | C1 at least 2 identifiable layers · C2 violations ≤ 5% of inter-layer dependencies (Meets at 0%, Partial up to 5%). Only presentation→business and business→data are allowed. | auto, with review if the evidence is ambiguous |
 | **Cyclomatic complexity** | Modularity, Modifiability | C1 X ≥ 0.95 · C2 X ≥ 0.98, where X = 1 − (functions with CC > 20)/(total) · C3 ≤ 10% duplicated lines (CWE-1041). | auto |
 | **Cohesion** | Modularity, Modifiability | C1 ≤ 5% of functions with fan-out > 5 · C2 DL (DV8) ≥ 60% · C3 checklist with no findings ("god" module, mixed responsibilities, fragmentation; not met when a module both defines routes and queries the database, or a frontend component exceeds 200 LOC) · C4 0 production files over 1000 LOC (CWE-1080). | mixed |
-| **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. | auto |
+| **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. **Not applicable** when no class of the app extends another class of the app (see *Levels*). | auto |
 | **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime, framework and PostgreSQL supported (endoflife.date; table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (OSV). On the resolved versions and as of the reference date `--as-of`; dependency age in libyears is informational. Queries the npm registry and OSV. | auto with network |
 | **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (Knip) · C5 0 production files unreachable from every entry point (Knip, CWE-561). | auto |
 | **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 a suggestion; C5 not met when column types are inconsistent, a suggestion otherwise |

@@ -287,6 +287,7 @@ const LIGHT = { green: "🟢", yellow: "🟡", red: "🔴", undecided: "⚪", no
 
 function levelTxt(p) {
   if (get(p, "evaluable") === false) return "▨";
+  if (get(p, "applicable") === false) return "⊘";
   if (p.level) return SYMBOL[p.level];
   const lo = get(p, "level_min"), hi = get(p, "level_max");
   return lo && hi ? `${get(SYMBOL, lo, "?")}…${get(SYMBOL, hi, "?")}` : "?";
@@ -384,7 +385,8 @@ export function writeReport(res) {
   const worst = risks.reduce((best, x) => (best === null || x.reduce((a, y) => a + num(y.at_stake_max), 0) > best.reduce((a, y) => a + num(y.at_stake_max), 0) ? x : best), null) || [];
   const order = Object.fromEntries(worst.map((r, i) => [r.id, i]));
   for (const pid of sorted(ids, (i) => order[i] ?? 99))
-    L.push(`| ${names[pid]} | ` + runs.map(([, pf]) => { const x = get(pf, "risk", []).find((y) => y.id === pid); return x ? `${x.light} ${fixed(x.at_stake_max, 1)}` : "▨ not evaluable"; }).join(" | ") + " |");
+    L.push(`| ${names[pid]} | ` + runs.map(([, pf]) => { const x = get(pf, "risk", []).find((y) => y.id === pid); if (x) return `${x.light} ${fixed(x.at_stake_max, 1)}`;
+      return get(get(pf, "dashboard", {}), "heatmap", []).some((c) => c.point === pid && c.state === "not_applicable") ? "⊘ not applicable" : "▨ not evaluable"; }).join(" | ") + " |");
   L.push("", "Each cell: traffic light and overall points at stake in the worst case.", "", "### Top risks per application", "");
   for (const [, pf] of runs) {
     const top = get(pf, "risk", []).filter((x) => num(x.at_stake_max) > 0).slice(0, 3);

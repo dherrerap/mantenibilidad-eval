@@ -51,7 +51,7 @@ export function writeOutputs(out, meta, points, prof, m) {
   write(out, "risk_dashboard.html", dashboardHtml(dash, points, `Risk dashboard — ${str(get(meta, "run_id"))}`));
   let csv = csvRow(["point", "category", "level", "level_min", "level_max", "severity", "confidence", "missing_artifacts", "pending_criteria", "finding", "evidence"]);
   for (const p of points)
-    csv += csvRow([p.name, p.category, p.level || (!p.evaluable ? "not evaluable" : "pending"), p.level_min, p.level_max, p.severity, p.confidence,
+    csv += csvRow([p.name, p.category, p.level || (!p.evaluable ? "not evaluable" : p.applicable === false ? "not applicable" : "pending"), p.level_min, p.level_max, p.severity, p.confidence,
       p.missing_artifacts.join(" "), p.pending_criteria.join(" "), p.finding, p.evidence.slice(0, 5).join(" | ")]);
   write(out, "scorecard.csv", csv);
   let tr = csvRow(["design_decision", "detected_weakness", "affected_subcharacteristics", "level", "evidence", "declarative_gap"]);
@@ -83,7 +83,7 @@ export function writeOutputs(out, meta, points, prof, m) {
   L.push("", "| Decision point | Level | Severity | Confidence | Pending | Finding |", "|---|---|---|---|---|---|");
   for (const p of points) {
     const n = p.level || `${str(p.level_min)}…${str(p.level_max)}`;
-    L.push(`| ${p.name} | ${!p.evaluable ? "▨ not evaluable" : n} | ${p.severity || "—"} | ${p.confidence} | ${p.pending_criteria.join(", ") || "—"} | ${p.finding} |`);
+    L.push(`| ${p.name} | ${!p.evaluable ? "▨ not evaluable" : p.applicable === false ? "⊘ not applicable" : n} | ${p.severity || "—"} | ${p.confidence} | ${p.pending_criteria.join(", ") || "—"} | ${p.finding} |`);
   }
   if (truthy(get(prof, "ascmm"))) L.push("", ...ascmmMarkdown(prof.ascmm));
   if (comp.length) {

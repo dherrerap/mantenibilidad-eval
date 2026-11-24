@@ -150,6 +150,10 @@ export function evalHierarchies(m, manual, opts) {
   const wide = Object.entries(kids).filter(([, v]) => v > T.children_max).map(([k]) => k);
   let uih = get(or(get(manual, "dv8"), {}), "unhealthy_inheritance");
   const own = cls.some((c) => Object.prototype.hasOwnProperty.call(byname, lastName(c.extends)));
+  if (!own) {  // no class extends another class of the application: there is no hierarchy to evaluate, which is not "Meets"
+    const what = cls.length ? `${cls.length} classes, none extends another class of the application` : "no classes";
+    return [{}, { classes: cls.length, applicable: false }, [], `Not applicable: ${what}; there is no inheritance hierarchy to evaluate.`, null];
+  }
   let uihSrc = !cls.length ? "auto (no classes)" : uih !== null ? "dv8" : "pending (DV8)";
   if (cls.length && uih === null && own && truthy(get(m.graph, "modules"))) { uih = unhealthyInheritanceGraph(m).length; uihSrc = "auto (DV8 rules on the graph)"; }
   else if (cls.length && uih === null && !own) { uih = 0; uihSrc = "auto (no own hierarchy)"; }

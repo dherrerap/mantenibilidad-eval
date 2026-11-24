@@ -1909,8 +1909,8 @@ class TestBatchAEvaluatorFixes(unittest.TestCase):
         cls = [{"name": f"E{i}", "file": "errors.js", "extends": "Error"} for i in range(12)] + \
               [{"name": f"C{i}", "file": "c.jsx", "extends": "React.Component"} for i in range(12)]
         m = {"ast": {"classes": cls}, "graph": {"modules": [{"source": "errors.js", "deps": []}]}}
-        crit = ev.eval_hierarchies(m, {}, Opts)[0]
-        self.assertTrue(crit["C2"]["ok"])
+        crit, met = ev.eval_hierarchies(m, {}, Opts)[:2]
+        self.assertEqual((crit, met["applicable"]), ({}, False))  # no class extends a class of the app: no hierarchy, not applicable
         own = cls + [{"name": "Base", "file": "base.js", "extends": None}] + [{"name": f"K{i}", "file": f"k{i}.js", "extends": "Base"} for i in range(11)]
         self.assertFalse(ev.eval_hierarchies({**m, "ast": {"classes": own}}, {}, Opts)[0]["C2"]["ok"])
 
@@ -2116,6 +2116,40 @@ class TestCliCollectsOnce(unittest.TestCase):
             (Path(t) / "res" / "claude-n1-ecommerce-r1" / "metrics.json").write_text("{}", encoding="utf-8")
             calls, summary = self.run_app(t, rescore_only=True)
         self.assertEqual(calls, ["evaluate.py:rescore"]); self.assertFalse(summary.startswith("ERROR"))
+
+
+class TestNotApplicable(unittest.TestCase):
+    """A point with nothing to evaluate in the app (Hierarchies without an own inheritance hierarchy) is not applicable, not Meets."""
+
+    def pts(self):
+        m = {"ast": {"classes": []}, "graph": {"modules": []}}
+        out = []
+        for pid, d in ev.RUBRIC["points"].items():
+            lvl = None if pid == "hierarchies" else "Fails"
+            out.append({"id": pid, "name": d["name"], "subcharacteristics": d["subcharacteristics"], "evaluable": True,
+                        "complete": True, "level": lvl, "level_min": lvl, "level_max": lvl, "pending_criteria": [],
+                        "severity": "Critical" if lvl else "Not applicable", "score_min": 0.0 if lvl else None, "score_max": 0.0 if lvl else None,
+                        **({} if lvl else {"applicable": False})})
+        return m, out
+
+    def test_without_classes_hierarchies_is_not_applicable(self):
+        crit, met, ev_, finding, forced = ev.eval_hierarchies({"ast": {"classes": []}, "graph": {"modules": []}}, {}, Opts)
+        self.assertEqual((crit, met["applicable"], forced), ({}, False, None))
+        self.assertTrue(finding.startswith("Not applicable"))
+
+    def test_a_not_applicable_point_is_complete_and_left_out_of_the_profile(self):
+        m, pts = self.pts()
+        prof = ev.profile(pts)
+        self.assertTrue(prof["complete"])
+        self.assertEqual(prof["subcharacteristics"]["Modularity"]["evaluable_points"], 6)
+        r = {x["id"] for x in ev.risk_summary(pts)}
+        self.assertNotIn("hierarchies", r)
+
+    def test_the_heat_map_marks_it_not_applicable(self):
+        m, pts = self.pts()
+        d = ev.risk_dashboard(pts, ev.profile(pts), {"ast": {"functions": [], "classes": []}, "graph": {"modules": [], "cycles": []}, "layers": {}})
+        cell = next(c for c in d["heatmap"] if c["point"] == "hierarchies" and c["subcharacteristic"] == "Modularity")
+        self.assertEqual((cell["state"], cell["escalated"]), ("not_applicable", False))
 
 
 class TestPointWeights(unittest.TestCase):

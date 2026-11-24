@@ -39,8 +39,10 @@ export function evaluatePoints(m, manual, opts) {
       [crits, met, ev, forced] = [{}, {}, [], [null, null, null]];
       finding = "Not evaluable: missing core artifact(s): " + missCore.map((a) => a.name).join(", ") + ".";
     }
+    const applicable = !(met && met.applicable === false);  // the point has nothing to evaluate in this app (e.g. no inheritance)
     let level, lo, hi;
-    if (forced && (forced[0] || forced[1] !== forced[2])) [level, lo, hi] = forced;  // forced, or a pending range
+    if (!applicable) level = lo = hi = null;
+    else if (forced && (forced[0] || forced[1] !== forced[2])) [level, lo, hi] = forced;  // forced, or a pending range
     else if (Object.keys(crits).length) [level, lo, hi] = levelFrom(crits, mustCriteria(pid));
     else level = lo = hi = null;
     const pend = Object.entries(crits).filter(([, v]) => v.ok === null).map(([k]) => k);
@@ -54,10 +56,11 @@ export function evaluatePoints(m, manual, opts) {
     const artFindings = missComp.map((a) => ({ artifact: a.id, name: a.name, severity: get(a, "absence") === "high_finding" ? "Critical" : "Marginal" }));
     let severity = level ? get(RUBRIC.level_severity, level) : lo !== hi ? "Undetermined" : null;
     if (!evaluable) severity = "Not evaluable";
+    else if (!applicable) severity = "Not applicable";
     else if (artFindings.some((f) => f.severity === "Critical")) severity = "Critical";  // IEEE 1028, 6.8.3
-    const confidence = !evaluable ? "n/a" : !missComp.length ? "high" : missComp.length === 1 ? "medium" : "low";
-    pts.push({ ...pdict(pid), level, level_min: lo, level_max: hi, evaluable, confidence, missing_artifacts: [...missCore, ...missComp].map((a) => a.id),
-      artifact_findings: artFindings, complete: level !== null, pending_criteria: pend, severity, finding, metrics: met, criteria: crits, evidence: ev,
+    const confidence = !evaluable || !applicable ? "n/a" : !missComp.length ? "high" : missComp.length === 1 ? "medium" : "low";
+    pts.push({ ...pdict(pid), level, level_min: lo, level_max: hi, evaluable, ...(applicable ? {} : { applicable: false }), confidence, missing_artifacts: [...missCore, ...missComp].map((a) => a.id),
+      artifact_findings: artFindings, complete: level !== null || !applicable, pending_criteria: pend, severity, finding, metrics: met, criteria: crits, evidence: ev,
       weaknesses: Object.entries(crits).filter(([, v]) => v.ok === false).map(([k, v]) => `${k}: ${str(v.desc)} → ${str(v.value)}`),
       declared_in_readme: declared, declarative_gap: gap, score_min: lo ? sc[lo] : null, score_max: hi ? sc[hi] : null });
   }

@@ -38,7 +38,10 @@ def evaluate_points(m, manual, opts):
         else:  # a core artifact is missing: the point cannot be evaluated (this is not "Meets")
             crits, met, ev, forced = {}, {}, [], (None, None, None)
             finding = "Not evaluable: missing core artifact(s): " + ", ".join(a["name"] for a in miss_core) + "."
-        if forced and (forced[0] or forced[1] != forced[2]):  # forced, or pending range (level None, lo ≠ hi)
+        applicable = not (met and met.get("applicable") is False)  # the point has nothing to evaluate in this app (e.g. no inheritance)
+        if not applicable:
+            level = lo = hi = None
+        elif forced and (forced[0] or forced[1] != forced[2]):  # forced, or pending range (level None, lo ≠ hi)
             level, lo, hi = forced
         elif crits:
             level, lo, hi = level_from(crits, must_criteria(pid))
@@ -54,13 +57,15 @@ def evaluate_points(m, manual, opts):
         severity = RUBRIC["level_severity"].get(level) if level else ("Undetermined" if lo != hi else None)
         if not evaluable:
             severity = "Not evaluable"
+        elif not applicable:
+            severity = "Not applicable"
         elif any(f["severity"] == "Critical" for f in art_findings):
             severity = "Critical"  # a Critical finding (IEEE 1028, 6.8.3) forces the top rank in use even if the level is better
-        confidence = "n/a" if not evaluable else ("high" if not miss_comp else ("medium" if len(miss_comp) == 1 else "low"))
+        confidence = "n/a" if not evaluable or not applicable else ("high" if not miss_comp else ("medium" if len(miss_comp) == 1 else "low"))
         pts.append({**pdict(pid), "level": level, "level_min": lo, "level_max": hi,
-                    "evaluable": evaluable, "confidence": confidence, "missing_artifacts": [a["id"] for a in miss_core + miss_comp],
+                    "evaluable": evaluable, **({} if applicable else {"applicable": False}), "confidence": confidence, "missing_artifacts": [a["id"] for a in miss_core + miss_comp],
                     "artifact_findings": art_findings,
-                    "complete": level is not None, "pending_criteria": pend,
+                    "complete": level is not None or not applicable, "pending_criteria": pend,
                     "severity": severity,
                     "finding": finding, "metrics": met, "criteria": crits, "evidence": ev,
                     "weaknesses": [f"{k}: {v['desc']} → {v['value']}" for k, v in crits.items() if v["ok"] is False],

@@ -59,7 +59,7 @@ def write_outputs(out, meta, points, prof, m):
     with open(out / "scorecard.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["point", "category", "level", "level_min", "level_max", "severity", "confidence", "missing_artifacts", "pending_criteria", "finding", "evidence"])
         for p in points:
-            w.writerow([p["name"], p["category"], p["level"] or ("not evaluable" if not p["evaluable"] else "pending"), p["level_min"], p["level_max"], p["severity"], p["confidence"], " ".join(p["missing_artifacts"]), " ".join(p["pending_criteria"]), p["finding"], " | ".join(p["evidence"][:5])])
+            w.writerow([p["name"], p["category"], p["level"] or ("not evaluable" if not p["evaluable"] else "not applicable" if p.get("applicable") is False else "pending"), p["level_min"], p["level_max"], p["severity"], p["confidence"], " ".join(p["missing_artifacts"]), " ".join(p["pending_criteria"]), p["finding"], " | ".join(p["evidence"][:5])])
     with open(out / "traceability.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["design_decision", "detected_weakness", "affected_subcharacteristics", "level", "evidence", "declarative_gap"])
         for p in points:
@@ -88,7 +88,7 @@ def write_outputs(out, meta, points, prof, m):
     L += ["", "| Decision point | Level | Severity | Confidence | Pending | Finding |", "|---|---|---|---|---|---|"]
     for p in points:
         n = p["level"] or f"{p['level_min']}…{p['level_max']}"
-        L.append(f"| {p['name']} | {'▨ not evaluable' if not p['evaluable'] else n} | {p['severity'] or '—'} | {p['confidence']} | {', '.join(p['pending_criteria']) or '—'} | {p['finding']} |")
+        L.append(f"| {p['name']} | {'▨ not evaluable' if not p['evaluable'] else '⊘ not applicable' if p.get('applicable') is False else n} | {p['severity'] or '—'} | {p['confidence']} | {', '.join(p['pending_criteria']) or '—'} | {p['finding']} |")
     if prof.get("ascmm"):
         L += [""] + ascmm_markdown(prof["ascmm"])
     if comp:

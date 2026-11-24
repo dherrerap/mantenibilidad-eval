@@ -74,7 +74,7 @@ export function cmdAggregate(a) {
   let csv = csvRow(["run_id", "agent", "level", "domain", ...ids, ...Object.keys(RUBRIC.subcharacteristic_weights), "maintainability_min", "maintainability_max", "complete",
     "acceptance_pct", ...TOKEN_COLUMNS, ...ASCMM_COLUMNS]);
   for (const [meta, pts, prof, [acc, tok]] of rows) {
-    const lv = Object.fromEntries(pts.map((p) => [p.id, p.level || `${str(p.level_min)}…${str(p.level_max)}`]));
+    const lv = Object.fromEntries(pts.map((p) => [p.id, p.level || (p.applicable === false ? "not applicable" : `${str(p.level_min)}…${str(p.level_max)}`)]));
     csv += csvRow([meta.run_id, meta.agent, meta.level, meta.domain, ...ids.map((i) => lv[i]), ...Object.values(prof.subcharacteristics).map((v) => fmtRng(v.min, v.max)),
       prof.maintainability_min, prof.maintainability_max, prof.complete, acc, ...TOKEN_COLUMNS.map((k) => tok[k]), ...ascmmColumns(prof)]);
   }
@@ -86,7 +86,7 @@ export function cmdAggregate(a) {
   const ab = { Meets: "✔", Partial: "◐", Fails: "✘" };
   for (const [meta, pts, prof, [acc, tok]] of rows) {
     const ratio = tok.tokens_r2_vs_initial;
-    L.push(`| ${meta.run_id} | ${str(meta.agent)} | ${str(meta.level)} | ` + pts.map((p) => get(ab, p.level, "?")).join(" | ") +
+    L.push(`| ${meta.run_id} | ${str(meta.agent)} | ${str(meta.level)} | ` + pts.map((p) => (p.applicable === false ? "⊘" : get(ab, p.level, "?"))).join(" | ") +
       ` | ${fmtRng(prof.maintainability_min, prof.maintainability_max)} | ${acc === null ? "n/a" : str(acc)} | ` +
       `${tu.fmt(tok.tokens_initial_total)} | ${tu.fmt(tok.tokens_r2_total)} | ${ratio === null ? "n/a" : "×" + fixed(ratio, 2)} |`);
   }

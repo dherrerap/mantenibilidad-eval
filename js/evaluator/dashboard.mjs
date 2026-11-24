@@ -5,7 +5,7 @@ import { artifactFindings } from "./artifacts.mjs";
 import { RUBRIC } from "./common.mjs";
 
 const LEVEL_STATE = { Meets: "green", Partial: "yellow", Fails: "red" };
-export const LIGHT = { green: "🟢", yellow: "🟡", red: "🔴", undecided: "⚪", not_evaluable: "▨", unrelated: "·" };
+export const LIGHT = { green: "🟢", yellow: "🟡", red: "🔴", undecided: "⚪", not_evaluable: "▨", not_applicable: "⊘", unrelated: "·" };
 
 export function semaphoreState(score) {
   const T = RUBRIC.risk_dashboard.semaphore;
@@ -42,6 +42,7 @@ export function riskDashboard(points, prof, m) {
       let state, esc;
       if (!p.subcharacteristics.includes(s)) [state, esc] = ["unrelated", false];
       else if (!p.evaluable) [state, esc] = ["not_evaluable", false];
+      else if (p.applicable === false) [state, esc] = ["not_applicable", false];  // nothing to evaluate: not "Meets"
       else {
         state = get(LEVEL_STATE, p.level, "undecided");
         esc = p.severity === "Critical" && state !== "red";  // a Critical finding forces red
@@ -79,7 +80,7 @@ export function dashboardMarkdown(d, points) {
   for (const [pid, name] of uniqueIds(names)) {
     const row = subs.map((s) => {
       const c = d.heatmap.find((x) => x.point === pid && x.subcharacteristic === s);
-      return LIGHT[c.state] + (c.escalated ? " ↑" : "") + (c.state === "not_evaluable" ? " not evaluable" : "");
+      return LIGHT[c.state] + (c.escalated ? " ↑" : "") + (c.state === "not_evaluable" ? " not evaluable" : c.state === "not_applicable" ? " not applicable" : "");
     });
     L.push(`| ${name} | ` + row.join(" | ") + " |");
   }
@@ -105,9 +106,10 @@ function uniqueIds(pairs) {
 const HTML_STYLE = `body{font:15px system-ui,sans-serif;margin:24px;max-width:960px} table{border-collapse:collapse;width:100%} th,td{border:1px solid #bbb;padding:8px;text-align:center} th{text-align:left}
 .green{background:#2e9e5b;color:#fff} .yellow{background:#f2c230;color:#222} .red{background:#d64545;color:#fff} .undecided{background:#fff;color:#555} .unrelated{background:#e6e6e6}
 .not_evaluable{background:repeating-linear-gradient(45deg,#d9d9d9,#d9d9d9 6px,#f4f4f4 6px,#f4f4f4 12px);color:#333;font-style:italic}
+.not_applicable{background:#f4f4f4;color:#666;font-style:italic}
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0} .card{flex:1 1 180px;padding:12px;border-radius:8px;border:1px solid #bbb} .card span{display:block;font-size:26px;margin-top:4px} small{display:block}`;
 
-const CELL_LABEL = { green: "Meets", yellow: "Partial", red: "Fails", undecided: "undecided", not_evaluable: "not evaluable", unrelated: "" };
+const CELL_LABEL = { green: "Meets", yellow: "Partial", red: "Fails", undecided: "undecided", not_evaluable: "not evaluable", not_applicable: "not applicable", unrelated: "" };
 
 export function dashboardHtml(d, points, title) {
   const subs = Object.keys(d.semaphore);
