@@ -14910,7 +14910,7 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-23T22:11:00",
+"date": "2026-11-23T22:43:14",
 "as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
@@ -17302,8 +17302,8 @@ null
 "unit": "pattern",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1074",
@@ -17311,8 +17311,8 @@ null
 "unit": "class",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1075",
@@ -17338,8 +17338,8 @@ null
 "unit": "class",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1121",
@@ -17411,10 +17411,7 @@ null
 "complete": false,
 "not_measured": [
 "CWE-561",
-"CWE-1047",
-"CWE-1062",
-"CWE-1074",
-"CWE-1086"
+"CWE-1047"
 ]
 },
 "all": {
@@ -17423,10 +17420,7 @@ null
 "complete": false,
 "not_measured": [
 "CWE-561",
-"CWE-1047",
-"CWE-1062",
-"CWE-1074",
-"CWE-1086"
+"CWE-1047"
 ]
 }
 }
@@ -18236,9 +18230,24 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 18.4,
-"at_stake_min": 18.4,
-"at_stake_max": 18.4
+"impact": 19.8,
+"at_stake_min": 19.8,
+"at_stake_max": 19.8
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"light": "⚪",
+"level": null,
+"level_min": "Fails",
+"level_max": "Partial",
+"pending": [
+"C2",
+"C5"
+],
+"impact": 16.8,
+"at_stake_min": 8.4,
+"at_stake_max": 16.8
 },
 {
 "id": "tests",
@@ -18253,21 +18262,6 @@ null
 "at_stake_max": 15.0
 },
 {
-"id": "data_model",
-"name": "Data model design",
-"light": "⚪",
-"level": null,
-"level_min": "Fails",
-"level_max": "Partial",
-"pending": [
-"C2",
-"C5"
-],
-"impact": 11.4,
-"at_stake_min": 5.7,
-"at_stake_max": 11.4
-},
-{
 "id": "observability",
 "name": "Presence and consistency of observability mechanisms",
 "light": "🔴",
@@ -18275,9 +18269,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 8.0,
-"at_stake_min": 8.0,
-"at_stake_max": 8.0
+"impact": 12.0,
+"at_stake_min": 12.0,
+"at_stake_max": 12.0
 },
 {
 "id": "cohesion",
@@ -18290,9 +18284,9 @@ null
 "C2",
 "C3"
 ],
-"impact": 8.9,
+"impact": 12.1,
 "at_stake_min": 0.0,
-"at_stake_max": 4.5
+"at_stake_max": 6.1
 },
 {
 "id": "layers",
@@ -18304,9 +18298,9 @@ null
 "pending": [
 "C2"
 ],
-"impact": 3.4,
+"impact": 4.8,
 "at_stake_min": 0.0,
-"at_stake_max": 3.4
+"at_stake_max": 4.8
 },
 {
 "id": "configuration",
@@ -18316,9 +18310,9 @@ null
 "level_min": "Partial",
 "level_max": "Partial",
 "pending": [],
-"impact": 5.5,
-"at_stake_min": 2.8,
-"at_stake_max": 2.8
+"impact": 7.3,
+"at_stake_min": 3.7,
+"at_stake_max": 3.7
 },
 {
 "id": "cyclomatic",
@@ -18328,7 +18322,7 @@ null
 "level_min": "Meets",
 "level_max": "Meets",
 "pending": [],
-"impact": 8.9,
+"impact": 12.1,
 "at_stake_min": 0.0,
 "at_stake_max": 0.0
 }
@@ -18341,7 +18335,7 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-23T22:11:00",
+"date": "2026-11-23T22:43:14",
 "as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
@@ -19875,7 +19869,7 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-23T22:11:03",
+"date": "2026-11-23T22:43:18",
 "as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
@@ -22267,8 +22261,8 @@ null
 "unit": "pattern",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1074",
@@ -22276,8 +22270,8 @@ null
 "unit": "class",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1075",
@@ -22303,8 +22297,8 @@ null
 "unit": "class",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1121",
@@ -22376,10 +22370,7 @@ null
 "complete": false,
 "not_measured": [
 "CWE-561",
-"CWE-1047",
-"CWE-1062",
-"CWE-1074",
-"CWE-1086"
+"CWE-1047"
 ]
 },
 "all": {
@@ -22388,10 +22379,7 @@ null
 "complete": false,
 "not_measured": [
 "CWE-561",
-"CWE-1047",
-"CWE-1062",
-"CWE-1074",
-"CWE-1086"
+"CWE-1047"
 ]
 }
 }
@@ -22405,7 +22393,7 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-23T22:11:03",
+"date": "2026-11-23T22:43:18",
 "as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
@@ -30570,9 +30558,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 18.4,
-"at_stake_min": 18.4,
-"at_stake_max": 18.4
+"impact": 19.0,
+"at_stake_min": 19.0,
+"at_stake_max": 19.0
 },
 {
 "id": "tests",
@@ -30606,9 +30594,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 11.4,
-"at_stake_min": 11.4,
-"at_stake_max": 11.4
+"impact": 12.0,
+"at_stake_min": 12.0,
+"at_stake_max": 12.0
 },
 {
 "id": "cohesion",
@@ -30618,9 +30606,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 8.9,
-"at_stake_min": 8.9,
-"at_stake_max": 8.9
+"impact": 9.5,
+"at_stake_min": 9.5,
+"at_stake_max": 9.5
 },
 {
 "id": "cyclomatic",
@@ -30630,9 +30618,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 8.9,
-"at_stake_min": 8.9,
-"at_stake_max": 8.9
+"impact": 9.5,
+"at_stake_min": 9.5,
+"at_stake_max": 9.5
 },
 {
 "id": "observability",
@@ -30666,9 +30654,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 3.4,
-"at_stake_min": 3.4,
-"at_stake_max": 3.4
+"impact": 4.0,
+"at_stake_min": 4.0,
+"at_stake_max": 4.0
 },
 {
 "id": "layers",
@@ -30678,9 +30666,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 3.4,
-"at_stake_min": 3.4,
-"at_stake_max": 3.4
+"impact": 4.0,
+"at_stake_min": 4.0,
+"at_stake_max": 4.0
 }
 ],
 "files": {},
@@ -31248,7 +31236,7 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-23T22:11:16",
+"date": "2026-11-23T22:43:40",
 "as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
@@ -33640,8 +33628,8 @@ null
 "unit": "pattern",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1074",
@@ -33649,8 +33637,8 @@ null
 "unit": "class",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1075",
@@ -33676,8 +33664,8 @@ null
 "unit": "class",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1121",
@@ -33749,10 +33737,7 @@ null
 "complete": false,
 "not_measured": [
 "CWE-561",
-"CWE-1047",
-"CWE-1062",
-"CWE-1074",
-"CWE-1086"
+"CWE-1047"
 ]
 },
 "all": {
@@ -33761,10 +33746,7 @@ null
 "complete": false,
 "not_measured": [
 "CWE-561",
-"CWE-1047",
-"CWE-1062",
-"CWE-1074",
-"CWE-1086"
+"CWE-1047"
 ]
 }
 }
@@ -33778,7 +33760,7 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-23T22:11:16",
+"date": "2026-11-23T22:43:40",
 "as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
@@ -35312,7 +35294,7 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-23T22:11:16",
+"date": "2026-11-23T22:43:40",
 "as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
@@ -37707,8 +37689,8 @@ null
 "unit": "pattern",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1074",
@@ -37716,8 +37698,8 @@ null
 "unit": "class",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1075",
@@ -37743,8 +37725,8 @@ null
 "unit": "class",
 "point": "hierarchies",
 "scored": true,
-"count": null,
-"per_kloc": null
+"count": 0,
+"per_kloc": 0.0
 },
 {
 "cwe": "CWE-1121",
@@ -37816,10 +37798,7 @@ null
 "complete": false,
 "not_measured": [
 "CWE-561",
-"CWE-1047",
-"CWE-1062",
-"CWE-1074",
-"CWE-1086"
+"CWE-1047"
 ]
 },
 "all": {
@@ -37828,10 +37807,7 @@ null
 "complete": false,
 "not_measured": [
 "CWE-561",
-"CWE-1047",
-"CWE-1062",
-"CWE-1074",
-"CWE-1086"
+"CWE-1047"
 ]
 }
 }
@@ -38633,9 +38609,24 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 18.4,
-"at_stake_min": 18.4,
-"at_stake_max": 18.4
+"impact": 19.8,
+"at_stake_min": 19.8,
+"at_stake_max": 19.8
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"light": "⚪",
+"level": null,
+"level_min": "Fails",
+"level_max": "Partial",
+"pending": [
+"C2",
+"C5"
+],
+"impact": 16.8,
+"at_stake_min": 8.4,
+"at_stake_max": 16.8
 },
 {
 "id": "tests",
@@ -38650,21 +38641,6 @@ null
 "at_stake_max": 15.0
 },
 {
-"id": "data_model",
-"name": "Data model design",
-"light": "⚪",
-"level": null,
-"level_min": "Fails",
-"level_max": "Partial",
-"pending": [
-"C2",
-"C5"
-],
-"impact": 11.4,
-"at_stake_min": 5.7,
-"at_stake_max": 11.4
-},
-{
 "id": "observability",
 "name": "Presence and consistency of observability mechanisms",
 "light": "🔴",
@@ -38672,9 +38648,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 8.0,
-"at_stake_min": 8.0,
-"at_stake_max": 8.0
+"impact": 12.0,
+"at_stake_min": 12.0,
+"at_stake_max": 12.0
 },
 {
 "id": "layers",
@@ -38686,9 +38662,9 @@ null
 "pending": [
 "C2"
 ],
-"impact": 3.4,
+"impact": 4.8,
 "at_stake_min": 0.0,
-"at_stake_max": 3.4
+"at_stake_max": 4.8
 },
 {
 "id": "configuration",
@@ -38698,9 +38674,9 @@ null
 "level_min": "Partial",
 "level_max": "Partial",
 "pending": [],
-"impact": 5.5,
-"at_stake_min": 2.8,
-"at_stake_max": 2.8
+"impact": 7.3,
+"at_stake_min": 3.7,
+"at_stake_max": 3.7
 },
 {
 "id": "cohesion",
@@ -38710,7 +38686,7 @@ null
 "level_min": "Meets",
 "level_max": "Meets",
 "pending": [],
-"impact": 8.9,
+"impact": 12.1,
 "at_stake_min": 0.0,
 "at_stake_max": 0.0
 },
@@ -38722,7 +38698,7 @@ null
 "level_min": "Meets",
 "level_max": "Meets",
 "pending": [],
-"impact": 8.9,
+"impact": 12.1,
 "at_stake_min": 0.0,
 "at_stake_max": 0.0
 }

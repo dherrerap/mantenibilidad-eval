@@ -46,12 +46,11 @@ def eval_hierarchies(m, manual, opts):
     if not own:  # no class extends another class of the application: there is no hierarchy to evaluate, which is not "Meets"
         what = f"{len(cls)} classes, none extends another class of the application" if cls else "no classes"
         return {}, {"classes": len(cls), "applicable": False}, [], f"Not applicable: {what}; there is no inheritance hierarchy to evaluate.", None
-    uih_src = "auto (no classes)" if not cls else ("dv8" if uih is not None else "pending (DV8)")
-    if cls and uih is None and own and m["graph"].get("modules"):  # own hierarchy and a graph: DV8 rules on the graph
+    # from here on the app has its own hierarchy (so at least two classes)
+    uih_src = "dv8" if uih is not None else "pending (DV8)"
+    if uih is None and m["graph"].get("modules"):  # a graph: DV8 rules on the graph
         uih = len(unhealthy_inheritance_graph(m)); uih_src = "auto (DV8 rules on the graph)"
-    elif cls and uih is None and not own:
-        uih = 0; uih_src = "auto (no own hierarchy)"
-    c3_ok = True if not cls else (None if uih is None else uih == 0)
+    c3_ok = None if uih is None else uih == 0
     crit = {"C1": C(not deep, "0 classes with depth > 7", len(deep)),
             "C2": C(not wide, "0 classes with > 10 direct children", len(wide)),
             "C3": C(c3_ok, "0 Unhealthy Inheritance patterns (DV8)", uih, source=uih_src)}

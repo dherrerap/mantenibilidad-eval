@@ -46,7 +46,7 @@ valor de corte (solo función).
 | Umbral                                 | Valor               | Criterio o efecto                       | Decide un veredicto            |
 | -------------------------------------- | ------------------- | --------------------------------------- | ------------------------------ |
 | Pesos de las subcaracterísticas        | 30 / 24 / 24 / 22 % | Puntaje global                          | Sí                             |
-| Agregación de los puntos dentro de cada subcaracterística | Promedio simple (`point_weights` vacío) | Peso efectivo de cada punto en el puntaje global (de 3,4 % a 18,4 %) | Sí |
+| Agregación de los puntos dentro de cada subcaracterística | Promedio simple (`point_weights` vacío) | Peso efectivo de cada punto en el puntaje global (de 3,4 % a 18,4 % con los 11 puntos puntuados; de 4,0 % a 19,0 % cuando Jerarquías no aplica) | Sí |
 | Asignación de los puntos a las subcaracterísticas (Tabla 24) | 16 conexiones; 3 siguen a ISO/IEC 25023 (acoplamiento y complejidad ciclomática → modularidad, MMo-1-G y MMo-2-S; observabilidad → analizabilidad, MAn-1-G) y 13 son decisión propia | Puntaje de cada subcaracterística y peso efectivo de cada punto | Sí |
 | Fracción mínima para _Parcial_         | 0,5                 | Nivel de todos los puntos               | Sí                             |
 | Peso de los criterios dentro de un punto | Todos iguales; el mínimo real para _Parcial_ va de 50 % a 67 % según cuántos criterios tenga el punto | Nivel de todos los puntos salvo Capas | Sí |

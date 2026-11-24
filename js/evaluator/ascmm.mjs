@@ -51,7 +51,8 @@ export function ascmmProfile(m, points) {
   const rows = [];
   for (const [cwe, name, unit, pid, fn] of SCORED) {
     const pt = get(pts, pid) || {};
-    const n = get(pt, "evaluable", true) ? fn(pt) : null;
+    // a not-applicable point measured the app and found nothing to evaluate (no own inheritance hierarchy): zero occurrences, not "not measured"
+    const n = !get(pt, "evaluable", true) ? null : get(pt, "applicable", true) === false ? 0 : fn(pt);
     rows.push({ cwe, name, unit, point: pid, scored: true, count: n ?? null, per_kloc: perKloc(n, kloc) });
   }
   for (const r of ascmmIndicators(m)) {

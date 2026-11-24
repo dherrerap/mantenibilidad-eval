@@ -154,10 +154,10 @@ export function evalHierarchies(m, manual, opts) {
     const what = cls.length ? `${cls.length} classes, none extends another class of the application` : "no classes";
     return [{}, { classes: cls.length, applicable: false }, [], `Not applicable: ${what}; there is no inheritance hierarchy to evaluate.`, null];
   }
-  let uihSrc = !cls.length ? "auto (no classes)" : uih !== null ? "dv8" : "pending (DV8)";
-  if (cls.length && uih === null && own && truthy(get(m.graph, "modules"))) { uih = unhealthyInheritanceGraph(m).length; uihSrc = "auto (DV8 rules on the graph)"; }
-  else if (cls.length && uih === null && !own) { uih = 0; uihSrc = "auto (no own hierarchy)"; }
-  const c3 = !cls.length ? true : uih === null ? null : uih === 0;
+  // from here on the app has its own hierarchy (so at least two classes)
+  let uihSrc = uih !== null ? "dv8" : "pending (DV8)";
+  if (uih === null && truthy(get(m.graph, "modules"))) { uih = unhealthyInheritanceGraph(m).length; uihSrc = "auto (DV8 rules on the graph)"; }
+  const c3 = uih === null ? null : uih === 0;
   const crit = {
     C1: C(!deep.length, "0 classes with depth > 7", deep.length),
     C2: C(!wide.length, "0 classes with > 10 direct children", wide.length),

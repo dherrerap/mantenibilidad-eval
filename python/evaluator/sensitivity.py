@@ -14,7 +14,7 @@ For each scenario it reports the score of every run, the ranking of the runs and
 tau-b, whether the top run is the same, the largest rank shift), and the order of the levels and agents by mean score.
 Rankings use the midpoint of each score range; a run whose overall score is not computable in a scenario stays out of it.
 """
-from evaluator.common import RUBRIC, point_weight
+from evaluator.common import RUBRIC, point_weights, weighted_mean
 
 GROUP_KEYS = ("level", "agent")
 
@@ -43,6 +43,7 @@ def overall(points, spec):
         if not ps:
             return None, None
         return tuple(round(100 * sum(p[k] for p in ps) / len(ps), 1) for k in ("score_min", "score_max"))
+    pw = point_weights()
     lo = hi = 0.0
     for s, w in spec["weights"].items():
         sub = [p for p in ps if s in p["subcharacteristics"]]
@@ -50,9 +51,8 @@ def overall(points, spec):
             if w > 0:
                 return None, None
             continue
-        tw = sum(point_weight(p["id"]) for p in sub)
-        lo += w * 100 * sum(point_weight(p["id"]) * p["score_min"] for p in sub) / tw
-        hi += w * 100 * sum(point_weight(p["id"]) * p["score_max"] for p in sub) / tw
+        lo += w * 100 * weighted_mean(sub, "score_min", pw)
+        hi += w * 100 * weighted_mean(sub, "score_max", pw)
     return round(lo, 1), round(hi, 1)
 
 

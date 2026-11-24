@@ -68,7 +68,8 @@ def ascmm_profile(m, points):
     rows = []
     for cwe, name, unit, pid, get in SCORED:
         pt = pts.get(pid) or {}
-        n = get(pt) if pt.get("evaluable", True) else None
+        # a not-applicable point measured the app and found nothing to evaluate (no own inheritance hierarchy): zero occurrences, not "not measured"
+        n = None if not pt.get("evaluable", True) else 0 if pt.get("applicable", True) is False else get(pt)
         rows.append({"cwe": cwe, "name": name, "unit": unit, "point": pid, "scored": True, "count": n, "per_kloc": per_kloc(n, kloc)})
     for r in ascmm_indicators(m):  # (id, group, name, value, reference, ok, detail, evidence)
         cwe, _, name = r[2].partition(" ")

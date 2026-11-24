@@ -63,6 +63,31 @@ test("the panel scenario of the sensitivity analysis reproduces the weighted pro
 });
 
 test("a point weight that is not a positive number is rejected", () => {
-  for (const bad of [0, -1]) withWeights({ tests: bad }, () => assert.throws(() => pointWeight("tests"), /positive number/));
+  for (const bad of [0, -1, "2", true, null, Infinity]) withWeights({ tests: bad }, () => assert.throws(() => pointWeight("tests"), /positive number/));
   withWeights({ _comment: "only a comment" }, () => assert.equal(pointWeight("tests"), 1));
+});
+
+/** The same points with `pid` not evaluable (no score). */
+const without = (pid) => points().map((p) => (p.id === pid ? { ...p, level: null, level_min: null, level_max: null, score_min: null, score_max: null } : p));
+const impactSum = (r) => r.reduce((a, x) => a + Number(x.impact), 0);
+
+test("a point weight for a point that does not exist is rejected", () => {
+  withWeights({ test: 5 }, () => assert.throws(() => profile(points({ tests: 1 })), /not a decision point/));  // typo of `tests`
+});
+
+test("a bad weight is rejected even on a point that is not evaluable", () => {
+  withWeights({ data_model: 0 }, () => assert.throws(() => profile(without("data_model")), /positive number/));
+});
+
+test("the impacts add up to 100 when a point is not evaluable or not applicable", () => {
+  withWeights({}, () => {
+    const r = riskSummary(without("hierarchies"));
+    assert.ok(Math.abs(impactSum(r) - 100) <= 0.5, String(impactSum(r)));
+    const imp = Object.fromEntries(r.map((x) => [x.id, Number(x.impact)]));
+    assert.deepEqual([imp.layers, imp.coupling, imp.contracts], [4, 4, 19]);  // a sixth of Modularity, not a seventh
+  });
+  withWeights({ data_model: 5 }, () => {
+    const s = impactSum(riskSummary(without("data_model")));
+    assert.ok(Math.abs(s - 100) <= 0.5, String(s));
+  });
 });

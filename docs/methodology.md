@@ -102,9 +102,14 @@ one decided Fails, which already forces red.
 - A subcharacteristic's score is the mean of the evaluable points that feed it, weighted by `point_weights` in `rubric.json`,
   times 100. A point with no weight there weighs 1, so with no weights set (the default) it is the plain average. Each point then has
   an implicit weight in the overall score, the subcharacteristic weight divided by the number of points that feed it, summed over the
-  subcharacteristics it feeds: from 3.4% (layers, hierarchies, coupling) to 18.4% (contracts) with the default rubric. That
-  distribution follows from how many points feed each subcharacteristic, not from a judgment of their importance; `point_weights`
-  exists to replace it with the ratings of the expert consultation (see `backing.point_weights`).
+  subcharacteristics it feeds: from 3.4% (layers, hierarchies, coupling) to 18.4% (contracts) with the default rubric and every point
+  scored. A point that is not evaluable or not applicable leaves its share to the scored points of the same subcharacteristics: in
+  the usual app without an inheritance hierarchy, Hierarchies is not applicable and the range is 4.0% (layers, coupling) to 19.0%
+  (contracts). The `impact` of the risk list uses that same denominator, so the impacts of a run always add up to 100. That distribution follows from how many
+  points feed each subcharacteristic, not from a judgment of their importance; `point_weights` exists to replace it with the ratings
+  of the expert consultation (see `backing.point_weights`). The evaluator refuses a rubric whose `point_weights` names a point that
+  does not exist or gives a weight that is not a positive number, and one whose `must_criteria` is missing, names a point that does
+  not exist or lists something other than criterion ids.
 - The overall score is the weighted sum: Testability 30%, Analyzability 24%, Modularity 24%, Modifiability 22%.
 - **Ranges.** A pending criterion (`ok = null`) is evaluated twice, as met and as not met. The point, the
   subcharacteristic and the overall score are then expressed as `minimum–maximum`. When everything is resolved, the range collapses to a

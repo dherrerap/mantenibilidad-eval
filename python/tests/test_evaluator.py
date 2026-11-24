@@ -1542,6 +1542,17 @@ class TestBackingTraceability(unittest.TestCase):
         self.assertEqual(ev.level_from(tests_fail, must_criteria("tests"))[0], "Fails")
         self.assertEqual(ev.level_from(tests_fail)[0], "Partial")
 
+    def test_a_must_criteria_map_that_would_drop_a_veto_is_rejected(self):
+        from evaluator.points import must_criteria
+        for bad in ({"test": ["C2"]}, {"tests": "C2"}, {"tests": ["2"]}, {"tests": [2]}):  # typo in the point, not a list, not criterion ids
+            with mock.patch.dict(ev.RUBRIC, {"must_criteria": bad}):
+                with self.assertRaises(ValueError):
+                    must_criteria("tests")
+        with mock.patch.dict(ev.RUBRIC):
+            del ev.RUBRIC["must_criteria"]
+            with self.assertRaises(ValueError):
+                must_criteria("tests")
+
     def test_every_point_subcharacteristic_link_declares_its_basis(self):
         links = ev.RUBRIC["backing"]["points.subcharacteristics"]["links"]
         expected = {f"{pid}.{s}" for pid, d in ev.RUBRIC["points"].items() for s in d["subcharacteristics"]}
@@ -2145,6 +2156,12 @@ class TestNotApplicable(unittest.TestCase):
         r = {x["id"] for x in ev.risk_summary(pts)}
         self.assertNotIn("hierarchies", r)
 
+    def test_the_risk_impacts_still_add_up_to_100(self):
+        m, pts = self.pts()
+        r = {x["id"]: x["impact"] for x in ev.risk_summary(pts)}
+        self.assertAlmostEqual(sum(r.values()), 100, delta=0.5)  # each impact is rounded to one decimal
+        self.assertEqual((r["layers"], r["coupling"], r["contracts"]), (4.0, 4.0, 19.0))  # a sixth of Modularity, not a seventh
+
     def test_the_heat_map_marks_it_not_applicable(self):
         m, pts = self.pts()
         d = ev.risk_dashboard(pts, ev.profile(pts), {"ast": {"functions": [], "classes": []}, "graph": {"modules": [], "cycles": []}, "layers": {}})
@@ -2199,6 +2216,29 @@ class TestPointWeights(unittest.TestCase):
                     point_weight("tests")
         with mock.patch.dict(ev.RUBRIC, {"point_weights": {"_comment": "only a comment"}}):
             self.assertEqual(point_weight("tests"), 1)
+
+    def test_a_point_weight_for_a_point_that_does_not_exist_is_rejected(self):
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"test": 5}}):  # typo of `tests`: it would leave the weight out silently
+            with self.assertRaises(ValueError):
+                ev.profile(self.pts({"tests": 1}))
+
+    def test_a_bad_weight_is_rejected_even_on_a_point_that_is_not_evaluable(self):
+        pts = self.pts()
+        for p in pts:
+            if p["id"] == "data_model":
+                p["score_min"] = p["score_max"] = None
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"data_model": 0}}):
+            with self.assertRaises(ValueError):
+                ev.profile(pts)
+
+    def test_the_impacts_add_up_to_100_when_a_weighted_point_is_not_evaluable(self):
+        pts = self.pts()
+        for p in pts:
+            if p["id"] == "data_model":
+                p["score_min"] = p["score_max"] = None
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"data_model": 5}}):
+            r = ev.risk_summary(pts)
+        self.assertAlmostEqual(sum(x["impact"] for x in r), 100, delta=0.5)
 
 
 class TestWeightSensitivity(unittest.TestCase):
@@ -2594,6 +2634,13 @@ class TestAscmmDensity(unittest.TestCase):
         self.assertIn("**ASCMM, scored weaknesses:** ≥ 18 (≥ 12.0/KLOC)", md)
         cmp_md = "\n".join(ascmm_comparison_md([("claude-n1-r1", {"ascmm": a}), ("old-run", {})]))
         self.assertIn("| claude-n1-r1 | 1.5 | ≥ 18 | ≥ 12.0 |", cmp_md); self.assertNotIn("old-run", cmp_md)
+
+    def test_a_not_applicable_hierarchies_point_counts_zero_inheritance_weaknesses(self):
+        from evaluator.ascmm import ascmm_profile
+        na = {"id": "hierarchies", "evaluable": True, "applicable": False, "metrics": {"classes": 0, "applicable": False}, "criteria": {}}
+        a = ascmm_profile(self.model(), self.points(hierarchies=na))
+        self.assertEqual([self.weakness(a, c)["count"] for c in ("CWE-1062", "CWE-1074", "CWE-1086")], [0, 0, 0])
+        self.assertTrue(a["scored"]["complete"])  # no own hierarchy means none of them occurs, not that they were not measured
 
     def test_comparison_columns(self):
         from evaluator.ascmm import COLUMNS, ascmm_columns, ascmm_profile

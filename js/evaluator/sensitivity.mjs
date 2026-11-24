@@ -1,7 +1,7 @@
 // sensitivity.mjs — Sensitivity of the overall score to the weighting scheme (see evaluator/sensitivity.py for the scenarios).
 // Port of evaluator/sensitivity.py.
 import { F, fixed, get, gfmt, num, pyRound, sorted, str, truthy } from "../lib/py.mjs";
-import { RUBRIC, pointWeight } from "./common.mjs";
+import { RUBRIC, pointWeights, weightedMean } from "./common.mjs";
 
 const GROUP_KEYS = ["level", "agent"];
 
@@ -27,6 +27,7 @@ export function overall(points, spec) {
     if (!ps.length) return [null, null];
     return ["score_min", "score_max"].map((k) => F(pyRound((100 * ps.reduce((a, p) => a + num(p[k]), 0)) / ps.length, 1)));
   }
+  const pw = pointWeights();
   let lo = 0.0, hi = 0.0;
   for (const [s, w] of Object.entries(spec.weights)) {
     const sub = ps.filter((p) => p.subcharacteristics.includes(s));
@@ -34,9 +35,9 @@ export function overall(points, spec) {
       if (w > 0) return [null, null];
       continue;
     }
-    const tw = sub.reduce((a, p) => a + pointWeight(p.id), 0);  // same weighted mean as scoring.profile()
-    lo += (num(w) * 100 * sub.reduce((a, p) => a + pointWeight(p.id) * num(p.score_min), 0)) / tw;
-    hi += (num(w) * 100 * sub.reduce((a, p) => a + pointWeight(p.id) * num(p.score_max), 0)) / tw;
+    // the same weighted mean as scoring.profile()
+    lo += num(w) * 100 * weightedMean(sub, "score_min", pw);
+    hi += num(w) * 100 * weightedMean(sub, "score_max", pw);
   }
   return [F(pyRound(lo, 1)), F(pyRound(hi, 1))];
 }

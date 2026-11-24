@@ -7,7 +7,7 @@ from pathlib import Path
 
 from evaluator.artifacts import artifact_findings
 from evaluator.ascmm import ascmm_profile
-from evaluator.common import RUBRIC, point_weight
+from evaluator.common import RUBRIC, point_weights, weighted_mean
 from evaluator.criteria import level_from, pdict
 from evaluator.points import EVALUATORS, must_criteria
 
@@ -122,14 +122,12 @@ def evaluate_profile(m, manual, opts):
 
 
 def profile(points):
-    W = RUBRIC["subcharacteristic_weights"]; subs = {}
+    W = RUBRIC["subcharacteristic_weights"]; pw = point_weights(); subs = {}
     for s in W:
         ps = [p for p in points if s in p["subcharacteristics"] and p["score_min"] is not None]
         tot = [p for p in points if s in p["subcharacteristics"]]
         # weighted mean of the evaluable points (`point_weights`); with no weights set every point weighs 1 and this is the plain mean
-        tw = sum(point_weight(p["id"]) for p in ps)
-        lo = sum(point_weight(p["id"]) * p["score_min"] for p in ps) / tw if ps else None
-        hi = sum(point_weight(p["id"]) * p["score_max"] for p in ps) / tw if ps else None
+        lo, hi = weighted_mean(ps, "score_min", pw), weighted_mean(ps, "score_max", pw)
         subs[s] = {"weight": W[s], "points": [p["id"] for p in tot], "evaluable_points": len(ps),
                    "min": None if lo is None else round(100 * lo, 1), "max": None if hi is None else round(100 * hi, 1)}
     ok = all(v["min"] is not None for v in subs.values())
@@ -154,17 +152,19 @@ def risk_summary(points):
     """Condensed risk view: every point with its traffic light and the overall-score points it puts at stake.
 
     A point's impact is how many of the 100 overall points it controls: each subcharacteristic it feeds gives it
-    weight × point weight / (total point weight of that subcharacteristic); with no `point_weights` in the rubric that is
-    weight / (number of points in that subcharacteristic). `at_stake_max` is the loss in the worst case (lowest score
+    weight × point weight / (total point weight of the evaluable points of that subcharacteristic, the same denominator as
+    profile()); with no `point_weights` in the rubric that is weight / (number of evaluable points in that subcharacteristic), so
+    the impacts add up to the 100 overall points. `at_stake_max` is the loss in the worst case (lowest score
     of the range) and `at_stake_min` in the best case; pending points still rank by their worst case.
     Returns the list sorted from highest to lowest risk."""
     W = RUBRIC["subcharacteristic_weights"]
-    total = {s: sum(point_weight(p["id"]) for p in points if s in p["subcharacteristics"]) for s in W}
+    pw = point_weights()
+    total = {s: sum(pw.get(p["id"], 1) for p in points if s in p["subcharacteristics"] and p["score_min"] is not None) for s in W}
     rows = []
     for p in points:
         if p["score_min"] is None:
             continue
-        impact = 100 * sum(W[s] * point_weight(p["id"]) / total[s] for s in p["subcharacteristics"] if s in W)
+        impact = 100 * sum(W[s] * pw.get(p["id"], 1) / total[s] for s in p["subcharacteristics"] if s in W)
         rows.append({"id": p["id"], "name": p["name"], "light": traffic_light(p), "level": p["level"],
                      "level_min": p["level_min"], "level_max": p["level_max"], "pending": p["pending_criteria"],
                      "impact": round(impact, 1),
