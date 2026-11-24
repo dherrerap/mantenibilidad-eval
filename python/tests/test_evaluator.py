@@ -1527,9 +1527,43 @@ class TestBackingTraceability(unittest.TestCase):
         self.assertEqual(missing, [], f"without backing: {missing}")
 
     def test_top_level_weights_and_scales_declare_a_backing(self):
-        for key in ("subcharacteristic_weights", "partial_min_fraction", "level_score", "level_severity",
+        for key in ("subcharacteristic_weights", "point_weights", "partial_min_fraction", "level_score", "level_severity", "risk_dashboard.escalation", "must_criteria",
                     "risk_dashboard.semaphore", "risk_dashboard.hotspots_top_n", "supported_runtimes"):
             self.assertIn(key, ev.RUBRIC["backing"])
+
+    def test_must_criteria_name_points_and_criteria_and_veto_the_level(self):
+        from evaluator.points import must_criteria
+        mc = {k: v for k, v in ev.RUBRIC["must_criteria"].items() if not k.startswith("_")}
+        self.assertEqual(mc, {"contracts": ["C1"], "tests": ["C2"]})
+        self.assertLessEqual(set(mc), set(ev.RUBRIC["points"]))
+        self.assertEqual(must_criteria("_comment"), ())
+        crit = lambda **ok: {k: {"ok": v} for k, v in ok.items()}
+        tests_fail = crit(C1=True, C2=False, C3=True, C4=True)  # tests exist but fail; the rest is met
+        self.assertEqual(ev.level_from(tests_fail, must_criteria("tests"))[0], "Fails")
+        self.assertEqual(ev.level_from(tests_fail)[0], "Partial")
+
+    def test_a_must_criteria_map_that_would_drop_a_veto_is_rejected(self):
+        from evaluator.points import must_criteria
+        for bad in ({"test": ["C2"]}, {"tests": "C2"}, {"tests": ["2"]}, {"tests": [2]}):  # typo in the point, not a list, not criterion ids
+            with mock.patch.dict(ev.RUBRIC, {"must_criteria": bad}):
+                with self.assertRaises(ValueError):
+                    must_criteria("tests")
+        with mock.patch.dict(ev.RUBRIC):
+            del ev.RUBRIC["must_criteria"]
+            with self.assertRaises(ValueError):
+                must_criteria("tests")
+
+    def test_every_point_subcharacteristic_link_declares_its_basis(self):
+        links = ev.RUBRIC["backing"]["points.subcharacteristics"]["links"]
+        expected = {f"{pid}.{s}" for pid, d in ev.RUBRIC["points"].items() for s in d["subcharacteristics"]}
+        self.assertEqual(set(links), expected, "every link of Table 24 needs exactly one entry")
+        for key, b in links.items():
+            self.assertIn(b["basis"], {"iso25023", "own"}, key)
+            self.assertTrue(b.get("rationale"), key)
+            if b["basis"] == "iso25023":
+                self.assertTrue(b.get("measure") and b.get("locator"), f"{key} claims ISO/IEC 25023 without a measure and locator")
+        self.assertEqual(sorted(k for k, b in links.items() if b["basis"] == "iso25023"),
+                         ["coupling.Modularity", "cyclomatic.Modularity", "observability.Analyzability"])
 
     def test_every_backing_entry_has_a_known_type_and_a_locator_when_normative(self):
         for key, b in ev.RUBRIC["backing"].items():
@@ -1886,8 +1920,8 @@ class TestBatchAEvaluatorFixes(unittest.TestCase):
         cls = [{"name": f"E{i}", "file": "errors.js", "extends": "Error"} for i in range(12)] + \
               [{"name": f"C{i}", "file": "c.jsx", "extends": "React.Component"} for i in range(12)]
         m = {"ast": {"classes": cls}, "graph": {"modules": [{"source": "errors.js", "deps": []}]}}
-        crit = ev.eval_hierarchies(m, {}, Opts)[0]
-        self.assertTrue(crit["C2"]["ok"])
+        crit, met = ev.eval_hierarchies(m, {}, Opts)[:2]
+        self.assertEqual((crit, met["applicable"]), ({}, False))  # no class extends a class of the app: no hierarchy, not applicable
         own = cls + [{"name": "Base", "file": "base.js", "extends": None}] + [{"name": f"K{i}", "file": f"k{i}.js", "extends": "Base"} for i in range(11)]
         self.assertFalse(ev.eval_hierarchies({**m, "ast": {"classes": own}}, {}, Opts)[0]["C2"]["ok"])
 
@@ -2093,6 +2127,118 @@ class TestCliCollectsOnce(unittest.TestCase):
             (Path(t) / "res" / "claude-n1-ecommerce-r1" / "metrics.json").write_text("{}", encoding="utf-8")
             calls, summary = self.run_app(t, rescore_only=True)
         self.assertEqual(calls, ["evaluate.py:rescore"]); self.assertFalse(summary.startswith("ERROR"))
+
+
+class TestNotApplicable(unittest.TestCase):
+    """A point with nothing to evaluate in the app (Hierarchies without an own inheritance hierarchy) is not applicable, not Meets."""
+
+    def pts(self):
+        m = {"ast": {"classes": []}, "graph": {"modules": []}}
+        out = []
+        for pid, d in ev.RUBRIC["points"].items():
+            lvl = None if pid == "hierarchies" else "Fails"
+            out.append({"id": pid, "name": d["name"], "subcharacteristics": d["subcharacteristics"], "evaluable": True,
+                        "complete": True, "level": lvl, "level_min": lvl, "level_max": lvl, "pending_criteria": [],
+                        "severity": "Critical" if lvl else "Not applicable", "score_min": 0.0 if lvl else None, "score_max": 0.0 if lvl else None,
+                        **({} if lvl else {"applicable": False})})
+        return m, out
+
+    def test_without_classes_hierarchies_is_not_applicable(self):
+        crit, met, ev_, finding, forced = ev.eval_hierarchies({"ast": {"classes": []}, "graph": {"modules": []}}, {}, Opts)
+        self.assertEqual((crit, met["applicable"], forced), ({}, False, None))
+        self.assertTrue(finding.startswith("Not applicable"))
+
+    def test_a_not_applicable_point_is_complete_and_left_out_of_the_profile(self):
+        m, pts = self.pts()
+        prof = ev.profile(pts)
+        self.assertTrue(prof["complete"])
+        self.assertEqual(prof["subcharacteristics"]["Modularity"]["evaluable_points"], 6)
+        r = {x["id"] for x in ev.risk_summary(pts)}
+        self.assertNotIn("hierarchies", r)
+
+    def test_the_risk_impacts_still_add_up_to_100(self):
+        m, pts = self.pts()
+        r = {x["id"]: x["impact"] for x in ev.risk_summary(pts)}
+        self.assertAlmostEqual(sum(r.values()), 100, delta=0.5)  # each impact is rounded to one decimal
+        self.assertEqual((r["layers"], r["coupling"], r["contracts"]), (4.0, 4.0, 19.0))  # a sixth of Modularity, not a seventh
+
+    def test_the_heat_map_marks_it_not_applicable(self):
+        m, pts = self.pts()
+        d = ev.risk_dashboard(pts, ev.profile(pts), {"ast": {"functions": [], "classes": []}, "graph": {"modules": [], "cycles": []}, "layers": {}})
+        cell = next(c for c in d["heatmap"] if c["point"] == "hierarchies" and c["subcharacteristic"] == "Modularity")
+        self.assertEqual((cell["state"], cell["escalated"]), ("not_applicable", False))
+
+
+class TestPointWeights(unittest.TestCase):
+    """Weights of the decision points inside each subcharacteristic (`point_weights` in rubric.json)."""
+
+    LEVEL = {0: "Fails", 0.5: "Partial", 1: "Meets"}
+
+    def pts(self, scores=None):
+        scores = scores or {}
+        return [{"id": pid, "name": d["name"], "subcharacteristics": d["subcharacteristics"], "complete": True,
+                 "level": self.LEVEL[scores.get(pid, 0)], "level_min": self.LEVEL[scores.get(pid, 0)], "level_max": self.LEVEL[scores.get(pid, 0)],
+                 "pending_criteria": [], "score_min": scores.get(pid, 0), "score_max": scores.get(pid, 0)}
+                for pid, d in ev.RUBRIC["points"].items()]
+
+    def test_without_point_weights_each_subcharacteristic_is_the_plain_mean(self):
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {}}):
+            prof = ev.profile(self.pts({"tests": 1}))
+        self.assertEqual(prof["subcharacteristics"]["Testability"]["min"], 50.0)
+        self.assertEqual(prof["maintainability_min"], 15.0)
+
+    def test_a_point_weight_makes_its_subcharacteristic_a_weighted_mean(self):
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"tests": 3}}):
+            prof = ev.profile(self.pts({"tests": 1}))
+        self.assertEqual(prof["subcharacteristics"]["Testability"]["min"], 75.0)
+        self.assertEqual(prof["maintainability_min"], 22.5)
+
+    def test_the_impact_of_the_risk_list_follows_the_point_weights(self):
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {}}):
+            r = {x["id"]: x["impact"] for x in ev.risk_summary(self.pts())}
+        self.assertEqual((r["tests"], r["layers"]), (15.0, 3.4))
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"tests": 3}}):
+            r = {x["id"]: x["impact"] for x in ev.risk_summary(self.pts())}
+        self.assertEqual((r["tests"], r["contracts"]), (22.5, 10.9))
+
+    def test_the_panel_scenario_reproduces_the_weighted_profile(self):
+        from evaluator import sensitivity as S
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"tests": 3, "layers": 2}}):
+            p = self.pts({"tests": 1, "layers": 0.5, "observability": 1}); prof = ev.profile(p)
+            panel = next(spec for name, _, spec in S.scenarios() if name == "panel")
+            self.assertEqual(S.overall(p, panel), (prof["maintainability_min"], prof["maintainability_max"]))
+
+    def test_a_point_weight_that_is_not_a_positive_number_is_rejected(self):
+        from evaluator.common import point_weight
+        for bad in (0, -1, "2", True):
+            with mock.patch.dict(ev.RUBRIC, {"point_weights": {"tests": bad}}):
+                with self.assertRaises(ValueError):
+                    point_weight("tests")
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"_comment": "only a comment"}}):
+            self.assertEqual(point_weight("tests"), 1)
+
+    def test_a_point_weight_for_a_point_that_does_not_exist_is_rejected(self):
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"test": 5}}):  # typo of `tests`: it would leave the weight out silently
+            with self.assertRaises(ValueError):
+                ev.profile(self.pts({"tests": 1}))
+
+    def test_a_bad_weight_is_rejected_even_on_a_point_that_is_not_evaluable(self):
+        pts = self.pts()
+        for p in pts:
+            if p["id"] == "data_model":
+                p["score_min"] = p["score_max"] = None
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"data_model": 0}}):
+            with self.assertRaises(ValueError):
+                ev.profile(pts)
+
+    def test_the_impacts_add_up_to_100_when_a_weighted_point_is_not_evaluable(self):
+        pts = self.pts()
+        for p in pts:
+            if p["id"] == "data_model":
+                p["score_min"] = p["score_max"] = None
+        with mock.patch.dict(ev.RUBRIC, {"point_weights": {"data_model": 5}}):
+            r = ev.risk_summary(pts)
+        self.assertAlmostEqual(sum(x["impact"] for x in r), 100, delta=0.5)
 
 
 class TestWeightSensitivity(unittest.TestCase):
@@ -2488,6 +2634,13 @@ class TestAscmmDensity(unittest.TestCase):
         self.assertIn("**ASCMM, scored weaknesses:** ≥ 18 (≥ 12.0/KLOC)", md)
         cmp_md = "\n".join(ascmm_comparison_md([("claude-n1-r1", {"ascmm": a}), ("old-run", {})]))
         self.assertIn("| claude-n1-r1 | 1.5 | ≥ 18 | ≥ 12.0 |", cmp_md); self.assertNotIn("old-run", cmp_md)
+
+    def test_a_not_applicable_hierarchies_point_counts_zero_inheritance_weaknesses(self):
+        from evaluator.ascmm import ascmm_profile
+        na = {"id": "hierarchies", "evaluable": True, "applicable": False, "metrics": {"classes": 0, "applicable": False}, "criteria": {}}
+        a = ascmm_profile(self.model(), self.points(hierarchies=na))
+        self.assertEqual([self.weakness(a, c)["count"] for c in ("CWE-1062", "CWE-1074", "CWE-1086")], [0, 0, 0])
+        self.assertTrue(a["scored"]["complete"])  # no own hierarchy means none of them occurs, not that they were not measured
 
     def test_comparison_columns(self):
         from evaluator.ascmm import COLUMNS, ascmm_columns, ascmm_profile

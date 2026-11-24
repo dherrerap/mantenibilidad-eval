@@ -128,7 +128,7 @@ def cmd_aggregate(a):
     with open(out / "comparison.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["run_id", "agent", "level", "domain"] + ids + list(RUBRIC["subcharacteristic_weights"]) + ["maintainability_min", "maintainability_max", "complete", "acceptance_pct"] + list(TOKEN_COLUMNS) + list(ASCMM_COLUMNS))
         for meta, pts, prof, (acc, tok) in rows:
-            lv = {p["id"]: (p["level"] or f"{p['level_min']}…{p['level_max']}") for p in pts}
+            lv = {p["id"]: (p["level"] or ("not applicable" if p.get("applicable") is False else f"{p['level_min']}…{p['level_max']}")) for p in pts}
             w.writerow([meta["run_id"], meta["agent"], meta["level"], meta["domain"]] + [lv[i] for i in ids] +
                        [fmt_rng(v["min"], v["max"]) for v in prof["subcharacteristics"].values()] + [prof["maintainability_min"], prof["maintainability_max"], prof["complete"], acc] + [tok[k] for k in TOKEN_COLUMNS] + ascmm_columns(prof))
     L = [f"# Comparison ({len(rows)} runs)", "", "| Run | Agent | Level | " + " | ".join(i for i in ids) + " | Overall | Acceptance % | Tokens initial | Tokens R2 | R2 / initial |", "|" + "---|" * (len(ids) + 8)]
@@ -138,7 +138,7 @@ def cmd_aggregate(a):
     ab = {"Meets": "✔", "Partial": "◐", "Fails": "✘"}
     for meta, pts, prof, (acc, tok) in rows:
         ratio = tok["tokens_r2_vs_initial"]
-        L.append(f"| {meta['run_id']} | {meta['agent']} | {meta['level']} | " + " | ".join(ab.get(p["level"], "?") for p in pts) + f" | {fmt_rng(prof['maintainability_min'], prof['maintainability_max'])} | {'n/a' if acc is None else acc} | "
+        L.append(f"| {meta['run_id']} | {meta['agent']} | {meta['level']} | " + " | ".join("⊘" if p.get("applicable") is False else ab.get(p["level"], "?") for p in pts) + f" | {fmt_rng(prof['maintainability_min'], prof['maintainability_max'])} | {'n/a' if acc is None else acc} | "
                  f"{tu.fmt(tok['tokens_initial_total'])} | {tu.fmt(tok['tokens_r2_total'])} | {'n/a' if ratio is None else f'×{ratio:.2f}'} |")
     L += [""] + ascmm_comparison_md([(meta["run_id"], prof) for meta, _, prof, _ in rows])
     sens = sensitivity([(meta, pts) for meta, pts, _, _ in rows])

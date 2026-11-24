@@ -9,7 +9,7 @@ from evaluator.common import RUBRIC
 LEVEL_STATE = {"Meets": "green", "Partial": "yellow", "Fails": "red"}
 
 
-LIGHT = {"green": "🟢", "yellow": "🟡", "red": "🔴", "undecided": "⚪", "not_evaluable": "▨", "unrelated": "·"}
+LIGHT = {"green": "🟢", "yellow": "🟡", "red": "🔴", "undecided": "⚪", "not_evaluable": "▨", "not_applicable": "⊘", "unrelated": "·"}
 
 
 def semaphore_state(score):
@@ -56,6 +56,8 @@ def risk_dashboard(points, prof, m):
                 state, esc = "unrelated", False  # not related in Table 24
             elif not p["evaluable"]:
                 state, esc = "not_evaluable", False  # distinct from "Meets"
+            elif p.get("applicable") is False:
+                state, esc = "not_applicable", False  # nothing to evaluate: not "Meets"
             else:
                 state = LEVEL_STATE.get(p["level"], "undecided")
                 esc = p["severity"] == "Critical" and state != "red"  # a Critical finding forces red
@@ -95,7 +97,7 @@ def dashboard_markdown(d, points):
         row = []
         for s in subs:
             c = next(x for x in d["heatmap"] if x["point"] == pid and x["subcharacteristic"] == s)
-            row.append(LIGHT[c["state"]] + (" ↑" if c["escalated"] else "") + (" not evaluable" if c["state"] == "not_evaluable" else ""))
+            row.append(LIGHT[c["state"]] + (" ↑" if c["escalated"] else "") + (" not evaluable" if c["state"] == "not_evaluable" else " not applicable" if c["state"] == "not_applicable" else ""))
         L.append(f"| {name} | " + " | ".join(row) + " |")
     if d["not_evaluable"]:
         L += ["", "### Not evaluable (no evidence)", ""] + [f"- ▨ **{x['name']}**: missing {', '.join(x['missing'])}" for x in d["not_evaluable"]]
@@ -113,10 +115,11 @@ def dashboard_markdown(d, points):
 HTML_STYLE = """body{font:15px system-ui,sans-serif;margin:24px;max-width:960px} table{border-collapse:collapse;width:100%} th,td{border:1px solid #bbb;padding:8px;text-align:center} th{text-align:left}
 .green{background:#2e9e5b;color:#fff} .yellow{background:#f2c230;color:#222} .red{background:#d64545;color:#fff} .undecided{background:#fff;color:#555} .unrelated{background:#e6e6e6}
 .not_evaluable{background:repeating-linear-gradient(45deg,#d9d9d9,#d9d9d9 6px,#f4f4f4 6px,#f4f4f4 12px);color:#333;font-style:italic}
+.not_applicable{background:#f4f4f4;color:#666;font-style:italic}
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0} .card{flex:1 1 180px;padding:12px;border-radius:8px;border:1px solid #bbb} .card span{display:block;font-size:26px;margin-top:4px} small{display:block}"""
 
 
-CELL_LABEL = {"green": "Meets", "yellow": "Partial", "red": "Fails", "undecided": "undecided", "not_evaluable": "not evaluable", "unrelated": ""}
+CELL_LABEL = {"green": "Meets", "yellow": "Partial", "red": "Fails", "undecided": "undecided", "not_evaluable": "not evaluable", "not_applicable": "not applicable", "unrelated": ""}
 
 
 def dashboard_html(d, points, title):

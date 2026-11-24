@@ -25,6 +25,38 @@ SKIP_DIRS = {"node_modules", "dist", "build", "coverage", ".git", ".next", "out"
 LEVELS = ["Fails", "Partial", "Meets"]
 
 
+def point_weights():
+    """Weight of every decision point inside every subcharacteristic it feeds (`point_weights` in rubric.json), as {pid: weight}; a
+    point the rubric gives no weight weighs 1, which makes each subcharacteristic the plain mean of its points. Checks the whole map:
+    every key must be a point of the rubric (or start with "_", like `_comment`) and every value a positive number. Read at call
+    time, so a test can patch the rubric; it is also checked once when this module loads, so a bad rubric fails before any collector runs."""
+    pw = RUBRIC.get("point_weights") or {}
+    for k, w in pw.items():
+        if k.startswith("_"):
+            continue
+        if k not in RUBRIC["points"]:
+            raise ValueError(f"rubric.json point_weights.{k} is not a decision point of the rubric")
+        if isinstance(w, bool) or not isinstance(w, (int, float)) or not (0 < w < float("inf")):
+            raise ValueError(f"rubric.json point_weights.{k} must be a positive number")
+    return {pid: pw.get(pid, 1) for pid in RUBRIC["points"]}
+
+
+point_weights()
+
+
+def point_weight(pid):
+    """Weight of one decision point (see point_weights())."""
+    return point_weights().get(pid, 1)
+
+
+def weighted_mean(points, key, w):
+    """Weighted mean of `key` over `points` with the weights `w` ({pid: weight}, from point_weights()); None when there are no
+    points. The one aggregation rule of a subcharacteristic, shared by scoring.profile() and sensitivity.overall()."""
+    if not points:
+        return None
+    return sum(w.get(p["id"], 1) * p[key] for p in points) / sum(w.get(p["id"], 1) for p in points)
+
+
 MISSING_MODEL_VALUES = {"", "n/a", "na", "none", "null", "unknown", "?"}
 
 

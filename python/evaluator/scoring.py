@@ -7,9 +7,9 @@ from pathlib import Path
 
 from evaluator.artifacts import artifact_findings
 from evaluator.ascmm import ascmm_profile
-from evaluator.common import RUBRIC
+from evaluator.common import RUBRIC, point_weights, weighted_mean
 from evaluator.criteria import level_from, pdict
-from evaluator.points import EVALUATORS, MUST
+from evaluator.points import EVALUATORS, must_criteria
 
 
 # What the README usually says about each point (used to detect declared-vs-implemented gaps)
@@ -38,10 +38,13 @@ def evaluate_points(m, manual, opts):
         else:  # a core artifact is missing: the point cannot be evaluated (this is not "Meets")
             crits, met, ev, forced = {}, {}, [], (None, None, None)
             finding = "Not evaluable: missing core artifact(s): " + ", ".join(a["name"] for a in miss_core) + "."
-        if forced and (forced[0] or forced[1] != forced[2]):  # forced, or pending range (level None, lo ≠ hi)
+        applicable = not (met and met.get("applicable") is False)  # the point has nothing to evaluate in this app (e.g. no inheritance)
+        if not applicable:
+            level = lo = hi = None
+        elif forced and (forced[0] or forced[1] != forced[2]):  # forced, or pending range (level None, lo ≠ hi)
             level, lo, hi = forced
         elif crits:
-            level, lo, hi = level_from(crits, MUST.get(pid, ()))
+            level, lo, hi = level_from(crits, must_criteria(pid))
         else:
             level = lo = hi = None
         pend = [k for k, v in crits.items() if v["ok"] is None]
@@ -54,13 +57,15 @@ def evaluate_points(m, manual, opts):
         severity = RUBRIC["level_severity"].get(level) if level else ("Undetermined" if lo != hi else None)
         if not evaluable:
             severity = "Not evaluable"
+        elif not applicable:
+            severity = "Not applicable"
         elif any(f["severity"] == "Critical" for f in art_findings):
             severity = "Critical"  # a Critical finding (IEEE 1028, 6.8.3) forces the top rank in use even if the level is better
-        confidence = "n/a" if not evaluable else ("high" if not miss_comp else ("medium" if len(miss_comp) == 1 else "low"))
+        confidence = "n/a" if not evaluable or not applicable else ("high" if not miss_comp else ("medium" if len(miss_comp) == 1 else "low"))
         pts.append({**pdict(pid), "level": level, "level_min": lo, "level_max": hi,
-                    "evaluable": evaluable, "confidence": confidence, "missing_artifacts": [a["id"] for a in miss_core + miss_comp],
+                    "evaluable": evaluable, **({} if applicable else {"applicable": False}), "confidence": confidence, "missing_artifacts": [a["id"] for a in miss_core + miss_comp],
                     "artifact_findings": art_findings,
-                    "complete": level is not None, "pending_criteria": pend,
+                    "complete": level is not None or not applicable, "pending_criteria": pend,
                     "severity": severity,
                     "finding": finding, "metrics": met, "criteria": crits, "evidence": ev,
                     "weaknesses": [f"{k}: {v['desc']} → {v['value']}" for k, v in crits.items() if v["ok"] is False],
@@ -117,12 +122,12 @@ def evaluate_profile(m, manual, opts):
 
 
 def profile(points):
-    W = RUBRIC["subcharacteristic_weights"]; subs = {}
+    W = RUBRIC["subcharacteristic_weights"]; pw = point_weights(); subs = {}
     for s in W:
         ps = [p for p in points if s in p["subcharacteristics"] and p["score_min"] is not None]
         tot = [p for p in points if s in p["subcharacteristics"]]
-        lo = sum(p["score_min"] for p in ps) / len(ps) if ps else None
-        hi = sum(p["score_max"] for p in ps) / len(ps) if ps else None
+        # weighted mean of the evaluable points (`point_weights`); with no weights set every point weighs 1 and this is the plain mean
+        lo, hi = weighted_mean(ps, "score_min", pw), weighted_mean(ps, "score_max", pw)
         subs[s] = {"weight": W[s], "points": [p["id"] for p in tot], "evaluable_points": len(ps),
                    "min": None if lo is None else round(100 * lo, 1), "max": None if hi is None else round(100 * hi, 1)}
     ok = all(v["min"] is not None for v in subs.values())
@@ -147,16 +152,19 @@ def risk_summary(points):
     """Condensed risk view: every point with its traffic light and the overall-score points it puts at stake.
 
     A point's impact is how many of the 100 overall points it controls: each subcharacteristic it feeds gives it
-    weight / (number of points in that subcharacteristic). `at_stake_max` is the loss in the worst case (lowest score
+    weight × point weight / (total point weight of the evaluable points of that subcharacteristic, the same denominator as
+    profile()); with no `point_weights` in the rubric that is weight / (number of evaluable points in that subcharacteristic), so
+    the impacts add up to the 100 overall points. `at_stake_max` is the loss in the worst case (lowest score
     of the range) and `at_stake_min` in the best case; pending points still rank by their worst case.
     Returns the list sorted from highest to lowest risk."""
     W = RUBRIC["subcharacteristic_weights"]
-    count = {s: sum(1 for p in points if s in p["subcharacteristics"]) for s in W}
+    pw = point_weights()
+    total = {s: sum(pw.get(p["id"], 1) for p in points if s in p["subcharacteristics"] and p["score_min"] is not None) for s in W}
     rows = []
     for p in points:
         if p["score_min"] is None:
             continue
-        impact = 100 * sum(W[s] / count[s] for s in p["subcharacteristics"] if s in W)
+        impact = 100 * sum(W[s] * pw.get(p["id"], 1) / total[s] for s in p["subcharacteristics"] if s in W)
         rows.append({"id": p["id"], "name": p["name"], "light": traffic_light(p), "level": p["level"],
                      "level_min": p["level_min"], "level_max": p["level_max"], "pending": p["pending_criteria"],
                      "impact": round(impact, 1),

@@ -92,7 +92,7 @@ Preparation before starting: terminal at the repository root, `node js/cli.mjs d
 **What to say**
 - A criterion the program cannot decide stays **pending**. The framework evaluates it twice, as met and as not met, and reports the
   score as **minimum–maximum**. When a person (or the judge) resolves it, the range closes.
-- The weights come from a panel of four experts whose agreement is **not significant** (Kendall's W = 0.158). So the report includes
+- The weights come from a panel of four experts whose agreement is **not significant** (Kendall's W = 0.0875). So the report includes
   a **sensitivity analysis**: every run is scored again with uniform weights, with every point weighing the same and with each point
   removed, and it says whether the best run and the order of the levels and agents hold.
 - We prefer "between 37 and 56, and the order holds under every weighting" to a "47" that looks precise but hides assumptions.

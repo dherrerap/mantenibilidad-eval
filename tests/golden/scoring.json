@@ -1,6 +1,63 @@
 {
 "calls": [
 {
+"fn": "evaluator.criteria.level_from",
+"args": [
+{
+"C1": {
+"ok": true
+},
+"C2": {
+"ok": false
+},
+"C3": {
+"ok": true
+},
+"C4": {
+"ok": true
+}
+},
+[
+"C2"
+]
+],
+"kwargs": {},
+"result": [
+"Fails",
+"Fails",
+"Fails"
+],
+"files": {},
+"design_text": null
+},
+{
+"fn": "evaluator.criteria.level_from",
+"args": [
+{
+"C1": {
+"ok": true
+},
+"C2": {
+"ok": false
+},
+"C3": {
+"ok": true
+},
+"C4": {
+"ok": true
+}
+}
+],
+"kwargs": {},
+"result": [
+"Partial",
+"Partial",
+"Partial"
+],
+"files": {},
+"design_text": null
+},
+{
 "fn": "points.eval_tests",
 "args": [
 {
@@ -257,34 +314,13 @@ null
 ],
 "kwargs": {},
 "result": [
+{},
 {
-"C1": {
-"ok": true,
-"desc": "0 classes with depth > 7",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C2": {
-"ok": true,
-"desc": "0 classes with > 10 direct children",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C3": {
-"ok": true,
-"desc": "0 Unhealthy Inheritance patterns (DV8)",
-"value": 0,
-"source": "auto (no own hierarchy)",
-"suggested": null
-}
-},
-{
-"classes": 24
+"classes": 24,
+"applicable": false
 },
 [],
-"24 classes; 0 too deep; 0 with too many children.",
+"Not applicable: 24 classes, none extends another class of the application; there is no inheritance hierarchy to evaluate.",
 null
 ],
 "files": {},
@@ -14874,8 +14910,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-18T13:06:25",
-"as_of": "2026-11-18",
+"date": "2026-11-23T22:43:14",
+"as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
 "files": [
@@ -15947,7 +15983,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-18",
+"as_of": "2026-11-23",
 "npm": {
 "ok": false,
 "items": []
@@ -15955,7 +15991,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-18"
+"as_of": "2026-11-23"
 }
 },
 "contract": {
@@ -16479,49 +16515,29 @@ null
 "Modularity"
 ],
 "type": "Automatable",
-"level": "Meets",
-"level_min": "Meets",
-"level_max": "Meets",
+"level": null,
+"level_min": null,
+"level_max": null,
 "evaluable": true,
-"confidence": "high",
+"applicable": false,
+"confidence": "n/a",
 "missing_artifacts": [],
 "artifact_findings": [],
 "complete": true,
 "pending_criteria": [],
-"severity": "Negligible",
-"finding": "1 classes; 0 too deep; 0 with too many children.",
+"severity": "Not applicable",
+"finding": "Not applicable: 1 classes, none extends another class of the application; there is no inheritance hierarchy to evaluate.",
 "metrics": {
-"classes": 1
+"classes": 1,
+"applicable": false
 },
-"criteria": {
-"C1": {
-"ok": true,
-"desc": "0 classes with depth > 7",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C2": {
-"ok": true,
-"desc": "0 classes with > 10 direct children",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C3": {
-"ok": true,
-"desc": "0 Unhealthy Inheritance patterns (DV8)",
-"value": 0,
-"source": "auto (no own hierarchy)",
-"suggested": null
-}
-},
+"criteria": {},
 "evidence": [],
 "weaknesses": [],
 "declared_in_readme": false,
 "declarative_gap": null,
-"score_min": 1.0,
-"score_max": 1.0
+"score_min": null,
+"score_max": null
 },
 {
 "id": "technologies",
@@ -17096,9 +17112,9 @@ null
 "data_model",
 "contracts"
 ],
-"evaluable_points": 6,
-"min": 41.7,
-"max": 75.0
+"evaluable_points": 5,
+"min": 30.0,
+"max": 70.0
 },
 "Modifiability": {
 "weight": 0.22,
@@ -17113,8 +17129,8 @@ null
 "max": 83.3
 }
 },
-"maintainability_min": 24.7,
-"maintainability_max": 42.3,
+"maintainability_min": 21.9,
+"maintainability_max": 41.1,
 "complete": false,
 "not_evaluable": [
 "technologies",
@@ -17640,49 +17656,29 @@ null
 "Modularity"
 ],
 "type": "Automatable",
-"level": "Meets",
-"level_min": "Meets",
-"level_max": "Meets",
+"level": null,
+"level_min": null,
+"level_max": null,
 "evaluable": true,
-"confidence": "high",
+"applicable": false,
+"confidence": "n/a",
 "missing_artifacts": [],
 "artifact_findings": [],
 "complete": true,
 "pending_criteria": [],
-"severity": "Negligible",
-"finding": "1 classes; 0 too deep; 0 with too many children.",
+"severity": "Not applicable",
+"finding": "Not applicable: 1 classes, none extends another class of the application; there is no inheritance hierarchy to evaluate.",
 "metrics": {
-"classes": 1
+"classes": 1,
+"applicable": false
 },
-"criteria": {
-"C1": {
-"ok": true,
-"desc": "0 classes with depth > 7",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C2": {
-"ok": true,
-"desc": "0 classes with > 10 direct children",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C3": {
-"ok": true,
-"desc": "0 Unhealthy Inheritance patterns (DV8)",
-"value": 0,
-"source": "auto (no own hierarchy)",
-"suggested": null
-}
-},
+"criteria": {},
 "evidence": [],
 "weaknesses": [],
 "declared_in_readme": false,
 "declarative_gap": null,
-"score_min": 1.0,
-"score_max": 1.0
+"score_min": null,
+"score_max": null
 },
 {
 "id": "technologies",
@@ -18234,9 +18230,24 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 18.4,
-"at_stake_min": 18.4,
-"at_stake_max": 18.4
+"impact": 19.8,
+"at_stake_min": 19.8,
+"at_stake_max": 19.8
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"light": "⚪",
+"level": null,
+"level_min": "Fails",
+"level_max": "Partial",
+"pending": [
+"C2",
+"C5"
+],
+"impact": 16.8,
+"at_stake_min": 8.4,
+"at_stake_max": 16.8
 },
 {
 "id": "tests",
@@ -18251,21 +18262,6 @@ null
 "at_stake_max": 15.0
 },
 {
-"id": "data_model",
-"name": "Data model design",
-"light": "⚪",
-"level": null,
-"level_min": "Fails",
-"level_max": "Partial",
-"pending": [
-"C2",
-"C5"
-],
-"impact": 11.4,
-"at_stake_min": 5.7,
-"at_stake_max": 11.4
-},
-{
 "id": "observability",
 "name": "Presence and consistency of observability mechanisms",
 "light": "🔴",
@@ -18273,9 +18269,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 8.0,
-"at_stake_min": 8.0,
-"at_stake_max": 8.0
+"impact": 12.0,
+"at_stake_min": 12.0,
+"at_stake_max": 12.0
 },
 {
 "id": "cohesion",
@@ -18288,9 +18284,9 @@ null
 "C2",
 "C3"
 ],
-"impact": 8.9,
+"impact": 12.1,
 "at_stake_min": 0.0,
-"at_stake_max": 4.5
+"at_stake_max": 6.1
 },
 {
 "id": "layers",
@@ -18302,9 +18298,9 @@ null
 "pending": [
 "C2"
 ],
-"impact": 3.4,
+"impact": 4.8,
 "at_stake_min": 0.0,
-"at_stake_max": 3.4
+"at_stake_max": 4.8
 },
 {
 "id": "configuration",
@@ -18314,9 +18310,9 @@ null
 "level_min": "Partial",
 "level_max": "Partial",
 "pending": [],
-"impact": 5.5,
-"at_stake_min": 2.8,
-"at_stake_max": 2.8
+"impact": 7.3,
+"at_stake_min": 3.7,
+"at_stake_max": 3.7
 },
 {
 "id": "cyclomatic",
@@ -18326,19 +18322,7 @@ null
 "level_min": "Meets",
 "level_max": "Meets",
 "pending": [],
-"impact": 8.9,
-"at_stake_min": 0.0,
-"at_stake_max": 0.0
-},
-{
-"id": "hierarchies",
-"name": "Depth and breadth of inheritance or composition hierarchies",
-"light": "🟢",
-"level": "Meets",
-"level_min": "Meets",
-"level_max": "Meets",
-"pending": [],
-"impact": 3.4,
+"impact": 12.1,
 "at_stake_min": 0.0,
 "at_stake_max": 0.0
 }
@@ -18351,8 +18335,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-18T13:06:25",
-"as_of": "2026-11-18",
+"date": "2026-11-23T22:43:14",
+"as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
 "files": [
@@ -19424,7 +19408,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-18",
+"as_of": "2026-11-23",
 "npm": {
 "ok": false,
 "items": []
@@ -19432,7 +19416,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-18"
+"as_of": "2026-11-23"
 }
 },
 "contract": {
@@ -19885,8 +19869,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-18T13:06:29",
-"as_of": "2026-11-18",
+"date": "2026-11-23T22:43:18",
+"as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
 "files": [
@@ -20958,7 +20942,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-18",
+"as_of": "2026-11-23",
 "npm": {
 "ok": false,
 "items": []
@@ -20966,7 +20950,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-18"
+"as_of": "2026-11-23"
 }
 },
 "contract": {
@@ -21490,49 +21474,29 @@ null
 "Modularity"
 ],
 "type": "Automatable",
-"level": "Meets",
-"level_min": "Meets",
-"level_max": "Meets",
+"level": null,
+"level_min": null,
+"level_max": null,
 "evaluable": true,
-"confidence": "high",
+"applicable": false,
+"confidence": "n/a",
 "missing_artifacts": [],
 "artifact_findings": [],
 "complete": true,
 "pending_criteria": [],
-"severity": "Negligible",
-"finding": "1 classes; 0 too deep; 0 with too many children.",
+"severity": "Not applicable",
+"finding": "Not applicable: 1 classes, none extends another class of the application; there is no inheritance hierarchy to evaluate.",
 "metrics": {
-"classes": 1
+"classes": 1,
+"applicable": false
 },
-"criteria": {
-"C1": {
-"ok": true,
-"desc": "0 classes with depth > 7",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C2": {
-"ok": true,
-"desc": "0 classes with > 10 direct children",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C3": {
-"ok": true,
-"desc": "0 Unhealthy Inheritance patterns (DV8)",
-"value": 0,
-"source": "auto (no own hierarchy)",
-"suggested": null
-}
-},
+"criteria": {},
 "evidence": [],
 "weaknesses": [],
 "declared_in_readme": false,
 "declarative_gap": null,
-"score_min": 1.0,
-"score_max": 1.0
+"score_min": null,
+"score_max": null
 },
 {
 "id": "technologies",
@@ -22107,9 +22071,9 @@ null
 "data_model",
 "contracts"
 ],
-"evaluable_points": 6,
-"min": 41.7,
-"max": 75.0
+"evaluable_points": 5,
+"min": 30.0,
+"max": 70.0
 },
 "Modifiability": {
 "weight": 0.22,
@@ -22124,8 +22088,8 @@ null
 "max": 83.3
 }
 },
-"maintainability_min": 24.7,
-"maintainability_max": 42.3,
+"maintainability_min": 21.9,
+"maintainability_max": 41.1,
 "complete": false,
 "not_evaluable": [
 "technologies",
@@ -22429,8 +22393,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-18T13:06:29",
-"as_of": "2026-11-18",
+"date": "2026-11-23T22:43:18",
+"as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
 "files": [
@@ -23502,7 +23466,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-18",
+"as_of": "2026-11-23",
 "npm": {
 "ok": false,
 "items": []
@@ -23510,7 +23474,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-18"
+"as_of": "2026-11-23"
 }
 },
 "contract": {
@@ -30150,12 +30114,1130 @@ null
 "design_text": null
 },
 {
+"fn": "evaluator.scoring.profile",
+"args": [
+[
+{
+"id": "layers",
+"name": "Separation of responsibilities between layers",
+"subcharacteristics": [
+"Modularity"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "cyclomatic",
+"name": "Cyclomatic complexity",
+"subcharacteristics": [
+"Modularity",
+"Modifiability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "cohesion",
+"name": "Cohesion of modules with shared responsibility",
+"subcharacteristics": [
+"Modularity",
+"Modifiability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "hierarchies",
+"name": "Depth and breadth of inheritance or composition hierarchies",
+"subcharacteristics": [
+"Modularity"
+],
+"evaluable": true,
+"complete": true,
+"level": null,
+"level_min": null,
+"level_max": null,
+"pending_criteria": [],
+"severity": "Not applicable",
+"score_min": null,
+"score_max": null,
+"applicable": false
+},
+{
+"id": "technologies",
+"name": "Technology/framework selection and obsolescence risk",
+"subcharacteristics": [
+"Analyzability",
+"Modifiability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "coupling",
+"name": "External coupling and volume of declared dependencies",
+"subcharacteristics": [
+"Modularity"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"subcharacteristics": [
+"Modularity",
+"Analyzability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "contracts",
+"name": "Definition of communication contracts between components",
+"subcharacteristics": [
+"Modularity",
+"Testability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "observability",
+"name": "Presence and consistency of observability mechanisms",
+"subcharacteristics": [
+"Analyzability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "tests",
+"name": "Test coverage and design",
+"subcharacteristics": [
+"Testability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "configuration",
+"name": "Separation of configuration and code",
+"subcharacteristics": [
+"Modifiability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+}
+]
+],
+"kwargs": {},
+"result": {
+"subcharacteristics": {
+"Testability": {
+"weight": 0.3,
+"points": [
+"contracts",
+"tests"
+],
+"evaluable_points": 2,
+"min": 0.0,
+"max": 0.0
+},
+"Analyzability": {
+"weight": 0.24,
+"points": [
+"technologies",
+"data_model",
+"observability"
+],
+"evaluable_points": 3,
+"min": 0.0,
+"max": 0.0
+},
+"Modularity": {
+"weight": 0.24,
+"points": [
+"layers",
+"cyclomatic",
+"cohesion",
+"hierarchies",
+"coupling",
+"data_model",
+"contracts"
+],
+"evaluable_points": 6,
+"min": 0.0,
+"max": 0.0
+},
+"Modifiability": {
+"weight": 0.22,
+"points": [
+"cyclomatic",
+"cohesion",
+"technologies",
+"configuration"
+],
+"evaluable_points": 4,
+"min": 0.0,
+"max": 0.0
+}
+},
+"maintainability_min": 0.0,
+"maintainability_max": 0.0,
+"complete": true
+},
+"files": {},
+"design_text": null
+},
+{
+"fn": "evaluator.scoring.risk_summary",
+"args": [
+[
+{
+"id": "layers",
+"name": "Separation of responsibilities between layers",
+"subcharacteristics": [
+"Modularity"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "cyclomatic",
+"name": "Cyclomatic complexity",
+"subcharacteristics": [
+"Modularity",
+"Modifiability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "cohesion",
+"name": "Cohesion of modules with shared responsibility",
+"subcharacteristics": [
+"Modularity",
+"Modifiability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "hierarchies",
+"name": "Depth and breadth of inheritance or composition hierarchies",
+"subcharacteristics": [
+"Modularity"
+],
+"evaluable": true,
+"complete": true,
+"level": null,
+"level_min": null,
+"level_max": null,
+"pending_criteria": [],
+"severity": "Not applicable",
+"score_min": null,
+"score_max": null,
+"applicable": false
+},
+{
+"id": "technologies",
+"name": "Technology/framework selection and obsolescence risk",
+"subcharacteristics": [
+"Analyzability",
+"Modifiability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "coupling",
+"name": "External coupling and volume of declared dependencies",
+"subcharacteristics": [
+"Modularity"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"subcharacteristics": [
+"Modularity",
+"Analyzability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "contracts",
+"name": "Definition of communication contracts between components",
+"subcharacteristics": [
+"Modularity",
+"Testability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "observability",
+"name": "Presence and consistency of observability mechanisms",
+"subcharacteristics": [
+"Analyzability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "tests",
+"name": "Test coverage and design",
+"subcharacteristics": [
+"Testability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+},
+{
+"id": "configuration",
+"name": "Separation of configuration and code",
+"subcharacteristics": [
+"Modifiability"
+],
+"evaluable": true,
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"severity": "Critical",
+"score_min": 0.0,
+"score_max": 0.0
+}
+]
+],
+"kwargs": {},
+"result": [
+{
+"id": "contracts",
+"name": "Definition of communication contracts between components",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 19.0,
+"at_stake_min": 19.0,
+"at_stake_max": 19.0
+},
+{
+"id": "tests",
+"name": "Test coverage and design",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 15.0,
+"at_stake_min": 15.0,
+"at_stake_max": 15.0
+},
+{
+"id": "technologies",
+"name": "Technology/framework selection and obsolescence risk",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 13.5,
+"at_stake_min": 13.5,
+"at_stake_max": 13.5
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 12.0,
+"at_stake_min": 12.0,
+"at_stake_max": 12.0
+},
+{
+"id": "cohesion",
+"name": "Cohesion of modules with shared responsibility",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 9.5,
+"at_stake_min": 9.5,
+"at_stake_max": 9.5
+},
+{
+"id": "cyclomatic",
+"name": "Cyclomatic complexity",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 9.5,
+"at_stake_min": 9.5,
+"at_stake_max": 9.5
+},
+{
+"id": "observability",
+"name": "Presence and consistency of observability mechanisms",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 8.0,
+"at_stake_min": 8.0,
+"at_stake_max": 8.0
+},
+{
+"id": "configuration",
+"name": "Separation of configuration and code",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 5.5,
+"at_stake_min": 5.5,
+"at_stake_max": 5.5
+},
+{
+"id": "coupling",
+"name": "External coupling and volume of declared dependencies",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 4.0,
+"at_stake_min": 4.0,
+"at_stake_max": 4.0
+},
+{
+"id": "layers",
+"name": "Separation of responsibilities between layers",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 4.0,
+"at_stake_min": 4.0,
+"at_stake_max": 4.0
+}
+],
+"files": {},
+"design_text": null
+},
+{
+"fn": "points.eval_hierarchies",
+"args": [
+{
+"ast": {
+"classes": []
+},
+"graph": {
+"modules": []
+}
+},
+{},
+{
+"accept_heuristics": false
+}
+],
+"kwargs": {},
+"result": [
+{},
+{
+"classes": 0,
+"applicable": false
+},
+[],
+"Not applicable: no classes; there is no inheritance hierarchy to evaluate.",
+null
+],
+"files": {},
+"design_text": null
+},
+{
+"fn": "evaluator.scoring.risk_summary",
+"args": [
+[
+{
+"id": "layers",
+"name": "Separation of responsibilities between layers",
+"subcharacteristics": [
+"Modularity"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "cyclomatic",
+"name": "Cyclomatic complexity",
+"subcharacteristics": [
+"Modularity",
+"Modifiability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "cohesion",
+"name": "Cohesion of modules with shared responsibility",
+"subcharacteristics": [
+"Modularity",
+"Modifiability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "hierarchies",
+"name": "Depth and breadth of inheritance or composition hierarchies",
+"subcharacteristics": [
+"Modularity"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "technologies",
+"name": "Technology/framework selection and obsolescence risk",
+"subcharacteristics": [
+"Analyzability",
+"Modifiability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "coupling",
+"name": "External coupling and volume of declared dependencies",
+"subcharacteristics": [
+"Modularity"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"subcharacteristics": [
+"Modularity",
+"Analyzability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "contracts",
+"name": "Definition of communication contracts between components",
+"subcharacteristics": [
+"Modularity",
+"Testability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "observability",
+"name": "Presence and consistency of observability mechanisms",
+"subcharacteristics": [
+"Analyzability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "tests",
+"name": "Test coverage and design",
+"subcharacteristics": [
+"Testability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "configuration",
+"name": "Separation of configuration and code",
+"subcharacteristics": [
+"Modifiability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+}
+]
+],
+"kwargs": {},
+"result": [
+{
+"id": "contracts",
+"name": "Definition of communication contracts between components",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 18.4,
+"at_stake_min": 18.4,
+"at_stake_max": 18.4
+},
+{
+"id": "tests",
+"name": "Test coverage and design",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 15.0,
+"at_stake_min": 15.0,
+"at_stake_max": 15.0
+},
+{
+"id": "technologies",
+"name": "Technology/framework selection and obsolescence risk",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 13.5,
+"at_stake_min": 13.5,
+"at_stake_max": 13.5
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 11.4,
+"at_stake_min": 11.4,
+"at_stake_max": 11.4
+},
+{
+"id": "cohesion",
+"name": "Cohesion of modules with shared responsibility",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 8.9,
+"at_stake_min": 8.9,
+"at_stake_max": 8.9
+},
+{
+"id": "cyclomatic",
+"name": "Cyclomatic complexity",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 8.9,
+"at_stake_min": 8.9,
+"at_stake_max": 8.9
+},
+{
+"id": "observability",
+"name": "Presence and consistency of observability mechanisms",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 8.0,
+"at_stake_min": 8.0,
+"at_stake_max": 8.0
+},
+{
+"id": "configuration",
+"name": "Separation of configuration and code",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 5.5,
+"at_stake_min": 5.5,
+"at_stake_max": 5.5
+},
+{
+"id": "coupling",
+"name": "External coupling and volume of declared dependencies",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 3.4,
+"at_stake_min": 3.4,
+"at_stake_max": 3.4
+},
+{
+"id": "hierarchies",
+"name": "Depth and breadth of inheritance or composition hierarchies",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 3.4,
+"at_stake_min": 3.4,
+"at_stake_max": 3.4
+},
+{
+"id": "layers",
+"name": "Separation of responsibilities between layers",
+"light": "🔴",
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending": [],
+"impact": 3.4,
+"at_stake_min": 3.4,
+"at_stake_max": 3.4
+}
+],
+"files": {},
+"design_text": null
+},
+{
+"fn": "evaluator.scoring.profile",
+"args": [
+[
+{
+"id": "layers",
+"name": "Separation of responsibilities between layers",
+"subcharacteristics": [
+"Modularity"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "cyclomatic",
+"name": "Cyclomatic complexity",
+"subcharacteristics": [
+"Modularity",
+"Modifiability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "cohesion",
+"name": "Cohesion of modules with shared responsibility",
+"subcharacteristics": [
+"Modularity",
+"Modifiability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "hierarchies",
+"name": "Depth and breadth of inheritance or composition hierarchies",
+"subcharacteristics": [
+"Modularity"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "technologies",
+"name": "Technology/framework selection and obsolescence risk",
+"subcharacteristics": [
+"Analyzability",
+"Modifiability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "coupling",
+"name": "External coupling and volume of declared dependencies",
+"subcharacteristics": [
+"Modularity"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"subcharacteristics": [
+"Modularity",
+"Analyzability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "contracts",
+"name": "Definition of communication contracts between components",
+"subcharacteristics": [
+"Modularity",
+"Testability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "observability",
+"name": "Presence and consistency of observability mechanisms",
+"subcharacteristics": [
+"Analyzability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+},
+{
+"id": "tests",
+"name": "Test coverage and design",
+"subcharacteristics": [
+"Testability"
+],
+"complete": true,
+"level": "Meets",
+"level_min": "Meets",
+"level_max": "Meets",
+"pending_criteria": [],
+"score_min": 1,
+"score_max": 1
+},
+{
+"id": "configuration",
+"name": "Separation of configuration and code",
+"subcharacteristics": [
+"Modifiability"
+],
+"complete": true,
+"level": "Fails",
+"level_min": "Fails",
+"level_max": "Fails",
+"pending_criteria": [],
+"score_min": 0,
+"score_max": 0
+}
+]
+],
+"kwargs": {},
+"result": {
+"subcharacteristics": {
+"Testability": {
+"weight": 0.3,
+"points": [
+"contracts",
+"tests"
+],
+"evaluable_points": 2,
+"min": 50.0,
+"max": 50.0
+},
+"Analyzability": {
+"weight": 0.24,
+"points": [
+"technologies",
+"data_model",
+"observability"
+],
+"evaluable_points": 3,
+"min": 0.0,
+"max": 0.0
+},
+"Modularity": {
+"weight": 0.24,
+"points": [
+"layers",
+"cyclomatic",
+"cohesion",
+"hierarchies",
+"coupling",
+"data_model",
+"contracts"
+],
+"evaluable_points": 7,
+"min": 0.0,
+"max": 0.0
+},
+"Modifiability": {
+"weight": 0.22,
+"points": [
+"cyclomatic",
+"cohesion",
+"technologies",
+"configuration"
+],
+"evaluable_points": 4,
+"min": 0.0,
+"max": 0.0
+}
+},
+"maintainability_min": 15.0,
+"maintainability_max": 15.0,
+"complete": true
+},
+"files": {},
+"design_text": null
+},
+{
 "fn": "evaluator.scoring.evaluate_profile",
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-18T13:06:55",
-"as_of": "2026-11-18",
+"date": "2026-11-23T22:43:40",
+"as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
 "files": [
@@ -31227,7 +32309,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-18",
+"as_of": "2026-11-23",
 "npm": {
 "ok": false,
 "items": []
@@ -31235,7 +32317,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-18"
+"as_of": "2026-11-23"
 }
 },
 "contract": {
@@ -31759,49 +32841,29 @@ null
 "Modularity"
 ],
 "type": "Automatable",
-"level": "Meets",
-"level_min": "Meets",
-"level_max": "Meets",
+"level": null,
+"level_min": null,
+"level_max": null,
 "evaluable": true,
-"confidence": "high",
+"applicable": false,
+"confidence": "n/a",
 "missing_artifacts": [],
 "artifact_findings": [],
 "complete": true,
 "pending_criteria": [],
-"severity": "Negligible",
-"finding": "1 classes; 0 too deep; 0 with too many children.",
+"severity": "Not applicable",
+"finding": "Not applicable: 1 classes, none extends another class of the application; there is no inheritance hierarchy to evaluate.",
 "metrics": {
-"classes": 1
+"classes": 1,
+"applicable": false
 },
-"criteria": {
-"C1": {
-"ok": true,
-"desc": "0 classes with depth > 7",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C2": {
-"ok": true,
-"desc": "0 classes with > 10 direct children",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C3": {
-"ok": true,
-"desc": "0 Unhealthy Inheritance patterns (DV8)",
-"value": 0,
-"source": "auto (no own hierarchy)",
-"suggested": null
-}
-},
+"criteria": {},
 "evidence": [],
 "weaknesses": [],
 "declared_in_readme": false,
 "declarative_gap": null,
-"score_min": 1.0,
-"score_max": 1.0
+"score_min": null,
+"score_max": null
 },
 {
 "id": "technologies",
@@ -32376,9 +33438,9 @@ null
 "data_model",
 "contracts"
 ],
-"evaluable_points": 6,
-"min": 41.7,
-"max": 75.0
+"evaluable_points": 5,
+"min": 30.0,
+"max": 70.0
 },
 "Modifiability": {
 "weight": 0.22,
@@ -32393,8 +33455,8 @@ null
 "max": 83.3
 }
 },
-"maintainability_min": 24.7,
-"maintainability_max": 42.3,
+"maintainability_min": 21.9,
+"maintainability_max": 41.1,
 "complete": false,
 "not_evaluable": [
 "technologies",
@@ -32698,8 +33760,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-18T13:06:55",
-"as_of": "2026-11-18",
+"date": "2026-11-23T22:43:40",
+"as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
 "files": [
@@ -33771,7 +34833,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-18",
+"as_of": "2026-11-23",
 "npm": {
 "ok": false,
 "items": []
@@ -33779,7 +34841,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-18"
+"as_of": "2026-11-23"
 }
 },
 "contract": {
@@ -34232,8 +35294,8 @@ null
 "args": [
 {
 "app": "<app>",
-"date": "2026-11-18T13:06:55",
-"as_of": "2026-11-18",
+"date": "2026-11-23T22:43:40",
+"as_of": "2026-11-23",
 "ast": {
 "root": "<app>",
 "files": [
@@ -35305,7 +36367,7 @@ null
 "packages": [],
 "direct": 0,
 "unused_dev_incl": false,
-"as_of": "2026-11-18",
+"as_of": "2026-11-23",
 "npm": {
 "ok": false,
 "items": []
@@ -35313,7 +36375,7 @@ null
 "vulnerabilities": {
 "ok": false,
 "source": "OSV",
-"as_of": "2026-11-18"
+"as_of": "2026-11-23"
 }
 },
 "contract": {
@@ -35840,49 +36902,29 @@ null
 "Modularity"
 ],
 "type": "Automatable",
-"level": "Meets",
-"level_min": "Meets",
-"level_max": "Meets",
+"level": null,
+"level_min": null,
+"level_max": null,
 "evaluable": true,
-"confidence": "high",
+"applicable": false,
+"confidence": "n/a",
 "missing_artifacts": [],
 "artifact_findings": [],
 "complete": true,
 "pending_criteria": [],
-"severity": "Negligible",
-"finding": "1 classes; 0 too deep; 0 with too many children.",
+"severity": "Not applicable",
+"finding": "Not applicable: 1 classes, none extends another class of the application; there is no inheritance hierarchy to evaluate.",
 "metrics": {
-"classes": 1
+"classes": 1,
+"applicable": false
 },
-"criteria": {
-"C1": {
-"ok": true,
-"desc": "0 classes with depth > 7",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C2": {
-"ok": true,
-"desc": "0 classes with > 10 direct children",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C3": {
-"ok": true,
-"desc": "0 Unhealthy Inheritance patterns (DV8)",
-"value": 0,
-"source": "auto (no own hierarchy)",
-"suggested": null
-}
-},
+"criteria": {},
 "evidence": [],
 "weaknesses": [],
 "declared_in_readme": false,
 "declarative_gap": null,
-"score_min": 1.0,
-"score_max": 1.0
+"score_min": null,
+"score_max": null
 },
 {
 "id": "technologies",
@@ -36457,9 +37499,9 @@ null
 "data_model",
 "contracts"
 ],
-"evaluable_points": 6,
-"min": 50.0,
-"max": 75.0
+"evaluable_points": 5,
+"min": 40.0,
+"max": 70.0
 },
 "Modifiability": {
 "weight": 0.22,
@@ -36474,8 +37516,8 @@ null
 "max": 83.3
 }
 },
-"maintainability_min": 30.3,
-"maintainability_max": 42.3,
+"maintainability_min": 27.9,
+"maintainability_max": 41.1,
 "complete": false,
 "not_evaluable": [
 "technologies",
@@ -36993,49 +38035,29 @@ null
 "Modularity"
 ],
 "type": "Automatable",
-"level": "Meets",
-"level_min": "Meets",
-"level_max": "Meets",
+"level": null,
+"level_min": null,
+"level_max": null,
 "evaluable": true,
-"confidence": "high",
+"applicable": false,
+"confidence": "n/a",
 "missing_artifacts": [],
 "artifact_findings": [],
 "complete": true,
 "pending_criteria": [],
-"severity": "Negligible",
-"finding": "1 classes; 0 too deep; 0 with too many children.",
+"severity": "Not applicable",
+"finding": "Not applicable: 1 classes, none extends another class of the application; there is no inheritance hierarchy to evaluate.",
 "metrics": {
-"classes": 1
+"classes": 1,
+"applicable": false
 },
-"criteria": {
-"C1": {
-"ok": true,
-"desc": "0 classes with depth > 7",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C2": {
-"ok": true,
-"desc": "0 classes with > 10 direct children",
-"value": 0,
-"source": "auto",
-"suggested": null
-},
-"C3": {
-"ok": true,
-"desc": "0 Unhealthy Inheritance patterns (DV8)",
-"value": 0,
-"source": "auto (no own hierarchy)",
-"suggested": null
-}
-},
+"criteria": {},
 "evidence": [],
 "weaknesses": [],
 "declared_in_readme": false,
 "declarative_gap": null,
-"score_min": 1.0,
-"score_max": 1.0
+"score_min": null,
+"score_max": null
 },
 {
 "id": "technologies",
@@ -37587,9 +38609,24 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 18.4,
-"at_stake_min": 18.4,
-"at_stake_max": 18.4
+"impact": 19.8,
+"at_stake_min": 19.8,
+"at_stake_max": 19.8
+},
+{
+"id": "data_model",
+"name": "Data model design",
+"light": "⚪",
+"level": null,
+"level_min": "Fails",
+"level_max": "Partial",
+"pending": [
+"C2",
+"C5"
+],
+"impact": 16.8,
+"at_stake_min": 8.4,
+"at_stake_max": 16.8
 },
 {
 "id": "tests",
@@ -37604,21 +38641,6 @@ null
 "at_stake_max": 15.0
 },
 {
-"id": "data_model",
-"name": "Data model design",
-"light": "⚪",
-"level": null,
-"level_min": "Fails",
-"level_max": "Partial",
-"pending": [
-"C2",
-"C5"
-],
-"impact": 11.4,
-"at_stake_min": 5.7,
-"at_stake_max": 11.4
-},
-{
 "id": "observability",
 "name": "Presence and consistency of observability mechanisms",
 "light": "🔴",
@@ -37626,9 +38648,9 @@ null
 "level_min": "Fails",
 "level_max": "Fails",
 "pending": [],
-"impact": 8.0,
-"at_stake_min": 8.0,
-"at_stake_max": 8.0
+"impact": 12.0,
+"at_stake_min": 12.0,
+"at_stake_max": 12.0
 },
 {
 "id": "layers",
@@ -37640,9 +38662,9 @@ null
 "pending": [
 "C2"
 ],
-"impact": 3.4,
+"impact": 4.8,
 "at_stake_min": 0.0,
-"at_stake_max": 3.4
+"at_stake_max": 4.8
 },
 {
 "id": "configuration",
@@ -37652,9 +38674,9 @@ null
 "level_min": "Partial",
 "level_max": "Partial",
 "pending": [],
-"impact": 5.5,
-"at_stake_min": 2.8,
-"at_stake_max": 2.8
+"impact": 7.3,
+"at_stake_min": 3.7,
+"at_stake_max": 3.7
 },
 {
 "id": "cohesion",
@@ -37664,7 +38686,7 @@ null
 "level_min": "Meets",
 "level_max": "Meets",
 "pending": [],
-"impact": 8.9,
+"impact": 12.1,
 "at_stake_min": 0.0,
 "at_stake_max": 0.0
 },
@@ -37676,19 +38698,7 @@ null
 "level_min": "Meets",
 "level_max": "Meets",
 "pending": [],
-"impact": 8.9,
-"at_stake_min": 0.0,
-"at_stake_max": 0.0
-},
-{
-"id": "hierarchies",
-"name": "Depth and breadth of inheritance or composition hierarchies",
-"light": "🟢",
-"level": "Meets",
-"level_min": "Meets",
-"level_max": "Meets",
-"pending": [],
-"impact": 3.4,
+"impact": 12.1,
 "at_stake_min": 0.0,
 "at_stake_max": 0.0
 }

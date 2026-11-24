@@ -3,7 +3,7 @@
 import { F, get, pyRound, search, sorted, str, truthy } from "../lib/py.mjs";
 import { artifactFindings } from "./artifacts.mjs";
 import { ascmmProfile } from "./ascmm.mjs";
-import { RUBRIC } from "./common.mjs";
+import { RUBRIC, pointWeights, weightedMean } from "./common.mjs";
 import { levelFrom, pdict } from "./criteria.mjs";
 import { evalDataModel, evalTechnologies } from "./points/dependencies.mjs";
 import { evalConfiguration, evalContracts, evalHierarchies, evalObservability, evalTests } from "./points/simple.mjs";
@@ -11,7 +11,20 @@ import { evalCohesion, evalCoupling, evalCyclomatic, evalLayers } from "./points
 
 export const EVALUATORS = { layers: evalLayers, cyclomatic: evalCyclomatic, cohesion: evalCohesion, hierarchies: evalHierarchies, technologies: evalTechnologies,
   coupling: evalCoupling, data_model: evalDataModel, contracts: evalContracts, observability: evalObservability, tests: evalTests, configuration: evalConfiguration };
-export const MUST = { contracts: ["C1"], tests: ["C2"] };
+/** Criteria that alone make a point fail (`must_criteria` in rubric.json). Read at call time, like the rest of the rubric, and checked
+ * whole: the map must exist (an absent map would drop the vetoes without a word), every key must be a point of the rubric (or start with
+ * "_") and every value a list of criterion ids (C1, C2, …). Also checked once when this module loads. */
+export function mustCriteria(pid) {
+  const mc = RUBRIC.must_criteria;
+  if (!mc || typeof mc !== "object" || Array.isArray(mc)) throw new Error("rubric.json must_criteria is missing");
+  for (const [k, v] of Object.entries(mc)) {
+    if (k.startsWith("_")) continue;
+    if (!Object.hasOwn(RUBRIC.points, k)) throw new Error(`rubric.json must_criteria.${k} is not a decision point of the rubric`);
+    if (!Array.isArray(v) || !v.every((c) => typeof c === "string" && /^C\d+$/.test(c))) throw new Error(`rubric.json must_criteria.${k} must be a list of criterion ids (C1, C2, …)`);
+  }
+  return pid.startsWith("_") || !Object.hasOwn(mc, pid) ? [] : mc[pid];
+}
+mustCriteria("_");
 
 // What the README usually says about each point (declared-vs-implemented gaps); whole words only
 const DECLARED_PATTERNS = { layers: String.raw`\blayer(s|ed)?\b|\bcontrollers?\b|\bservices? layer\b|\brepositor(y|ies)\b`,
@@ -38,9 +51,11 @@ export function evaluatePoints(m, manual, opts) {
       [crits, met, ev, forced] = [{}, {}, [], [null, null, null]];
       finding = "Not evaluable: missing core artifact(s): " + missCore.map((a) => a.name).join(", ") + ".";
     }
+    const applicable = !(met && met.applicable === false);  // the point has nothing to evaluate in this app (e.g. no inheritance)
     let level, lo, hi;
-    if (forced && (forced[0] || forced[1] !== forced[2])) [level, lo, hi] = forced;  // forced, or a pending range
-    else if (Object.keys(crits).length) [level, lo, hi] = levelFrom(crits, get(MUST, pid, []));
+    if (!applicable) level = lo = hi = null;
+    else if (forced && (forced[0] || forced[1] !== forced[2])) [level, lo, hi] = forced;  // forced, or a pending range
+    else if (Object.keys(crits).length) [level, lo, hi] = levelFrom(crits, mustCriteria(pid));
     else level = lo = hi = null;
     const pend = Object.entries(crits).filter(([, v]) => v.ok === null).map(([k]) => k);
     const readme = get(m, "readme");
@@ -53,10 +68,11 @@ export function evaluatePoints(m, manual, opts) {
     const artFindings = missComp.map((a) => ({ artifact: a.id, name: a.name, severity: get(a, "absence") === "high_finding" ? "Critical" : "Marginal" }));
     let severity = level ? get(RUBRIC.level_severity, level) : lo !== hi ? "Undetermined" : null;
     if (!evaluable) severity = "Not evaluable";
+    else if (!applicable) severity = "Not applicable";
     else if (artFindings.some((f) => f.severity === "Critical")) severity = "Critical";  // IEEE 1028, 6.8.3
-    const confidence = !evaluable ? "n/a" : !missComp.length ? "high" : missComp.length === 1 ? "medium" : "low";
-    pts.push({ ...pdict(pid), level, level_min: lo, level_max: hi, evaluable, confidence, missing_artifacts: [...missCore, ...missComp].map((a) => a.id),
-      artifact_findings: artFindings, complete: level !== null, pending_criteria: pend, severity, finding, metrics: met, criteria: crits, evidence: ev,
+    const confidence = !evaluable || !applicable ? "n/a" : !missComp.length ? "high" : missComp.length === 1 ? "medium" : "low";
+    pts.push({ ...pdict(pid), level, level_min: lo, level_max: hi, evaluable, ...(applicable ? {} : { applicable: false }), confidence, missing_artifacts: [...missCore, ...missComp].map((a) => a.id),
+      artifact_findings: artFindings, complete: level !== null || !applicable, pending_criteria: pend, severity, finding, metrics: met, criteria: crits, evidence: ev,
       weaknesses: Object.entries(crits).filter(([, v]) => v.ok === false).map(([k, v]) => `${k}: ${str(v.desc)} → ${str(v.value)}`),
       declared_in_readme: declared, declarative_gap: gap, score_min: lo ? sc[lo] : null, score_max: hi ? sc[hi] : null });
   }
@@ -64,12 +80,12 @@ export function evaluatePoints(m, manual, opts) {
 }
 
 export function profile(points) {
-  const W = RUBRIC.subcharacteristic_weights, subs = {};
+  const W = RUBRIC.subcharacteristic_weights, pw = pointWeights(), subs = {};
   for (const s of Object.keys(W)) {
     const ps = points.filter((p) => p.subcharacteristics.includes(s) && p.score_min !== null);
     const tot = points.filter((p) => p.subcharacteristics.includes(s));
-    const lo = ps.length ? ps.reduce((a, p) => a + Number(p.score_min), 0) / ps.length : null;
-    const hi = ps.length ? ps.reduce((a, p) => a + Number(p.score_max), 0) / ps.length : null;
+    // weighted mean of the evaluable points (`point_weights`); with no weights set every point weighs 1 and this is the plain mean
+    const lo = weightedMean(ps, "score_min", pw), hi = weightedMean(ps, "score_max", pw);
     subs[s] = { weight: W[s], points: tot.map((p) => p.id), evaluable_points: ps.length,
       min: lo === null ? null : F(pyRound(100 * lo, 1)), max: hi === null ? null : F(pyRound(100 * hi, 1)) };
   }
@@ -100,12 +116,15 @@ export const trafficLight = (point) => get(TRAFFIC, point.level, "⚪");
 
 /** Condensed risk view: every point with its traffic light and the overall-score points it puts at stake, highest risk first. */
 export function riskSummary(points) {
-  const W = RUBRIC.subcharacteristic_weights;
-  const count = Object.fromEntries(Object.keys(W).map((s) => [s, points.filter((p) => p.subcharacteristics.includes(s)).length]));
+  const W = RUBRIC.subcharacteristic_weights, pw = pointWeights();
+  // total point weight of the evaluable points of each subcharacteristic, the same denominator as profile(): with no `point_weights` it is
+  // the number of evaluable points that feed it, so the impacts add up to the 100 overall points
+  const ev = points.filter((p) => p.score_min !== null);
+  const total = Object.fromEntries(Object.keys(W).map((s) => [s, ev.filter((p) => p.subcharacteristics.includes(s)).reduce((a, p) => a + (pw[p.id] ?? 1), 0)]));
   const rows = [];
   for (const p of points) {
     if (p.score_min === null) continue;
-    const impact = 100 * p.subcharacteristics.filter((s) => Object.prototype.hasOwnProperty.call(W, s)).reduce((a, s) => a + Number(W[s]) / count[s], 0);
+    const impact = 100 * p.subcharacteristics.filter((s) => Object.hasOwn(W, s)).reduce((a, s) => a + (Number(W[s]) * (pw[p.id] ?? 1)) / total[s], 0);
     rows.push({ id: p.id, name: p.name, light: trafficLight(p), level: p.level, level_min: p.level_min, level_max: p.level_max, pending: p.pending_criteria,
       impact: F(pyRound(impact, 1)), at_stake_min: F(pyRound((1 - Number(p.score_max)) * impact, 1)), at_stake_max: F(pyRound((1 - Number(p.score_min)) * impact, 1)) });
   }

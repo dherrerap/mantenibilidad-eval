@@ -1,7 +1,7 @@
 // sensitivity.mjs — Sensitivity of the overall score to the weighting scheme (see evaluator/sensitivity.py for the scenarios).
 // Port of evaluator/sensitivity.py.
 import { F, fixed, get, gfmt, num, pyRound, sorted, str, truthy } from "../lib/py.mjs";
-import { RUBRIC } from "./common.mjs";
+import { RUBRIC, pointWeights, weightedMean } from "./common.mjs";
 
 const GROUP_KEYS = ["level", "agent"];
 
@@ -27,6 +27,7 @@ export function overall(points, spec) {
     if (!ps.length) return [null, null];
     return ["score_min", "score_max"].map((k) => F(pyRound((100 * ps.reduce((a, p) => a + num(p[k]), 0)) / ps.length, 1)));
   }
+  const pw = pointWeights();
   let lo = 0.0, hi = 0.0;
   for (const [s, w] of Object.entries(spec.weights)) {
     const sub = ps.filter((p) => p.subcharacteristics.includes(s));
@@ -34,8 +35,9 @@ export function overall(points, spec) {
       if (w > 0) return [null, null];
       continue;
     }
-    lo += (num(w) * 100 * sub.reduce((a, p) => a + num(p.score_min), 0)) / sub.length;
-    hi += (num(w) * 100 * sub.reduce((a, p) => a + num(p.score_max), 0)) / sub.length;
+    // the same weighted mean as scoring.profile()
+    lo += num(w) * 100 * weightedMean(sub, "score_min", pw);
+    hi += num(w) * 100 * weightedMean(sub, "score_max", pw);
   }
   return [F(pyRound(lo, 1)), F(pyRound(hi, 1))];
 }
@@ -137,7 +139,7 @@ const fmtRank = (x) => (x === null || x === undefined ? "—" : gfmt(x));
 export function sensitivityMd(s, heading = "##") {
   const runs = Object.keys(s.runs), alt = s.scenarios.filter((x) => x.name !== "panel");
   const L = [`${heading} Weight sensitivity`, "",
-    "The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: " +
+    "The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: " +
     "uniform 25%, every point with the same weight, each point removed in turn" +
     (alt.some((x) => !["uniform", "equal_points", "without_"].some((p) => x.name.startsWith(p))) ? ", and the weight sets of `sensitivity.weight_sets` in `rubric.json`" : "") +
     ". Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.", ""];

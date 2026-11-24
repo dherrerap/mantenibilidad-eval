@@ -1,6 +1,6 @@
 """Sensitivity of the overall score to the weighting scheme.
 
-The subcharacteristic weights (30/24/24/22) come from a panel whose concordance is not significant (Kendall's W = 0.158,
+The subcharacteristic weights (30/24/24/22) come from a panel whose concordance is not significant (Kendall's W = 0.0875,
 `backing.subcharacteristic_weights`), so a conclusion drawn from the overall score must hold under other reasonable weights.
 Each run is scored again from its points under these scenarios:
 
@@ -14,7 +14,7 @@ For each scenario it reports the score of every run, the ranking of the runs and
 tau-b, whether the top run is the same, the largest rank shift), and the order of the levels and agents by mean score.
 Rankings use the midpoint of each score range; a run whose overall score is not computable in a scenario stays out of it.
 """
-from evaluator.common import RUBRIC
+from evaluator.common import RUBRIC, point_weights, weighted_mean
 
 GROUP_KEYS = ("level", "agent")
 
@@ -37,12 +37,13 @@ def scenarios():
 
 def overall(points, spec):
     """(min, max) of the overall score of a run under `spec`, with the same rules as scoring.profile(): a subcharacteristic is the
-    mean of its evaluable points and the total needs every subcharacteristic with a positive weight to have one. (None, None) if not."""
+    mean of its evaluable points, weighted by `point_weights`, and the total needs every subcharacteristic with a positive weight to have one. (None, None) if not."""
     ps = [p for p in points if p.get("score_min") is not None and p["id"] != spec.get("drop")]
     if spec.get("flat"):
         if not ps:
             return None, None
         return tuple(round(100 * sum(p[k] for p in ps) / len(ps), 1) for k in ("score_min", "score_max"))
+    pw = point_weights()
     lo = hi = 0.0
     for s, w in spec["weights"].items():
         sub = [p for p in ps if s in p["subcharacteristics"]]
@@ -50,8 +51,8 @@ def overall(points, spec):
             if w > 0:
                 return None, None
             continue
-        lo += w * 100 * sum(p["score_min"] for p in sub) / len(sub)
-        hi += w * 100 * sum(p["score_max"] for p in sub) / len(sub)
+        lo += w * 100 * weighted_mean(sub, "score_min", pw)
+        hi += w * 100 * weighted_mean(sub, "score_max", pw)
     return round(lo, 1), round(hi, 1)
 
 
@@ -148,7 +149,7 @@ def sensitivity_md(s, heading="##"):
     """Markdown section of the report."""
     runs = list(s["runs"]); alt = [x for x in s["scenarios"] if x["name"] != "panel"]
     L = [f"{heading} Weight sensitivity", "",
-         "The panel weights have a non-significant concordance (Kendall's W = 0.158), so every run is scored again under other weights: "
+         "The panel weights have a non-significant concordance (Kendall's W = 0.0875), so every run is scored again under other weights: "
          "uniform 25%, every point with the same weight, each point removed in turn" +
          (", and the weight sets of `sensitivity.weight_sets` in `rubric.json`" if any(not x["name"].startswith(("uniform", "equal_points", "without_")) for x in alt) else "") +
          ". Ranks use the midpoint of each score range (1 = best). τ = Kendall's tau-b against the panel ranking.", ""]

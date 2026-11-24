@@ -4,8 +4,8 @@
 
 | Estándar             | Aporta                                                                                                                                                          | No aporta                                                                                                          |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| ISO/IEC 25010 (2023) | La definición de mantenibilidad y de sus cinco subcaracterísticas; la adscripción de cada punto de decisión a la subcaracterística afectada                     | Ninguna medida ni ningún umbral: es un modelo de calidad                                                           |
-| ISO/IEC 25023 (2016) | Las funciones de medición, de la forma X = A/B o X = 1 − A/B; el nivel de recomendación de cada medida; los requisitos de conformidad de la cláusula 2          | Ningún valor de corte                                                                                              |
+| ISO/IEC 25010 (2023) | La definición de mantenibilidad y de sus cinco subcaracterísticas (no menciona los puntos de decisión, así que no los asigna a ninguna)                         | Ninguna medida ni ningún umbral: es un modelo de calidad                                                           |
+| ISO/IEC 25023 (2016) | Las funciones de medición, de la forma X = A/B o X = 1 − A/B; la subcaracterística bajo la que pone cada medida; el nivel de recomendación de cada medida; los requisitos de conformidad de la cláusula 2 | Ningún valor de corte                                                                                              |
 | ISO/IEC 5055 (2021)  | Umbrales numéricos por defecto para varias de las 29 debilidades de mantenibilidad; el conteo de ocurrencias como forma de cálculo; la normalización por tamaño | Nada sobre esquemas relacionales, obsolescencia de dependencias, contratos de comunicación ni cobertura de pruebas |
 | IEEE Std 1028 (2008) | El proceso de revisión: roles, criterios de entrada y de salida, escala de ordenamiento de anomalías y tasas de inspección                                      | Ninguna métrica de producto ni umbral de código                                                                    |
 
@@ -21,7 +21,6 @@
 | Clases hijas directas                | 10        | Jerarquías, C2                   | ISO/IEC 5055 (2021)  | CWE-1086, clase con número excesivo de clases hijas  |
 | Archivos estructuralmente muertos    | 0         | Acoplamiento, C5                 | ISO/IEC 5055 (2021)  | CWE-561, código muerto                               |
 | Parámetros por función               | 7         | Indicador ASCMM (informativo)    | ISO/IEC 5055 (2021)  | CWE-1064, firma con número excesivo de parámetros    |
-| Escala de severidad                  | 4 niveles | Severidad de todos los puntos    | IEEE Std 1028 (2008) | 6.8.3                                                |
 
 ## Umbrales con respaldo normativo parcial
 
@@ -36,6 +35,7 @@ valor de corte (solo función).
 | Dependencias salientes por módulo        | 10            | Acoplamiento, C2 (numerador)        | Alternativo      | ISO/IEC 5055, CWE-1048: 5 referencias por función; aquí, 10 dependencias distintas por módulo           |
 | Líneas duplicadas                        | 10 %          | Complejidad ciclomática, C3         | Alternativo      | ISO/IEC 5055, CWE-1041: 10 % de las instrucciones de cada instancia de clon; aquí, líneas de toda la app |
 | Código comentado por función             | 2 %           | Indicador ASCMM (informativo)       | Alternativo      | ISO/IEC 5055, CWE-1085: instrucciones comentadas; aquí, líneas comentadas de la función                 |
+| Escala de severidad                      | 4 niveles     | Severidad de todos los puntos       | Alternativo      | IEEE Std 1028, 6.8.3: la escala ordena anomalías por la gravedad de sus consecuencias; aquí se asigna a los niveles (No cumple → Crítica, Parcial → Marginal, Cumple → Despreciable), una correspondencia propia |
 | Props por componente                     | 7             | Indicador suplementario (informativo) | Alternativo    | ISO/IEC 5055, CWE-1064: parámetros de una función, aplicado a las props de un componente React          |
 | X de complejidad ciclomática             | 0,95 y 0,98   | Complejidad ciclomática, C1 y C2    | Solo función     | ISO/IEC 25023, MMo-2-S: X = 1 − A/B, sin valor de corte                                                 |
 | X de acoplamiento entre componentes      | 0,90          | Acoplamiento, C2                    | Solo función     | ISO/IEC 25023, MMo-1-G: X = A/B, sin valor de corte                                                     |
@@ -46,7 +46,11 @@ valor de corte (solo función).
 | Umbral                                 | Valor               | Criterio o efecto                       | Decide un veredicto            |
 | -------------------------------------- | ------------------- | --------------------------------------- | ------------------------------ |
 | Pesos de las subcaracterísticas        | 30 / 24 / 24 / 22 % | Puntaje global                          | Sí                             |
+| Agregación de los puntos dentro de cada subcaracterística | Promedio simple (`point_weights` vacío) | Peso efectivo de cada punto en el puntaje global (de 3,4 % a 18,4 % con los 11 puntos puntuados; de 4,0 % a 19,0 % cuando Jerarquías no aplica) | Sí |
+| Asignación de los puntos a las subcaracterísticas (Tabla 24) | 16 conexiones; 3 siguen a ISO/IEC 25023 (acoplamiento y complejidad ciclomática → modularidad, MMo-1-G y MMo-2-S; observabilidad → analizabilidad, MAn-1-G) y 13 son decisión propia | Puntaje de cada subcaracterística y peso efectivo de cada punto | Sí |
 | Fracción mínima para _Parcial_         | 0,5                 | Nivel de todos los puntos               | Sí                             |
+| Peso de los criterios dentro de un punto | Todos iguales; el mínimo real para _Parcial_ va de 50 % a 67 % según cuántos criterios tenga el punto | Nivel de todos los puntos salvo Capas | Sí |
+| Criterios con veto                     | Contratos C1 (existe un contrato) y Pruebas C2 (existen pruebas y pasan) | Nivel de Contratos y de Pruebas | Sí (en Contratos es redundante: sin contrato tampoco se cumplen C2–C4) |
 | Puntaje por nivel                      | 1 / 0,5 / 0         | Puntaje de todas las subcaracterísticas | Sí                             |
 | Violaciones de capas para _Parcial_    | 5 %                 | Capas, C2                               | Sí                             |
 | Capas identificables mínimas           | 2                   | Capas, C1                               | Sí                             |
@@ -63,6 +67,7 @@ valor de corte (solo función).
 | Cobertura de línea                     | 70 %                | Pruebas, C3                             | Sí                             |
 | Cobertura de rama                      | 50 %                | Pruebas, C4                             | Sí                             |
 | Cortes del semáforo                    | 70 y 40             | Estado de la tabla de riesgo            | Sí                             |
+| Escalada por severidad Crítica         | Un punto Crítico pone en rojo su subcaracterística | Estado de la tabla de riesgo (por eso el corte de 40 solo actúa con criterios pendientes) | Sí |
 | Puntos de entrada adicionales de Knip  | 7 nombres y 2 patrones | Acoplamiento, C5, detección          | Sí, indirectamente             |
 | Inclusión de _devDependencies_         | falso               | Acoplamiento, C4, denominador           | Sí, indirectamente             |
 | Literal de red con respaldo de entorno | falso               | Configuración, C1, detección            | Sí, indirectamente             |

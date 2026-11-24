@@ -73,19 +73,43 @@ For a point with *n* criteria:
 - **Partial**: at least half are met (`partial_min_fraction = 0.5`).
 - **Fails**: fewer than half are met.
 - A failing **mandatory** criterion forces "Fails": `contracts.C1` (machine-readable contract) and `tests.C2`
-  (tests exist and pass).
+  (tests exist and pass), listed in `must_criteria` in `rubric.json`.
 
-Layers additionally uses percentage thresholds (see below).
+Every criterion of a point weighs the same, and the points have different numbers of criteria, so the minimum that yields Partial is
+2 of 3 (67%) for cyclomatic complexity, hierarchies and configuration, 2 of 4 (50%) for cohesion, technologies, contracts, observability
+and tests, 3 of 5 (60%) for coupling and 3 of 6 (50%) for data model. Layers is the exception: its level comes from percentage
+thresholds (see below). Both rules, and the vetoes, are decisions of the framework (`backing.partial_min_fraction` and
+`backing.must_criteria`).
 
-The severity of each point follows the anomaly ranking of **IEEE Std 1028-2008, 6.8.3**: Meets → *Negligible*, Partial → *Marginal*,
-Fails → *Critical*. The fourth rank, *Catastrophic*, is not used: 6.8.3(a) reserves it for anomalies whose consequences are loss of
+A point is **not applicable** when the app has nothing for it to evaluate. Today that is only *Hierarchies* when no class of the app
+extends another class of the app (a functional React and Express codebase usually has none): its three criteria would all be met
+trivially, and a *Meets* without anything to judge would raise Modularity for every app alike. A not-applicable point has no level
+and no score, is complete, is left out of the mean of its subcharacteristics (like a not-evaluable point), has severity *Not
+applicable* and shows ⊘ in the heat map, the scorecard and the comparison. Unlike *not evaluable*, nothing is missing: there is
+simply no inheritance hierarchy.
+
+The severity of each point uses the anomaly ranking scale of **IEEE Std 1028-2008, 6.8.3**: Meets → *Negligible*, Partial → *Marginal*,
+Fails → *Critical*. The scale is the standard's, but the standard ranks anomalies by the consequences of the failure they would cause and
+says nothing about levels, so this correspondence is a decision of the framework (`backing.level_severity`). The fourth rank, *Catastrophic*, is not used: 6.8.3(a) reserves it for anomalies whose consequences are loss of
 life, failure of mission or very large economic or social loss and for which mitigation is not possible. *Critical* is the top rank in
-use and is what forces red in the dashboard.
+use and is what forces red in the dashboard; that escalation is also a decision of the framework (`backing.risk_dashboard.escalation`).
+Because of it, the yellow/red cut-off of 40 only acts on score ranges with pending criteria: a subcharacteristic below 40 needs at least
+one decided Fails, which already forces red.
 
 ## Scores
 
 - Each level is worth: Meets = 1, Partial = 0.5, Fails = 0.
-- A subcharacteristic's score is the average of the points that feed it, times 100.
+- A subcharacteristic's score is the mean of the evaluable points that feed it, weighted by `point_weights` in `rubric.json`,
+  times 100. A point with no weight there weighs 1, so with no weights set (the default) it is the plain average. Each point then has
+  an implicit weight in the overall score, the subcharacteristic weight divided by the number of points that feed it, summed over the
+  subcharacteristics it feeds: from 3.4% (layers, hierarchies, coupling) to 18.4% (contracts) with the default rubric and every point
+  scored. A point that is not evaluable or not applicable leaves its share to the scored points of the same subcharacteristics: in
+  the usual app without an inheritance hierarchy, Hierarchies is not applicable and the range is 4.0% (layers, coupling) to 19.0%
+  (contracts). The `impact` of the risk list uses that same denominator, so the impacts of a run always add up to 100. That distribution follows from how many
+  points feed each subcharacteristic, not from a judgment of their importance; `point_weights` exists to replace it with the ratings
+  of the expert consultation (see `backing.point_weights`). The evaluator refuses a rubric whose `point_weights` names a point that
+  does not exist or gives a weight that is not a positive number, and one whose `must_criteria` is missing, names a point that does
+  not exist or lists something other than criterion ids.
 - The overall score is the weighted sum: Testability 30%, Analyzability 24%, Modularity 24%, Modifiability 22%.
 - **Ranges.** A pending criterion (`ok = null`) is evaluated twice, as met and as not met. The point, the
   subcharacteristic and the overall score are then expressed as `minimum–maximum`. When everything is resolved, the range collapses to a
@@ -93,7 +117,7 @@ use and is what forces red in the dashboard.
 
 ### Weight sensitivity
 
-The weights come from a panel whose concordance is not significant (Kendall's W = 0.158, see [limitations](limitations.md)), so the
+The weights come from a panel whose concordance is not significant (Kendall's W = 0.0875, see [limitations](limitations.md)), so the
 report (`report.md`, section *Weight sensitivity*; `_comparison/sensitivity.json`) scores every run again under other schemes
 (`js/evaluator/sensitivity.mjs`):
 
@@ -120,7 +144,7 @@ or completes) or **manual**.
 | **Layers** | Modularity | C1 at least 2 identifiable layers · C2 violations ≤ 5% of inter-layer dependencies (Meets at 0%, Partial up to 5%). Only presentation→business and business→data are allowed. | auto, with review if the evidence is ambiguous |
 | **Cyclomatic complexity** | Modularity, Modifiability | C1 X ≥ 0.95 · C2 X ≥ 0.98, where X = 1 − (functions with CC > 20)/(total) · C3 ≤ 10% duplicated lines (CWE-1041). | auto |
 | **Cohesion** | Modularity, Modifiability | C1 ≤ 5% of functions with fan-out > 5 · C2 DL (DV8) ≥ 60% · C3 checklist with no findings ("god" module, mixed responsibilities, fragmentation; not met when a module both defines routes and queries the database, or a frontend component exceeds 200 LOC) · C4 0 production files over 1000 LOC (CWE-1080). | mixed |
-| **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. | auto |
+| **Hierarchies** | Modularity | C1 inheritance depth ≤ 7 · C2 ≤ 10 direct children · C3 0 Unhealthy Inheritance patterns. **Not applicable** when no class of the app extends another class of the app (see *Levels*). | auto |
 | **Technologies** | Analyzability, Modifiability | C1 no deprecated packages · C2 runtime, framework and PostgreSQL supported (endoflife.date; table in `rubric.json`) · C3 ≤ 20% of direct dependencies with an outdated major version · C4 0 high or critical vulnerabilities (OSV). On the resolved versions and as of the reference date `--as-of`; dependency age in libyears is informational. Queries the npm registry and OSV. | auto with network |
 | **Coupling** | Modularity | C1 0 cycles · C2 X (MMo-1-G) ≥ 0.90 · C3 Propagation Cost (DV8) ≤ 20% · C4 ≤ 10% unused dependencies (Knip) · C5 0 production files unreachable from every entry point (Knip, CWE-561). | auto |
 | **Data model** | Modularity, Analyzability | C1 every table has a primary key and every relation is a declared foreign key · C2 normalization consistent with access (≤ 3NF) · C3 integrity constraints declared in the schema · C4 indexes on foreign keys and on the fields the code filters by · C5 no unjustified redundancy or inconsistent types · C6 the declared ER model matches the implemented schema. | mixed: C1, C3, C4, C6 automatic; C2 a suggestion; C5 not met when column types are inconsistent, a suggestion otherwise |
@@ -333,8 +357,9 @@ code** (`profile.json` → `ascmm`, a section of `profile.md`, and in `report.md
 In addition to the dashboard above, to see at a glance where maintainability is most at risk, `profile.md` and `report.md` condense the 11 points into a risk map:
 
 - **Traffic light** per point: 🟢 Meets, 🟡 Partial, 🔴 Fails, ⚪ undecided (pending criteria).
-- **Points at stake**: how many of the 100 overall points the point can still cost. A point controls `weight / (points in that
-  subcharacteristic)` of each subcharacteristic it feeds, so a point that is the only one feeding a heavy subcharacteristic weighs more.
+- **Points at stake**: how many of the 100 overall points the point can still cost. A point controls `weight × point weight / (total point
+  weight of that subcharacteristic)` of each subcharacteristic it feeds, which without `point_weights` is `weight / (points in that
+  subcharacteristic)`, so a point that is the only one feeding a heavy subcharacteristic weighs more.
   The worst case (lowest score of the range) is used for ranking, so pending points are not hidden behind a "?".
 - `profile.md` lists the points of one app, highest risk first. `report.md` adds a **heat map** (points × applications, riskiest rows
   first) and the top 3 risks per application. The same data is in `profile.json` under `risk`.
@@ -362,8 +387,11 @@ grades of compliance"), `tool_parameter` (the value comes from a tool's rule) an
 this study, declared under ISO/IEC 25023 Clause 2(e)). Only ISO/IEC 5055 supplies numeric thresholds; ISO/IEC 25010 supplies the
 quality model only and IEEE Std 1028 the review process only. `backing` also records the coverage of the 29 weaknesses of the
 Automated Source Code Maintainability Measure (`_coverage_ascmm`), the conformance statement for ISO/IEC 25023 Clause 2
-(`_conformance_25023`, including the exclusions and their rationale) and the one for IEEE Std 1028 (`_conformance_1028`). The
-evaluator's tests fail if a threshold has no backing entry or if a `normative_exact` value drifts from the standard's default.
+(`_conformance_25023`, including the exclusions and their rationale), the one for IEEE Std 1028 (`_conformance_1028`) and, under
+`points.subcharacteristics`, the basis of each of the 16 links of Table 24 between a point and a subcharacteristic: 3 follow
+ISO/IEC 25023, which places the measure the point implements under that subcharacteristic, and 13 are a decision of this framework. The
+evaluator's tests fail if a threshold or a point-subcharacteristic link has no backing entry, or if a `normative_exact` value drifts from
+the standard's default.
 
 ## AI token consumption
 

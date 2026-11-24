@@ -32,6 +32,11 @@ TARGETS = {scoring: ["evaluate_points", "evaluate_profile", "profile", "risk_sum
 ORIGINAL_EVALUATORS = dict(EVALUATORS)
 
 
+def rubric_patched():
+    """A test that sets point weights patches the rubric in memory; the JavaScript replay reads rubric.json, so it is not a golden case."""
+    return any(not k.startswith("_") for k in (ev.RUBRIC.get("point_weights") or {}))
+
+
 def opts_json(x):
     """The `opts` argument (a class, a SimpleNamespace or an argparse result): only the attributes the scoring reads."""
     return {"accept_heuristics": bool(getattr(x, "accept_heuristics", False))}
@@ -72,7 +77,7 @@ class Recorder:
             finally:
                 self.depth -= 1
             # a test that replaces EVALUATORS with stubs does not exercise the real points: not a golden case
-            if top and before is not None and dict(EVALUATORS) == ORIGINAL_EVALUATORS:
+            if top and before is not None and dict(EVALUATORS) == ORIGINAL_EVALUATORS and not rubric_patched():
                 try:
                     res = to_json(result)
                 except TypeError:

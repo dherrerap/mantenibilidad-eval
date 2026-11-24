@@ -9,6 +9,34 @@ export const HERE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 export const RUBRIC = loadJson(fs.readFileSync(path.join(HERE, "rubric.json"), "utf8"));  // floats stay floats, as in Python
 export const LEVELS = ["Fails", "Partial", "Meets"];
 
+/** Weight of every decision point inside every subcharacteristic it feeds (`point_weights` in rubric.json), as {pid: weight}; a point the
+ * rubric gives no weight weighs 1, which makes each subcharacteristic the plain mean of its points. Checks the whole map: every key must
+ * be a point of the rubric (or start with "_", like `_comment`) and every value a positive number. Read at call time, so a test or a
+ * script can change the rubric in memory; it is also checked once when this module loads, so a bad rubric fails before any collector runs. */
+export function pointWeights() {
+  const pw = RUBRIC.point_weights || {}, out = {};
+  for (const [k, v] of Object.entries(pw)) {
+    if (k.startsWith("_")) continue;
+    if (!Object.hasOwn(RUBRIC.points, k)) throw new Error(`rubric.json point_weights.${k} is not a decision point of the rubric`);
+    const w = num(v);
+    if (!(Number.isFinite(w) && w > 0)) throw new Error(`rubric.json point_weights.${k} must be a positive number`);
+  }
+  for (const pid of Object.keys(RUBRIC.points)) out[pid] = Object.hasOwn(pw, pid) ? num(pw[pid]) : 1;
+  return out;
+}
+pointWeights();
+
+/** Weight of one decision point (see pointWeights()). */
+export const pointWeight = (pid) => pointWeights()[pid] ?? 1;
+
+/** Weighted mean of `key` over `points` with the weights `w` ({pid: weight}, from pointWeights()); null when there are no points. The one
+ * aggregation rule of a subcharacteristic, shared by scoring.profile() and sensitivity.overall(). */
+export function weightedMean(points, key, w) {
+  if (!points.length) return null;
+  const tw = points.reduce((a, p) => a + (w[p.id] ?? 1), 0);
+  return points.reduce((a, p) => a + (w[p.id] ?? 1) * num(p[key]), 0) / tw;
+}
+
 /** None if b is 0, else a percentage (a Python float). */
 export const pct = (a, b) => (!num(b) ? null : F((100.0 * num(a)) / num(b)));
 
